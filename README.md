@@ -1,6 +1,6 @@
 # BOLDreflectR
 
-A GUI for BOLDconnectR, built using the following template: [https://github.com/zarathucorp/shiny-electron-template-windows](/zarathucorp/shiny-electron-template-windows)
+A GUI for BOLDconnectR, built using the following template: [/zarathucorp/shiny-electron-template-windows](https://github.com/zarathucorp/shiny-electron-template-windows).
 
 This repository excludes any files that are created during the build process. To build the app, a modified set of instructions is provided below. One change to the template protocol was particularly necessary to get this working (original **Step 15** and related footnote '**Add not-CRAN packages**'): for BOLDconnectR, rather than manually copying the package from the system's R library, it is necessary to install the package from within R in order to install all required dependencies. This is covered in **steps 8-9** below.
 
