@@ -4,7 +4,9 @@ BOLDreflectR is a Shiny app, built to serve as an interactive GUI for the BOLD R
 
 ## To install the app on your machine:
 
-A setup file is available as a release from this repo (currently Windows only).
+An installer for the standalone app is provided as a release (currently Windows only):
+
+[BOLDreflectR-1.3-standalone_setup.exe](https://github.com/skmonckton/BOLDreflectR/releases/download/v1.3/BOLDreflectR-1.3-standalone_setup.exe)
 
 ## To run the from R or R Studio:
 
