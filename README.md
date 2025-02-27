@@ -2,11 +2,17 @@
 
 BOLDreflectR is a Shiny app, built to serve as an interactive GUI for the BOLD R package BOLDconnectR. For now, it is intended to support the day-to-day activities of CBG staff.
 
-The standalone version of the app is made with Electon Forge using the following template: [/zarathucorp/shiny-electron-template-windows](https://github.com/zarathucorp/shiny-electron-template-windows).
+## To install the app on your machine:
 
-The modified step-by-step instructions used to build the app are provided below. One change to the template protocol was particularly necessary to get this working (original **Step 15** and related footnote '**Add not-CRAN packages**'): for BOLDconnectR, rather than manually copying the package from the system's R library, it is necessary to install the package from within R in order to install all required dependencies. This is covered in **steps 8-9** below.
+A setup file is available as a release from this repo (currently Windows only).
+
+## To run the from R or R Studio:
+
+The R scripts and supporting files are available in the [`shiny`](https://github.com/skmonckton/BOLDreflectR/tree/main/shiny) directory of this repo.
 
 ## To build the executable:
+
+The standalone version of the app is made with Electon Forge using the following template: [/zarathucorp/shiny-electron-template-windows](https://github.com/zarathucorp/shiny-electron-template-windows). The modified step-by-step instructions used to build the app are provided below. One change to the template protocol was particularly necessary to get this working (original **Step 15** and related footnote '**Add not-CRAN packages**'): for BOLDconnectR, rather than manually copying the package from the system's R library, it is necessary to install the package from within R in order to install all required dependencies. This is covered in **steps 8-9** below.
 
 ### A. Environment setup
 
@@ -57,3 +63,5 @@ The modified step-by-step instructions used to build the app are provided below.
 10. Back in PowerShell, test that the application works using `electron-forge start`.
 
 11. If the app runs successfully, it can be built using `electron-forge make`. The app will be placed in the **/out** folder. The ZIP archive can be found in **/out/make/zip/win32/x64**.
+
+12. Optionally, you can package the app into a Windows installer using [Inno Setup](https://jrsoftware.org/isinfo.php).
