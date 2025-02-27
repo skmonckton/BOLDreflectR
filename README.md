@@ -8,7 +8,7 @@ An installer for the standalone app is provided as a release (currently Windows 
 
 [BOLDreflectR-1.3-standalone_setup.exe](https://github.com/skmonckton/BOLDreflectR/releases/download/v1.3/BOLDreflectR-1.3-standalone_setup.exe)
 
-## To run the from R or R Studio:
+## To run the app from R or R Studio:
 
 The R scripts and supporting files are available in the [`shiny`](https://github.com/skmonckton/BOLDreflectR/tree/main/shiny) directory of this repo.
 
