@@ -3,13 +3,14 @@ h2 {
   font-size: 1.8rem;
 }
 
-h2::after {
+#side-title::after {
   content: attr(data-ver);
   font-size: 0.9rem;
   color: #999;
   margin-left: 0.55rem;
+  margin-top: auto;
+  margin-bottom: 1.1rem;
 }
-
 .modal-header {
   padding-bottom: 1rem;
 }

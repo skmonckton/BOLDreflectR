@@ -17,7 +17,8 @@ ui <- bslib::page_fillable(
   useShinyjs(),
   sidebarLayout(
     sidebarPanel(
-      div(id="side-title",span(img(src = "reflectr.png", height = 35)),HTML(paste0("<h2 data-ver=\"v",ver,"\">BOLDreflectR</h2>"))),
+      #div(id="side-title",span(img(src = "reflectr.png", height = 35)),HTML(paste0("<h2 data-ver=\"v",ver,"\">BOLDreflectR</h2>"))),
+      div(id="side-title",span(img(src = "reflectR-name.png", alt = "BOLDreflectR", style = "height: 3rem;")), `data-ver` = paste0("v", ver), style = "height: 4.16rem;"),
       bslib::accordion(
         id="optpanels",
         bslib::accordion_panel(
