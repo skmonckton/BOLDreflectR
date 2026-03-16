@@ -156,7 +156,9 @@ get_bin_consensus <- function(df, ranks = c("kingdom", "phylum", "class", "order
     return(consensus)
 }
 
-get_bin_discordance <- function(data) {
+get_bin_discordance <- function(bold_df) {
+  
+  ranks <- c("kingdom", "phylum", "class", "order", "family", "subfamily", "tribe", "genus", "species", "subspecies")
   
   count_ne <- function(x, out = c("N", "vals", "recs")) {
     if(out == "recs") return(length(x[x != "" & !is.na(x)]))
@@ -168,42 +170,44 @@ get_bin_discordance <- function(data) {
     }
   }
   
-  summary <- data[!is.na(bin_uri), .(record_count = .N,
-                                     min_rank = as.factor(ranks[min(match(identification_rank, ranks))]),
-                                     max_rank = as.factor(ranks[max(match(identification_rank, ranks))]),
-                                     distinct_countries = count_ne(country.ocean, "N"),
-                                     distinct_taxa = count_ne(identification, "N"),
-                                     distinct_phylum = count_ne(phylum, "N"),
-                                     distinct_class = count_ne(class, "N"),
-                                     distinct_orders = count_ne(order, "N"),
-                                     distinct_families = count_ne(family, "N"),
-                                     distinct_subfamilies = count_ne(subfamily, "N"),
-                                     distinct_tribes = count_ne(tribe, "N"),
-                                     distinct_genera = count_ne(genus, "N"),
-                                     distinct_species = count_ne(species, "N"),
-                                     distinct_subspecies = count_ne(subspecies, "N"),
-                                     country_list = count_ne(country.ocean, "vals"),
-                                     phylum_list = count_ne(phylum, "vals"),
-                                     class_list = count_ne(class, "vals"),
-                                     oder_list = count_ne(order, "vals"),
-                                     family_list = count_ne(family, "vals"),
-                                     subfamily = count_ne(subfamily, "vals"),
-                                     tribe = count_ne(tribe, "vals"),
-                                     genera = count_ne(genus, "vals"),
-                                     species = count_ne(species, "vals"),
-                                     subspecies = count_ne(subspecies, "vals"),
-                                     recs_with_phylum_info = count_ne(phylum, "recs"),
-                                     recs_with_class_info = count_ne(class, "recs"),
-                                     recs_with_order_info = count_ne(order, "recs"),
-                                     recs_with_family_info = count_ne(family, "recs"),
-                                     recs_with_subfamily_info = count_ne(subfamily, "recs"),
-                                     recs_with_tribe_info = count_ne(tribe, "recs"),
-                                     recs_with_genus_info = count_ne(genus, "recs"),
-                                     recs_with_species_info = count_ne(species, "recs"),
-                                     recs_with_subspecies_info = count_ne(subspecies, "recs")), by = "bin_uri"]
+  data <- as.data.table(bold_df)[!is.na(bold_df[["bin_uri"]])]
+  
+  summary <- data[, .(record_count = .N,
+                      min_rank = as.factor(ranks[min(match(get("identification_rank"), ranks))]),
+                      max_rank = as.factor(ranks[max(match(get("identification_rank"), ranks))]),
+                      distinct_countries = count_ne(get("country.ocean"), "N"),
+                      distinct_taxa = count_ne(get("identification"), "N"),
+                      distinct_phylum = count_ne(get("phylum"), "N"),
+                      distinct_class = count_ne(get("class"), "N"),
+                      distinct_orders = count_ne(get("order"), "N"),
+                      distinct_families = count_ne(get("family"), "N"),
+                      distinct_subfamilies = count_ne(get("subfamily"), "N"),
+                      distinct_tribes = count_ne(get("tribe"), "N"),
+                      distinct_genera = count_ne(get("genus"), "N"),
+                      distinct_species = count_ne(get("species"), "N"),
+                      distinct_subspecies = count_ne(get("subspecies"), "N"),
+                      country_list = count_ne(get("country.ocean"), "vals"),
+                      phylum_list = count_ne(get("phylum"), "vals"),
+                      class_list = count_ne(get("class"), "vals"),
+                      oder_list = count_ne(get("order"), "vals"),
+                      family_list = count_ne(get("family"), "vals"),
+                      subfamily_list = count_ne(get("subfamily"), "vals"),
+                      tribe_list = count_ne(get("tribe"), "vals"),
+                      genera_list = count_ne(get("genus"), "vals"),
+                      species_list = count_ne(get("species"), "vals"),
+                      subspecies_list = count_ne(get("subspecies"), "vals"),
+                      recs_with_phylum_info = count_ne(get("phylum"), "recs"),
+                      recs_with_class_info = count_ne(get("class"), "recs"),
+                      recs_with_order_info = count_ne(get("order"), "recs"),
+                      recs_with_family_info = count_ne(get("family"), "recs"),
+                      recs_with_subfamily_info = count_ne(get("subfamily"), "recs"),
+                      recs_with_tribe_info = count_ne(get("tribe"), "recs"),
+                      recs_with_genus_info = count_ne(get("genus"), "recs"),
+                      recs_with_species_info = count_ne(get("species"), "recs"),
+                      recs_with_subspecies_info = count_ne(get("subspecies"), "recs")), by = "bin_uri"]
 }
 
-get_portal_bin_stats <- function(bins, shiny = TRUE) {
+get_portal_bin_stats <- function(bins, shiny = FALSE) {
   
   # function to run taxonomy query (seemingly most accurate count of public records from portal API)
   get_public_count <- function(bin) {
@@ -211,7 +215,7 @@ get_portal_bin_stats <- function(bins, shiny = TRUE) {
                        url = paste0("https://portal.boldsystems.org/api/summary?query=bin:uri:", bin, "&fields=marker_code&reduce_operation=count"),
                        httr::add_headers('accept' = 'application/json'), body = FALSE,
                        times = 5,
-                       quiet = TRUE, 
+                       quiet = TRUE,
                        terminate_on = 200,
                        terminate_on_success	= FALSE)
     if(req$status_code != 200) { return(NA) }
@@ -238,26 +242,27 @@ get_portal_bin_stats <- function(bins, shiny = TRUE) {
   
   # assemble the table
   if(shiny == TRUE) {
-    pboptions(type = "shiny", title = "Retrieving BIN stats from BOLD Portal API", label = "")
-    bin_resp <- rbindlist(pbapply::pblapply(bins, bin_query), fill = TRUE)
+    opi <- pbapply::pboptions(type = "shiny", title = "Retrieving BIN stats from BOLD Portal API", label = "")
+    bin_resp <- data.table::rbindlist(pbapply::pblapply(bins, bin_query), fill = TRUE)
   } else {
-    pboptions(type = "text", title = "Retrieving BIN stats from BOLD Portal API", label = "")
-    bin_resp <- rbindlist(pbapply::pblapply(bins, bin_query), fill = TRUE)
+    opi <- pbapply::pboptions(type = "txt", title = "Retrieving BIN stats from BOLD Portal API", label = "")
+    bin_resp <- data.table::rbindlist(pbapply::pblapply(bins, bin_query), fill = TRUE)
   }
+  pbapply::pboptions(opi)
   
   if(!is.null(bin_resp) && nrow(bin_resp) > 0) {
-    failed <- length(bins) - nrow(bin_resp[!is.na(record_count), ])
+    failed <- length(bins) - nrow(bin_resp[!is.na(bin_resp[["record_count"]]), ])
     if(failed > 0) warning(paste0("Portal stats retrieval timed out for ", failed, " BINs."))
-    bin_resp[, .(bin_uri = barcodecluster.uri,
-                 member_count = record_count,
-                 private_members = record_count - marker_code.count,
-                 public_members = marker_code.count,
-                 avg_dist = barcodecluster.avgdist,
-                 max_dist = barcodecluster.maxdist,
-                 nn_dist = barcodecluster.nn_dist,
-                 nn_bin_uri = nearestneighbour.uri)]
+    bin_resp[, .(bin_uri = bin_resp[["barcodecluster.uri"]],
+                 member_count = bin_resp[["record_count"]],
+                 private_members = bin_resp[["record_count"]] - bin_resp[["marker_code.count"]],
+                 public_members = bin_resp[["marker_code.count"]],
+                 avg_dist = bin_resp[["barcodecluster.avgdist"]],
+                 max_dist = bin_resp[["barcodecluster.maxdist"]],
+                 nn_dist = bin_resp[["barcodecluster.nn_dist"]],
+                 nn_bin_uri = bin_resp[["nearestneighbour.uri"]])]
   } else {
-    warning("Portal stats retrieval failed for all requested BINs.")    
+    warning("Portal stats retrieval failed for all requested BINs.")
   }
   
 }
