@@ -47,6 +47,16 @@
     tab_status$discordance_tab <- FALSE
     tab_status$map_tab <- FALSE
     
+    # convenience function to interrogate current tab status
+    tab_monitor <- function(get = c("status", "current", "absent", "ins_target"), ins_tab = NULL) {
+      tabs <- c(c("data" = TRUE), sapply(c("summary","bin_reps","consensus_tab","discordance_tab","map_tab"), function(t) get(t, envir = tab_status) == TRUE))
+      switch(get,
+             status = tabs,
+             current = names(tabs)[tabs == TRUE],
+             absent = names(tabs)[tabs == FALSE],
+             ins_target = names(tabs)[max(which(tabs[1:match(ins_tab, names(tabs))] == TRUE))])
+    }
+    
     ### REACTIVE UI
     
     # conditional input logic to constrain marker search options (min/max requires a marker to be selected)
@@ -489,7 +499,7 @@
       }
       if(!tab_status$summary) {
         bslib::nav_insert(
-          "tabs", target = "data", select = TRUE,
+          "tabs", target = tab_monitor("ins_target","summary"), position = "after", select = TRUE,
           bslib::nav_panel(id = "summary",
                     value = "summary",
                     "Summary",
@@ -525,7 +535,7 @@
       
       if(!tab_status$consensus_tab) {
         bslib::nav_insert(
-          "tabs", select = TRUE,
+          "tabs", target = tab_monitor("ins_target","consensus_tab"), position = "after", select = TRUE,
           bslib::nav_panel(
             id="consensus_tab",
             value="consensus_tab",
@@ -550,7 +560,7 @@
       
       if(!tab_status$discordance_tab) {
         bslib::nav_insert(
-          "tabs", select = TRUE,
+          "tabs", target = tab_monitor("ins_target","discordance_tab"), position = "after", select = TRUE,
           bslib::nav_panel(
             id="discordance_tab",
             value="discordance_tab",
@@ -633,7 +643,7 @@
       
       if(!tab_status$bin_reps) {
         bslib::nav_insert(
-          "tabs", select = TRUE,
+          "tabs", target = tab_monitor("ins_target","bin_reps"), position = "after", select = TRUE,
           bslib::nav_panel(
             id="bin_reps",
             value="bin_reps",
@@ -653,7 +663,7 @@
       req(outdf$data)
       if(!tab_status$map_tab) {
         bslib::nav_insert(
-          "tabs", select = TRUE,
+          "tabs", target = tab_monitor("ins_target","map_tab"), position = "after", select = TRUE,
           bslib::nav_panel(
             id="map_tab",
             value="map_tab",
@@ -803,7 +813,7 @@
                          group = "Satellite") |>
         addCircleMarkers(lat = ~lat,
                    lng = ~lon,
-                   color = "#1D1F21",
+                   color = "#444",
                    fillColor = ~pal(identification),
                    weight = 2,
                    radius = 9,
