@@ -23,9 +23,9 @@
     )
     
     # initialize object to store fetched records and associated data
-    outdf <- reactiveValues()
+    outdata <- reactiveValues()
     
-    init_outdf <- list(
+    init_outdata <- list(
       data = NULL,
       binmates = NULL,
       select_fields = config$fieldsets$bcdm,
@@ -95,7 +95,7 @@
     # function to reset filter options
     reset_filter <- function() {
       if (!isolate(input$tabs) %in% c("data", "bin_reps")) {bslib::nav_select(id="tabs", selected="data")}
-      outdf$select_fields <- if (is.null(isolate(outdf$data))) {
+      outdata$select_fields <- if (is.null(isolate(outdata$data))) {
         config$fieldsets$bcdm
       } else {
         c(config$fieldsets$bcdm, isolate(coll_mrkr_fields()))
@@ -104,7 +104,7 @@
                            choices = filter_options(),
                            selected = NULL)
       updateSelectizeInput(session, "filt_seq",
-                           choices = outdf$markers,
+                           choices = outdata$markers,
                            selected = NULL)
     }
     
@@ -113,8 +113,8 @@
     
     # function to reset UI (and reactive values) to blank state
     reset_ui <- function() {
-      for(i in seq_along(init_outdf)) {
-        outdf[[names(init_outdf[i])]] <- unname(unlist(init_outdf[i]))
+      for(i in seq_along(init_outdata)) {
+        outdata[[names(init_outdata[i])]] <- unname(unlist(init_outdata[i]))
       }
       for(i in seq_along(init_fetch_params)) {
         fetch_params[[names(init_fetch_params[i])]] <- unname(unlist(init_fetch_params[i]))
@@ -217,7 +217,7 @@
       tryCatch({
         data <- as.data.table(bold.fetch.shiny(get_by = fetch_params$fetch_by,
                                  query = fetch_params$fetch_ids,
-                                 BCDM_only = FALSE))[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdf$id_field)), parse_lat_lon(coord))]
+                                 BCDM_only = FALSE))[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
         cols_to_factor <- intersect(config$fieldsets$factorfields, names(data))
         data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
         if(fetch_params$fetch_by == "bin_uris") {
@@ -227,8 +227,8 @@
           shinyjs::show("include_binmates")
           shinyjs::show("view_binmates")
         }
-        outdf$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
-        outdf$data <- data
+        outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
+        outdata$data <- data
         shinyjs::show('table_buttons')
         bslib::accordion_panel_close(id="optpanels", values="fetchdata")
         bslib::accordion_panel_open(id="optpanels", values=c("customize","summarize","analyze"))
@@ -255,18 +255,18 @@
     
     # modal logic for BIN mates
     binmate_modal <- function() {
-      req(outdf$data)
-      if (is.null(outdf$binmates)) {
-        outdf$binmates <- get_binmate_pids(filtered_data()[!is.na(bin_uri)])
+      req(outdata$data)
+      if (is.null(outdata$binmates)) {
+        outdata$binmates <- get_binmate_pids(filtered_data()[!is.na(bin_uri)])
       }
-      if(length(outdf$binmates) == 0) {
+      if(length(outdata$binmates) == 0) {
         modal_msg <- div(HTML(paste0("No additional BIN members found.")))
         modal_footer <- tagList(
           div(id="modal_confirm",
               actionButton("binmate_btn", "OK")))
         binmate_list <- div("")
       } else if (fetch_params$binmates_fetched == FALSE) {
-        modal_msg <- div(HTML(paste0("Found <strong>",length(outdf$binmates),"</strong> additional BIN members. Fetch and add to table?")))
+        modal_msg <- div(HTML(paste0("Found <strong>",length(outdata$binmates),"</strong> additional BIN members. Fetch and add to table?")))
         modal_footer <- tagList(
           actionButton("copy_binmates", "Copy"),
           div(id="modal_confirm",
@@ -275,7 +275,7 @@
         )
         binmate_list <- verbatimTextOutput("binmate_pids")
       } else {
-        modal_msg <- div(HTML(paste0("The following <strong>",length(outdf$binmates),"</strong> additional BIN members were added to the fetched data.")))
+        modal_msg <- div(HTML(paste0("The following <strong>",length(outdata$binmates),"</strong> additional BIN members were added to the fetched data.")))
         modal_footer <- tagList(
           actionButton("copy_binmates", "Copy"),
           div(id="modal_confirm",
@@ -304,13 +304,13 @@
     observeEvent(input$binmate_btn, { 
       removeModal()
       
-      if(length(outdf$binmates) > 0) {
+      if(length(outdata$binmates) > 0) {
         binmate_data <- as.data.table(bold.fetch.shiny(get_by = "processid", 
-                                                       query = outdf$binmates,
-                                                       BCDM_only = FALSE))[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdf$id_field)), parse_lat_lon(coord))]
+                                                       query = outdata$binmates,
+                                                       BCDM_only = FALSE))[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
         cols_to_factor <- intersect(config$fieldsets$factorfields, names(binmate_data))
         binmate_data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
-        outdf$data <- unique(rbindlist(list(outdf$data,
+        outdata$data <- unique(rbindlist(list(outdata$data,
                                             binmate_data),
                                        fill = TRUE))
         bslib::update_switch("include_binmates",label="Include additional BIN members",value=TRUE,session)
@@ -324,8 +324,8 @@
     ### REACTIVE COMPUTATIONS AND OBSERVERS
     
     # keep summary analysis options updated according to available fields
-    observeEvent(outdf$data, {
-      req(outdf$data)
+    observeEvent(outdata$data, {
+      req(outdata$data)
       updateSelectInput(session, 
                         "ana_opt",
                         choices = list(
@@ -339,15 +339,15 @@
                             "Datasets" = "datasets",
                             "Country" = "country.ocean"),
                           "Unique values - all fields" = as.list(
-                            names(outdf$data)[
-                              !names(outdf$data) %in% c("identification","bin_uri","country.ocean","id_date_parsed","project_code")])
+                            names(outdata$data)[
+                              !names(outdata$data) %in% c("identification","bin_uri","country.ocean","id_date_parsed","project_code")])
                         ))
     })
     
     # logic for generating marker-collapsed data table
     collapsed_data <- reactive({
-      req(outdf$data)
-      collapse_markers(outdf$data)
+      req(outdata$data)
+      collapse_markers(outdata$data)
     })
     
     # reactive to store additional marker-specific fields/columns
@@ -403,8 +403,8 @@
     # consume computed filter fields and record them in the reactive value list
     observeEvent(computed_fields(), {
       result <- computed_fields()
-      outdf$select_fields <- result$fields
-      outdf$id_field <- result$id_field
+      outdata$select_fields <- result$fields
+      outdata$id_field <- result$id_field
       if (result$show_copy_fasta) shinyjs::show("copy_fasta") else shinyjs::hide("copy_fasta")
     })
     
@@ -426,15 +426,15 @@
     # field set save logic
     observeEvent(input$save_filter_btn, {
       removeModal()
-      filter_set <- save_custom_fieldset(input$save_filter_name, outdf$select_fields)
+      filter_set <- save_custom_fieldset(input$save_filter_name, outdata$select_fields)
       updateSelectizeInput(session,"filt_opt",
                            choices = filter_options(),
                            selected = filter_set)
     })
     
     # keep marker filters updated based on available data
-    observeEvent(outdf$markers, {
-      updateSelectizeInput(session, "filt_seq", choices = outdf$markers, selected = NULL)
+    observeEvent(outdata$markers, {
+      updateSelectizeInput(session, "filt_seq", choices = outdata$markers, selected = NULL)
     })
     
     # function to compute a row index based on user-selected markers
@@ -466,17 +466,17 @@
     
     # reactive computation of filtered data table
     filtered_data <- reactive({
-      req(outdf$data)
+      req(outdata$data)
       data <- if (input$collapse_mrkrs == TRUE) {
         cd <- collapsed_data()
         req(cd)
         cd
       } else {
-        outdf$data
+        outdata$data
       }
       
-      if (!isTRUE(input$include_binmates) || length(outdf$binmates) == 0) {
-        data <- data[!processid %in% outdf$binmates]
+      if (!isTRUE(input$include_binmates) || length(outdata$binmates) == 0) {
+        data <- data[!processid %in% outdata$binmates]
       }
       
       if(!isTRUE(input$include_nts)) {
@@ -490,12 +490,12 @@
     
     # compute summary counts and inject as a new tab
     observeEvent(input$ana_btn, {
-      req(outdf$data)
-      outdf$summary <- NULL
-      outdf$summary <- if(input$ana_opt == "tax_summary") {
-        count_taxa(filtered_data(), outdf$id_field)
+      req(outdata$data)
+      outdata$summary <- NULL
+      outdata$summary <- if(input$ana_opt == "tax_summary") {
+        count_taxa(filtered_data(), outdata$id_field)
       } else {
-        summarize_table(filtered_data(), input$ana_opt, outdf$id_field)
+        summarize_table(filtered_data(), input$ana_opt, outdata$id_field)
       }
       if(!tab_status$summary) {
         bslib::nav_insert(
@@ -514,20 +514,20 @@
     
     # insert BIN consensus details into BIN discordance table if/when available
     update_discordance <- function(){
-      if(!is.null(outdf$bin_consensus) & !is.null(outdf$bin_discordance)) {
+      if(!is.null(outdata$bin_consensus) & !is.null(outdata$bin_discordance)) {
         first_cols <- c("bin_uri", "record_count", "min_rank", "max_rank")
         consensus_cols <- c("concordant_rank", "concordant_id", "discordant_rank", "discordant_ids")
-        rest_cols <- setdiff(names(outdf$bin_discordance), c(first_cols, consensus_cols))
-        updated_disc <- merge(outdf$bin_discordance, outdf$bin_consensus[, .SD, .SDcols = c("bin_uri", consensus_cols)], all.x = TRUE, by = "bin_uri")
-        outdf$bin_discordance <- updated_disc[, .SD, .SDcols = intersect(c(first_cols, consensus_cols, rest_cols), names(updated_disc))]
+        rest_cols <- setdiff(names(outdata$bin_discordance), c(first_cols, consensus_cols))
+        updated_disc <- merge(outdata$bin_discordance, outdata$bin_consensus[, .SD, .SDcols = c("bin_uri", consensus_cols)], all.x = TRUE, by = "bin_uri")
+        outdata$bin_discordance <- updated_disc[, .SD, .SDcols = intersect(c(first_cols, consensus_cols, rest_cols), names(updated_disc))]
       }
     }
     
     # compute BIN consensus and inject as a new tab
     observeEvent(input$bin_consensus_btn, {
-      req(outdf$data)
-      outdf$bin_consensus <- NULL
-      outdf$bin_consensus <- get_bin_consensus(filtered_data()[!is.na(bin_uri)],
+      req(outdata$data)
+      outdata$bin_consensus <- NULL
+      outdata$bin_consensus <- get_bin_consensus(filtered_data()[!is.na(bin_uri)],
                                                threshold = as.double(unlist(unname(input$bc_threshold))),
                                                min_ids = unlist(unname(input$bc_minids)),
                                                enforce_scientific = input$bc_enforcesci,
@@ -554,9 +554,9 @@
     
     # compute BIN discordance and inject as a new tab
     observeEvent(input$bin_disc_btn, {
-      req(outdf$data)
-      outdf$bin_discordance <- NULL
-      outdf$bin_discordance <- get_bin_discordance(filtered_data()[!is.na(bin_uri)])
+      req(outdata$data)
+      outdata$bin_discordance <- NULL
+      outdata$bin_discordance <- get_bin_discordance(filtered_data()[!is.na(bin_uri)])
       
       if(!tab_status$discordance_tab) {
         bslib::nav_insert(
@@ -578,13 +578,13 @@
     
     # portal stats can take a while to retrieve, so this is in a separate reactive expression to allow the UI to update with the initial BIN discordance table
     # (gives you something to look at while you wait)
-    observeEvent(outdf$bin_discordance, {
-      req(outdf$bin_discordance)
+    observeEvent(outdata$bin_discordance, {
+      req(outdata$bin_discordance)
       delay(1000, {
-        if(input$disc_portal == TRUE && is.null(outdf$bin_portal_stats)) {
-          outdf$bin_portal_stats <- get_portal_bin_stats(as.character(isolate(outdf$bin_discordance$bin_uri)), shiny = TRUE)
-          outdf$bin_discordance <- merge(isolate(outdf$bin_discordance),
-                                         isolate(outdf$bin_portal_stats),
+        if(input$disc_portal == TRUE && is.null(outdata$bin_portal_stats)) {
+          outdata$bin_portal_stats <- get_portal_bin_stats(as.character(isolate(outdata$bin_discordance$bin_uri)), shiny = TRUE)
+          outdata$bin_discordance <- merge(isolate(outdata$bin_discordance),
+                                         isolate(outdata$bin_portal_stats),
                                          by = "bin_uri",
                                          all.x = TRUE)
           bslib::nav_select(id="tabs", selected="discordance_tab")
@@ -610,8 +610,8 @@
     
     
     # check portal stats upon calculation and insert UI with a link to retry the query for failed BINs
-    observeEvent(outdf$bin_portal_stats, {
-      portal_stats <- outdf$bin_portal_stats
+    observeEvent(outdata$bin_portal_stats, {
+      portal_stats <- outdata$bin_portal_stats
       req(portal_stats)
       if("member_count" %in% names(portal_stats)) {
         insert_portal_warning(portal_stats)
@@ -620,26 +620,26 @@
     
     # logic for retrying portal BIN query
     observeEvent(input$disc_portal_retry, {
-      init_stats <- outdf$bin_portal_stats
+      init_stats <- outdata$bin_portal_stats
       req(init_stats)
       retry_stats <- get_portal_bin_stats(as.character(init_stats[is.na(member_count), bin_uri]), shiny = TRUE)
       init_stats[retry_stats, (names(init_stats)) := mget(paste0("i.", names(init_stats))), on = "bin_uri"]
-      disc <- isolate(outdf$bin_discordance)
-      outdf$bin_discordance <- merge(disc[, .SD, .SDcols = c("bin_uri",names(disc)[!names(disc) %in% names(init_stats)])],
+      disc <- isolate(outdata$bin_discordance)
+      outdata$bin_discordance <- merge(disc[, .SD, .SDcols = c("bin_uri",names(disc)[!names(disc) %in% names(init_stats)])],
                                      init_stats,
                                      by = "bin_uri",
                                      all.x = TRUE)
       bslib::nav_select(id="tabs", selected="discordance_tab")
-      outdf$bin_portal_stats <- init_stats
+      outdata$bin_portal_stats <- init_stats
       insert_portal_warning(init_stats)
     })
     
     
     # select BIN reps and inject as a new tab
     observeEvent(input$bin_rep_btn, {
-      req(outdf$data)
-      outdf$bin_reps <- NULL
-      outdf$bin_reps <- get_bin_reps(filtered_data()[!is.na(bin_uri)])
+      req(outdata$data)
+      outdata$bin_reps <- NULL
+      outdata$bin_reps <- get_bin_reps(filtered_data()[!is.na(bin_uri)])
       
       if(!tab_status$bin_reps) {
         bslib::nav_insert(
@@ -660,7 +660,7 @@
     
     # plot records on a map and display in a new tab
     observeEvent(input$map_btn, {
-      req(outdf$data)
+      req(outdata$data)
       if(!tab_status$map_tab) {
         bslib::nav_insert(
           "tabs", target = tab_monitor("ins_target","map_tab"), position = "after", select = TRUE,
@@ -681,15 +681,15 @@
     # reactively subset the filtered data table based on selected fields
     out_table <- reactive({
       data <- filtered_data()
-      data[, .SD, .SDcols = intersect(outdf$select_fields, names(data))]
+      data[, .SD, .SDcols = intersect(outdata$select_fields, names(data))]
     })
     
     # BIN reps are also updated reactively, using the same filters and field selections as the full data table
     rep_table <- reactive({
-      req(outdf$data, outdf$bin_reps)
-      outdf$data[record_id %in% outdf$bin_reps,
+      req(outdata$data, outdata$bin_reps)
+      outdata$data[record_id %in% outdata$bin_reps,
                  .SD,
-                 .SDcols = intersect(outdf$select_fields, names(outdf$data))]
+                 .SDcols = intersect(outdata$select_fields, names(outdata$data))]
     })
     
     # all filtered rows, any page:
@@ -703,7 +703,7 @@
     
     # build a reactive JSON lookup map (and corresponding callback JS) to support hyperlinking of sample IDs and process IDs
     lookup_map_json <- reactive({
-      jsonlite::toJSON(outdf$data[, .(sampleid, processid, specimenid)], auto_unbox = TRUE)
+      jsonlite::toJSON(outdata$data[, .(sampleid, processid, specimenid)], auto_unbox = TRUE)
     })
     
     callback_js <- reactive({
@@ -740,7 +740,7 @@
                         }"))
     
     # generate binmate list for display
-    output$binmate_pids <- renderPrint(writeLines(outdf$binmates))
+    output$binmate_pids <- renderPrint(writeLines(outdata$binmates))
     
     # main data table
     output$data_table <- DT::renderDataTable(DT::datatable({
@@ -755,7 +755,7 @@
     
     # summary analysis table
     output$summary_table <- DT::renderDataTable(DT::datatable({
-        outdf$summary
+        outdata$summary
       },
       rownames = FALSE,
       selection = 'none',
@@ -765,7 +765,7 @@
     
     # BIN consensus table
     output$bincons_table <- DT::renderDataTable(DT::datatable({
-      outdf$bin_consensus
+      outdata$bin_consensus
       },
       filter = 'top', 
       rownames = FALSE,
@@ -776,7 +776,7 @@
     
     # BIN discordance table
     output$bindisc_table <- DT::renderDataTable(DT::datatable({
-      outdf$bin_discordance
+      outdata$bin_discordance
       },
       filter = 'top', 
       rownames = FALSE,
@@ -845,7 +845,7 @@
              dl_btns = TRUE),
       summary = 
         list(basename = "summary_", 
-             output = reactive(outdf$summary),
+             output = reactive(outdata$summary),
              copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, copy_reps = FALSE),
              dl_btns = TRUE),
       bin_reps = 
@@ -855,12 +855,12 @@
              dl_btns = TRUE),
       consensus_tab =
         list(basename = "bin_consensus_",
-             output = reactive(outdf$bin_consensus),
+             output = reactive(outdata$bin_consensus),
              copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, copy_reps = FALSE),
              dl_btns = TRUE),
       discordance_tab =
         list(basename = "bin_discordance_",
-             output = reactive(outdf$bin_discordance),
+             output = reactive(outdata$bin_discordance),
              copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, copy_reps = FALSE),
              dl_btns = TRUE),
       map_tab = 
@@ -879,7 +879,7 @@
       if(tab_data[[input$tabs]]$dl_btns == FALSE) {
         shinyjs::hide('table_buttons')
       } else {
-        req(outdf$data)
+        req(outdata$data)
         shinyjs::show('table_buttons')
       }
     })
@@ -890,7 +890,7 @@
     observeEvent(input$copy_fasta, { 
       collapse_mrkrs <- if(input$collapse_mrkrs == TRUE) { coll_mrkr_fields()[grepl(paste0("^",paste(input$filt_seq, collapse="|")), coll_mrkr_fields())] } else { NULL }
       clip_fasta(filtered_data(), collapse_mrkrs = collapse_mrkrs) })
-    observeEvent(input$copy_binmates, { cb(outdf$binmates, header = FALSE) })
+    observeEvent(input$copy_binmates, { cb(outdata$binmates, header = FALSE) })
     
     # column copy logic
     observeEvent(input$col_copy_clicked, {

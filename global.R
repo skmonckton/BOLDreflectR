@@ -171,12 +171,13 @@ deduce_len_in_frame <- function(x) {
 get_bin_reps <- function(df) {
   
   data <- df[(!is.na(bin_uri))]
-  
-  # get series of distances between sequence length and in-frame modal barcode length for BIN
+  bp_col <- head(c("nuc_basecount", "COI-5P_nuc_basecount")[c("nuc_basecount", "COI-5P_nuc_basecount") %in% names(df)], 1)
+
+    # get series of distances between sequence length and in-frame modal barcode length for BIN
   diff_mode <- merge(data,
-                     data[!is.na(bin_uri), .(mode = deduce_len_in_frame(nuc_basecount)), by = "bin_uri"],
+                     data[!is.na(bin_uri), .(mode = deduce_len_in_frame(get(bp_col))), by = "bin_uri"],
                      by = "bin_uri",
-                     all.x = TRUE)[, abs(nuc_basecount - mode)]
+                     all.x = TRUE)[, abs(get(bp_col) - mode)]
   
   # get Boolean indexers for other features
   inst_pref <- grepl("Centre for Biodiversity Genomics", data$inst)
@@ -185,7 +186,7 @@ get_bin_reps <- function(df) {
   gb_avoid <- grepl("(?i)GenBank", data$inst, perl=T)
   
   # sort data and select first row for each unique BIN/taxon combination
-  data[data[order(gb_avoid, diff_mode, -id_pref, -inst_pref, -cbg_pref, -collection_date_start), .I[head(1)], by = c("bin_uri", "identification")]$V1,record_id]
+  data[data[order(gb_avoid, diff_mode, -id_pref, -inst_pref, -cbg_pref, -collection_date_start), .I[head(1)], by = c("bin_uri", "identification")]$V1, paste0(processid, ".COI-5P")]
   
 }
 

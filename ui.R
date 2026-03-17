@@ -215,7 +215,7 @@ ui <- bslib::page_fillable(
                 1, min = 0.5, max = 1.0, step = 0.05),
               numericInput(
                 "bc_minids",
-                div("Min. IDs for consensus:",
+                div("Minimum IDs for consensus:",
                     bslib::tooltip(
                       icon("circle-question"),
                       paste0("Minimum number of concordant identifications needed to establish a consensus identification. If a BIN contains fewer records than this number, then they must all have matching identifications to reach consensus."))),                2, min = 1, step = 1),
