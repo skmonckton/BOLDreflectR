@@ -7,7 +7,7 @@ h2 {
   content: attr(data-ver);
   font-size: 0.9rem;
   color: #999;
-  margin-left: 0.55rem;
+  margin-left: 0.3rem;
   margin-top: auto;
   margin-bottom: 1.1rem;
 }

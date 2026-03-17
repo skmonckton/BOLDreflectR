@@ -786,7 +786,13 @@
       callback = callback_js(), 
       options = DT_options))
     
-    output$record_map <- renderLeaflet({ 
+    output$record_map <- renderLeaflet({
+      
+      #colors <- c("#a50026","#d73027","#f46d43","#fdae61","#fee090","#ffffbf","#e0f3f8","#abd9e9","#74add1","#4575b4","#313695")
+      colors <- c("#9e0142","#d53e4f","#f46d43","#fdae61","#fee08b","#ffffbf","#e6f598","#abdda4","#66c2a5","#3288bd","#5e4fa2")
+      pal <- colorFactor(palette = colorRampPalette(colors, alpha = TRUE)(20), 
+                         domain = isolate(filtered_data()$identification))
+      
       leaflet(data = filtered_data()[input$data_table_rows_all, ]) |> 
         addTiles(group = "Base") |>
         addProviderTiles("Stadia.StamenTerrainBackground",
@@ -795,8 +801,14 @@
         addProviderTiles("Esri.WorldImagery",
                          options = providerTileOptions(noWrap = TRUE), 
                          group = "Satellite") |>
-        addMarkers(lat = ~lat,
+        addCircleMarkers(lat = ~lat,
                    lng = ~lon,
+                   color = "#1D1F21",
+                   fillColor = ~pal(identification),
+                   weight = 2,
+                   radius = 9,
+                   opacity = 0.3,
+                   fillOpacity = 0.7,
                    popup = ~paste0(
                      '<span class="tag">Sample ID:</span><span class="value"><a href="https://bench.boldsystems.org/index.php/MAS_DataRetrieval_OpenSpecimen?selectedrecordid=', processid, '" target="_blank">', sampleid,'</a></span>',
                      '<span class="tag">Process ID:</span><span class="value">', processid, '</span>',
