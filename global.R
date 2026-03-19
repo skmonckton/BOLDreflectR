@@ -17,18 +17,33 @@ source("R/bold.full.search.two.step.R")
 keystore <- switch(Sys.info()['sysname'],
                   Windows = "Windows Credential Manager",
                   macOS = "macOS Keychain",
-                  Linux = "Linux Secret Service"
-                  )
-ver <- jsonlite::read_json("../package.json")$version
+                  Linux = "Linux Secret Service")
+
+# in the packaged app, these values are passed in during start-up by electron
+ver <- Sys.getenv("APP_VER")
+user_data_path <- ifelse(Sys.getenv("USER_DATA_PATH") != "", Sys.getenv("USER_DATA_PATH"), "data/")
+
+# initialize user_config file in user data directory
+# (currently only for custom field sets)
+user_config <- if(file.exists(file.path(user_data_path,"user_config.yaml"))) {
+  read_yaml(file.path(user_data_path,"user_config.yaml"))
+} else {
+  list(fieldsets = list(custom = c()))
+}
 
 config <- read_yaml("data/config.yaml", readLines.warn=FALSE)
 
 ranks <- names(config$ranknumeric) 
 
+map_colours <- colorRampPalette(c("#9e0142","#d53e4f","#f46d43","#fdae61",
+                                  "#fee08b","#ffffbf","#e6f598","#abdda4",
+                                  "#66c2a5","#3288bd","#5e4fa2"), alpha = TRUE)(11)
+
+# this is used to re-compute selectize input options when custom filter sets are created or removed
 filter_options <- function() {
   list("Default" = list("BCDM fields" = "bcdm", 
                         "All verbatim fields" = "all"),
-       "Saved" = sapply(config$fieldsets$custom, function(s) stats::setNames(list(s$id), s$name)),
+       "Saved" = sapply(user_config$fieldsets$custom, function(s) stats::setNames(list(s$id), s$name)),
        "Presets" = list("Sample ID, Process ID, BIN" = "min",
                         "Taxonomic identification" = "acctax",
                         "Verbatim identification" = "verbtax",
@@ -47,11 +62,54 @@ marker_options <- list(" " = "",
                        Primary = stats::setNames(config$markercodes$major, config$markercodes$major),
                        Other = stats::setNames(config$markercodes$other, config$markercodes$other))
 
+# copy to clipboard with size limit
 cb <- function(df, header=TRUE, sep="\t", max.size=(200*1000)){
   write.table(df, paste0("clipboard-", formatC(max.size, format="f", digits=0)), sep=sep, col.names=header, row.names=FALSE, quote=FALSE, na="NA")
-  showNotification(paste0("Copied to clipboard."), type = "message")
+  showNotification(paste0("Copied to clipboard."), type = "message", id = "copy_msg")
 }
 
+# assemble FASTA and copy to clipboard
+clip_fasta <- function(bold_df, cols_for_fas_names = NULL, collapse_mrkrs = NULL) {
+  
+  if (is.null(cols_for_fas_names)) cols_for_fas_names <- c("processid", "marker_code")
+  
+  clip_fas <- if((!"nuc" %in% names(bold_df)) || (nrow(bold_df[!is.na(nuc)]) == 0)) {
+    if(!is.null(collapse_mrkrs)) {
+      showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
+      cols_for_fas_names <- intersect(cols_for_fas_names, names(bold_df))
+      mrkrs <- sapply(collapse_mrkrs[grepl("_nuc$", collapse_mrkrs)], function(x) unlist(strsplit(x, "_"))[1])
+      fas <- NULL
+      for(i in seq_along(mrkrs)) {
+        fas <- c(fas, paste0(">",
+                             bold_df[!is.na(bold_df[[names(mrkrs)[i]]]), do.call(paste, c(.SD, unname(mrkrs[i]), sep = "|")), .SDcols = c(cols_for_fas_names)],
+                             "\n",
+                             bold_df[!is.na(bold_df[[names(mrkrs)[i]]]), get(names(mrkrs)[i])]))
+      }
+      fas
+    } else {
+      NULL
+    }
+  } else {
+    showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
+    paste0(">",
+           bold_df[!is.na(nuc), do.call(paste, c(.SD, sep = "|")), .SDcols = c(cols_for_fas_names)],
+           "\n",
+           bold_df[!is.na(nuc), nuc])
+  }
+  
+  if(is.null(clip_fas)) {
+    showNotification(paste0("No sequences to copy."), id="copy_msg", type = "error")  
+  } else {
+    tryCatch(
+      cb(unlist(strsplit(clip_fas,"\n")), header = FALSE, sep = ""),
+      error = function(e) {
+        showNotification(paste0("FASTA output too large. Please try again with fewer sequences."), id="copy_msg", type = "error")
+      }
+    )
+  }
+}
+
+# split and clean query terms
 split_query <- function(query_input, list = FALSE) {
   if(query_input == "") {
     NULL
@@ -66,28 +124,55 @@ split_query <- function(query_input, list = FALSE) {
   }
 }
 
-save_custom_fieldset <- function(set_name, set_fields) {
+# save or delete user field sets
+modify_custom_fieldset <- function(set_name, set_fields = NULL, operation = "save") {
   
-  # check for set with same name
-  exists <- which(sapply(config$fieldsets$custom, function(s) s$name) == set_name)
+  custom_config <- user_config$fieldsets$custom
   
-  # determine list index at which to save field set (if one by this name already exists, save over it)
-  idx <- ifelse(length(exists > 0),
-                exists,
-                length(config$fieldsets$custom) + 1) 
-  
-  # record in config object
-  config$fieldsets$custom[[idx]] <<- list(id = sprintf("userset%03d", idx),
-                                          name = set_name,
-                                          fields = set_fields)
-  
-  # write to config file
-  write_yaml(config, "data/config.yaml")
-  
-  return(sprintf("userset%03d", idx))
-  
+  if(operation == "delete") {
+    # remove selected field set
+    idx <- match(set_name, sapply(custom_config, function(s) s$id))
+    if (!is.na(idx)) {
+      custom_config <- custom_config[-idx]
+      user_config$fieldsets$custom <<- custom_config
+    }
+    # value to return (when saving, this is used to update the filter selectize input)
+    new_select <- invisible()
+  } else {
+    # check for set with same name
+    exists <- which(sapply(custom_config, function(s) s$name) == set_name)
+    # determine target index and id for saving field set (if one by this name already exists, save over it)
+    if(length(exists) > 0) {
+      idx <- exists
+      cfg_id <- custom_config[[exists]]$id
+    } else {
+      idx <- length(custom_config) + 1
+      ids <- unlist(sapply(custom_config, function(s) as.integer(gsub("userset","",s$id))))
+      cfg_id <- ifelse(length(ids) > 0, sprintf("userset%03d", min(setdiff((1:(max(ids)+1)), ids))), "userset001")
+    }
+    # for component field sets, translate any user-defined sets to their original fields (in case the referenced sets are later deleted)
+    int_fields <- c()
+    for(i in seq_along(set_fields)) {
+      if(grepl("^userset", set_fields[i])) {
+        pull <- which(sapply(custom_config, function(s) s$id) == set_fields[i])
+        int_fields <- c(int_fields, custom_config[[pull]]$fields)
+      } else {
+        int_fields <- c(int_fields, set_fields[i])
+      }
+    }
+    # record new config and update global object
+    custom_config[[idx]] <- list(id = cfg_id, name = set_name, fields = int_fields)
+    user_config$fieldsets$custom <<- custom_config
+    # value with which to update filter selectize input
+    new_select <- sprintf("userset%03d", idx)
+  }
+  # update config file
+  write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+  # return value 
+  return(new_select)
 }
 
+# function to collapse table to a single row per record, and add extra columns to store marker information (similar to BOLD v4 spreadsheet format)
 collapse_markers <- function(data) {
   
   # pivot to wide format
@@ -109,6 +194,7 @@ collapse_markers <- function(data) {
   
 }
 
+# decompose recordset column into a list of dataset or project codes
 list_recordsets <- function(data, set_type, list_by) {
   recordsets <- data[, .(set = unique(unlist(strsplit(bold_recordset_code_arr, ",")))), by = list_by] 
   if(set_type == "parse_project") {
@@ -120,27 +206,31 @@ list_recordsets <- function(data, set_type, list_by) {
   }
 }
 
+# computes the summary table
 summarize_table <- function(data, sum_type, list_by) {
   if (sum_type %in% c("projects","datasets")){
-    summary <- list_recordsets(data, sum_type, list_by)
+    list_recordsets(data, sum_type, list_by)
+  } else if (sum_type == "tax_summary") { 
+    tax_count <- unique(setorderv(unique(data, by = list_by)[, .(identification, count = .N), by = ranks], ranks))
+    tax_count[, .SD, .SDcols = c("identification", ranks, "count")]
   } else if (is.null(sum_type)) {
-    summary <- data
+    data
   } else {
     char_cols <- names(data)[sapply(data, function(x) is.character(x) || is.factor(x))]
-    summary <- unique(data, by = list_by)[, (char_cols) := 
-                                            lapply(.SD, function(x) {
-                                              if (is.factor(x)) {
-                                                x <- as.character(x)
-                                                x[x %in% c("", " ")] <- NA_character_
-                                                as.factor(x)
-                                              } else {
-                                                replace(x, x == "", NA_character_)
-                                              }
-                                            }), .SDcols = char_cols][, .(count = .N), by = sum_type]
+    unique(data, by = list_by)[, (char_cols) := 
+                                 lapply(.SD, function(x) {
+                                   if (is.factor(x)) {
+                                     x <- as.character(x)
+                                     x[x %in% c("", " ")] <- NA_character_
+                                     as.factor(x)
+                                   } else {
+                                     replace(x, x == "", NA_character_)
+                                     }
+                                 }), .SDcols = char_cols][, .(count = .N), by = sum_type]
   }
-  return(summary)
 }
 
+# extracts identification dates from taxonomy_notes
 parse_id_date <- function(data) {
   str_match <- function(x, pat) regmatches(x, gregexpr(pat, x, perl=TRUE), invert = NA)
   id_date_verb <- lubridate::my(sapply(str_match(data$specimendetails.verbatim_identification_method, "(?<=\\()[A-Za-z]{3,9} [0-9]{2,4}(?=\\))"), `[`, 2))
@@ -149,31 +239,30 @@ parse_id_date <- function(data) {
   return(id_date)
 }
 
+# extracts lats and longs from the BCDM coord column
 parse_lat_lon <- function(coord) {
   lapply(tstrsplit(coord, ",", fixed = TRUE), as.numeric)
 }
 
-count_taxa <- function(data, list_by) {
-  tax_count <- unique(setorderv(unique(data, by = list_by)[, .(identification, count = .N), by = ranks], ranks))
-  tax_count[, .SD, .SDcols = c("identification", ranks, "count")]
-}
-
+# rounds to a multiple, with optional offset (e.g. to account for reading frame)
 round_to <- function(x, mult = 1, offset = 0) {
   (round((x+offset)/mult) * mult) - offset
 }
 
+# deduces modal sequence length; in case of multiple modes, the value closest to 658 is selected
 deduce_len_in_frame <- function(x) {
   t <- table(sapply(x, round_to, mult = 3, offset = -1))
   modal <- names(t)[t == max(t)]
   as.numeric(unname(modal)[which.min(sapply(modal, function (x) abs(as.numeric(x) - 658)))])
 }
 
+# selected BIN representatives
 get_bin_reps <- function(df) {
   
   data <- df[(!is.na(bin_uri))]
   bp_col <- head(c("nuc_basecount", "COI-5P_nuc_basecount")[c("nuc_basecount", "COI-5P_nuc_basecount") %in% names(df)], 1)
 
-    # get series of distances between sequence length and in-frame modal barcode length for BIN
+  # get series of distances between sequence length and in-frame modal barcode length for BIN
   diff_mode <- merge(data,
                      data[!is.na(bin_uri), .(mode = deduce_len_in_frame(get(bp_col))), by = "bin_uri"],
                      by = "bin_uri",
@@ -190,6 +279,8 @@ get_bin_reps <- function(df) {
   
 }
 
+# wrapper to prepare BOLD fetch/search queries and prepare messages as notifications
+# (note: was intended to handle both fetch and search, but I haven't harmonized the two yet)
 bold.fetch.shiny <- function (get_by,
                               query,
                               BCDM_only = FALSE,
@@ -218,6 +309,7 @@ bold.fetch.shiny <- function (get_by,
   })
 }
 
+# retrieve process IDs of BIN mates
 get_binmate_pids <- function(df, batch_size=200, sleep=2) {
   bins <- unique(df[["bin_uri"]][(!is.na(df[["bin_uri"]])) & (df[["bin_uri"]] != "")])
   
@@ -259,6 +351,11 @@ get_binmate_pids <- function(df, batch_size=200, sleep=2) {
   return(add_pids)
 }
 
+# JavaScript used to render output data tables
+callback_js <- DT::JS("
+      window.mapBySID = window.mapBySID || {};
+      window.mapByPID = window.mapByPID || {};
+    ")
 header_js <- DT::JS("
   function(thead, data, start, end, display) {
     window.copyCol=  function(i) {
@@ -273,7 +370,6 @@ header_js <- DT::JS("
     });
   }
 ")
-
 column_js <- DT::JS("
                     function(data, type, row, meta) {
                       if (type === 'display' && data !== null) {
@@ -306,51 +402,3 @@ column_js <- DT::JS("
                       return data;
                     }
                   ")
-
-clip_fasta <- function(bold_df, cols_for_fas_names = NULL, collapse_mrkrs = NULL) {
-  
-  if (is.null(cols_for_fas_names)) cols_for_fas_names <- c("processid", "marker_code")
-  
-  clip_fas <- NULL
-  
-  if((!"nuc" %in% names(bold_df)) || (nrow(bold_df[!is.na(nuc)]) == 0)) {
-    if(!is.null(collapse_mrkrs)) {
-      showNotification(paste0("Copying FASTA..."), id="fas_msg", type = "default")
-      cols_for_fas_names <- intersect(cols_for_fas_names, names(bold_df))
-      mrkrs <- sapply(collapse_mrkrs[grepl("_nuc$", collapse_mrkrs)], function(x) unlist(strsplit(x, "_"))[1])
-      for(i in seq_along(mrkrs)) {
-        clip_fas <- c(clip_fas, paste0(">",
-                                       bold_df[!is.na(bold_df[[names(mrkrs)[i]]]), do.call(paste, c(.SD, unname(mrkrs[i]), sep = "|")), .SDcols = c(cols_for_fas_names)],
-                                       "\n",
-                                       bold_df[!is.na(bold_df[[names(mrkrs)[i]]]), get(names(mrkrs)[i])]))
-        }
-    }
-  } else {
-    showNotification(paste0("Copying FASTA..."), id="fas_msg", type = "default")
-    clip_fas <- paste0(">",
-                       bold_df[!is.na(nuc), do.call(paste, c(.SD, sep = "|")), .SDcols = c(cols_for_fas_names)],
-                       "\n",
-                       bold_df[!is.na(nuc), nuc])
-  }
-  
-  if(is.null(clip_fas)) {
-    showNotification(paste0("No sequences to copy."), id="fas_msg", type = "error")  
-  } else {
-    tryCatch(
-      {
-        write.table(x = unlist(strsplit(clip_fas,"\n")),
-                    file = "clipboard-100000",
-                    sep = "",
-                    row.names = FALSE,
-                    col.names = FALSE,
-                    quote=FALSE)
-        showNotification(paste0("Copied to clipboard."),
-                         id = "fas_msg",
-                         type = "message")
-      },
-      error = function(e) {
-        showNotification(paste0("FASTA output too large. Please try again with fewer sequences."), id="fas_msg", type = "error")
-      }
-    )
-  }
-}

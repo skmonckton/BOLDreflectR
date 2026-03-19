@@ -3,7 +3,7 @@ h2 {
   font-size: 1.8rem;
 }
 
-#side-title::after {
+#side-title:hover::after {
   content: attr(data-ver);
   font-size: 0.9rem;
   color: #999;
@@ -34,6 +34,21 @@ h2 {
 .warn-text a {
   color: red;
   font-size: 0.9rem;
+}
+
+.shiny-input-container:has(#sets_to_delete-label),
+.shiny-input-container:has(#sets_to_delete-label) > div {
+  margin-bottom: 0;
+}
+
+.modal-body div:has(#del_filter_btn) {
+  position: relative;
+  margin-bottom: 2rem;
+}
+
+a#del_filter_btn {
+  position: absolute;
+  bottom: -1.5rem;
 }
 
 #binmate_pids {
@@ -172,8 +187,8 @@ input[type=number] {
 #save_filter_set {
   visibility: hidden;
   position: relative;
-  top: 2rem;
-  right: 0.325rem;
+  top: 2.4rem;
+  right: 0.75rem;
   z-index: 4;
   color: #404040;
 }
@@ -311,15 +326,17 @@ td {
     border-bottom: solid thin #8D959E;
 }
 
-.table > thead > tr:last-child > td,
-.table > thead td:has(.has-feedback) {
-  position: relative;
-  padding: 0rem 0.5rem 0.4rem 0.5rem;
+.table > thead td:has(.has-feedback) input,
+.table > thead td:has(.has-feedback) div.items.selectize-input {
+  padding: 0.25rem 0.5rem;
+  min-height: unset;
 }
 
-.table > thead td:has(.has-feedback) input {
-  padding: 0.25rem 0.5rem;
+.table > thead td:has(.has-feedback) div.items.selectize-input {
+  margin-top: -1px;
+  margin-bottom: -1px;
 }
+
 
 .dataTables_wrapper:not(:has(.has-feedback)) {
   min-width: 600px;

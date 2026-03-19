@@ -432,7 +432,6 @@ fieldsets:
   - location.verbatim_province
   - specimendetails.verbatim_habitat
   - specimendetails.verbatim_sampling_protocol
-  custom:
 ranknumeric:
   phylum: 2
   class: 5

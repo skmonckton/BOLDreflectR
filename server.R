@@ -31,6 +31,7 @@
       select_fields = config$fieldsets$bcdm,
       id_field = "processid",
       markers = NULL,
+      nts_idx = NULL,
       filt_seq = NULL,
       filt_seq_idx = NULL,
       summary = NULL,
@@ -40,16 +41,25 @@
       bin_portal_stats = NULL)
     
     # keep track of output tabs
-    tab_status <- new.env(parent = emptyenv())
-    tab_status$summary <- FALSE
-    tab_status$bin_reps <- FALSE
-    tab_status$consensus_tab <- FALSE
-    tab_status$discordance_tab <- FALSE
-    tab_status$map_tab <- FALSE
+    # tab_status <- new.env(parent = emptyenv())
+    # tab_status$summary <- FALSE
+    # tab_status$bin_reps <- FALSE
+    # tab_status$consensus_tab <- FALSE
+    # tab_status$discordance_tab <- FALSE
+    # tab_status$map_tab <- FALSE
     
-    # convenience function to interrogate current tab status
+    tab_status <- reactiveValues(
+      data = FALSE,
+      summary = FALSE,
+      bin_reps = FALSE,
+      consensus_tab = FALSE,
+      discordance_tab = FALSE,
+      map_tab = FALSE
+    )
+    
+    # convenience function for interrogating current tab status
     tab_monitor <- function(get = c("status", "current", "absent", "ins_target"), ins_tab = NULL) {
-      tabs <- c(c("data" = TRUE), sapply(c("summary","bin_reps","consensus_tab","discordance_tab","map_tab"), function(t) get(t, envir = tab_status) == TRUE))
+      tabs <- isolate(reactiveValuesToList(tab_status))
       switch(get,
              status = tabs,
              current = names(tabs)[tabs == TRUE],
@@ -94,7 +104,7 @@
     
     # function to reset filter options
     reset_filter <- function() {
-      if (!isolate(input$tabs) %in% c("data", "bin_reps")) {bslib::nav_select(id="tabs", selected="data")}
+      if (!isolate(input$tabs) %in% c("data", "bin_reps", "map_tab")) {bslib::nav_select(id="tabs", selected="data")}
       outdata$select_fields <- if (is.null(isolate(outdata$data))) {
         config$fieldsets$bcdm
       } else {
@@ -120,8 +130,9 @@
         fetch_params[[names(init_fetch_params[i])]] <- unname(unlist(init_fetch_params[i]))
       }
       bslib::nav_select(id="tabs", selected = "data")
-      for(t in names(tab_data)[names(tab_data) != "data"]) bslib::nav_remove(id="tabs", target = t, session)
-      for(t in ls(tab_status)) assign(t, FALSE, envir = tab_status)
+      for(t in names(tab_status)[names(tab_status) != "data"]) bslib::nav_remove(id="tabs", target = t, session)
+      for(i in seq_along(tab_status)) tab_status[[names(tab_status)[i]]] <- FALSE
+      #for(t in ls(tab_status)) assign(t, FALSE, envir = tab_status)
       reset_filter()
       bslib::update_switch("include_binmates", label = "Include additional BIN members", value = FALSE, session)
       bslib::update_switch("include_nts", label = "Include NTS records", value = FALSE, session)
@@ -146,6 +157,7 @@
       shinyjs::show('table_area')
       shinyjs::hide('table_buttons')
       reset_ui()
+      tab_status$data <- TRUE
       shinyjs::show("main_panel")
       tryCatch({
         if(input$query_params == "search_opts") {
@@ -228,6 +240,8 @@
           shinyjs::show("view_binmates")
         }
         outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
+        outdata$nts_idx <- data[, grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) |
+                                  grepl("^BIOUG.+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
         outdata$data <- data
         shinyjs::show('table_buttons')
         bslib::accordion_panel_close(id="optpanels", values="fetchdata")
@@ -243,6 +257,7 @@
     # logic for initiating search for additional BIN records ("BIN mates")
     # if the BIN mates switch is toggled on, a modal opens to report the number of additional BIN records
     observeEvent(input$include_binmates, {
+      req(outdata$data)
       if ((input$include_binmates == TRUE) & (fetch_params$binmates_fetched == FALSE)) {
         binmate_modal()
       }
@@ -250,6 +265,7 @@
     
     # the modal can also be accessed without toggling the switch, in case the user simply wants to review the BIN mate list
     observeEvent(input$view_binmates, {
+      req(outdata$data)
       binmate_modal()
     })
     
@@ -257,7 +273,7 @@
     binmate_modal <- function() {
       req(outdata$data)
       if (is.null(outdata$binmates)) {
-        outdata$binmates <- get_binmate_pids(filtered_data()[!is.na(bin_uri)])
+        outdata$binmates <- get_binmate_pids(outdata$data[!is.na(bin_uri)])
       }
       if(length(outdata$binmates) == 0) {
         modal_msg <- div(HTML(paste0("No additional BIN members found.")))
@@ -295,24 +311,27 @@
     }
     
     # user can close the BIN mate modal without fetching BIN mates
-    observeEvent(input$binmate_no, { 
+    observeEvent(input$binmate_no, {
       removeModal()
       bslib::update_switch("include_binmates",label="Include additional BIN members",value=FALSE,session)
     })
     
     # fetch BIN mates and add them to the data
-    observeEvent(input$binmate_btn, { 
+    observeEvent(input$binmate_btn, {
       removeModal()
-      
       if(length(outdata$binmates) > 0) {
         binmate_data <- as.data.table(bold.fetch.shiny(get_by = "processid", 
                                                        query = outdata$binmates,
                                                        BCDM_only = FALSE))[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
         cols_to_factor <- intersect(config$fieldsets$factorfields, names(binmate_data))
         binmate_data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
-        outdata$data <- unique(rbindlist(list(outdata$data,
-                                            binmate_data),
-                                       fill = TRUE))
+        data <- unique(rbindlist(list(outdata$data,
+                                      binmate_data),
+                                 fill = TRUE))
+        outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
+        outdata$nts_idx <- data[, grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) |
+                                  grepl("^BIOUG.+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
+        outdata$data <- data
         bslib::update_switch("include_binmates",label="Include additional BIN members",value=TRUE,session)
       } else {
         bslib::update_switch("include_binmates",label="Include additional BIN members",value=FALSE,session)
@@ -357,6 +376,14 @@
       setdiff(names(cd), c(config$fieldsets$all, config$fieldsets$parsed))
     })
     
+    # reactive to store NTS row indexer for collapsed data
+    coll_nts_idx <- reactive({
+      cd <- collapsed_data()
+      req(cd)
+      cd[, grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) |
+           grepl("^BIOUG.+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
+    })
+    
     # reactive object for user-selected fields/column filters
     computed_fields <- reactive({
       # if no column filters have been selected, select all fields (plus collapsed table fields if there are any) 
@@ -365,11 +392,23 @@
         show_copy_fasta <- TRUE
         id_field <- "processid"
       } else {
+        
+        # expand out any custom user field sets
+        field_opts <- c()
+        for(o in input$filt_opt) {
+          if (grepl("^userset", o)) {
+            field_opts <- unique(c(field_opts, unlist(sapply(user_config$fieldsets$custom, function(x) if(x$id == o) x$fields))))
+          } else {
+            showNotification(paste0(o))
+          }
+        }
+
         # determine which filter selections are field sets from config specification
-        sets <- input$filt_opt[(input$filt_opt %in% names(config$fieldsets)) | grepl("|", input$filt_opt, fixed=T)]
+        sets <- field_opts[(field_opts %in% names(config$fieldsets)) | grepl("|", field_opts, fixed=T)]
+
         fields <- c()
         # step through selected fields, handling them according to whether they are preset field sets, custom field sets, or individual fields
-        for(o in input$filt_opt) {
+        for(o in field_opts) {
           if(o %in% sets) {
             opt <- unlist(strsplit(o, "|", fixed=TRUE))
             if(length(opt) > 1) {
@@ -377,12 +416,13 @@
             } else {
               fields <- unique(c(fields, config$fieldsets[o][[1]]))
             }
-          } else if (grepl("^userset", o)) {
-            fields <- unique(c(fields, unlist(sapply(config$fieldsets$custom, function(x) if(x$id == o) x$fields))))
+          # } else if (grepl("^userset", o)) {
+          #   fields <- unique(c(fields, unlist(sapply(config$fieldsets$custom, function(x) if(x$id == o) x$fields))))
           } else {
             fields <- unique(c(fields, o))
           }
         }
+        
         if (any(input$filt_opt %in% c("all","bcdm","sequence"))) {
           fields <- unique(c(fields, coll_mrkr_fields()))
           show_copy_fasta <- TRUE
@@ -412,8 +452,21 @@
     observeEvent(input$save_filter_set, {
       showModal(
         modalDialog(
-          title = "Save column set",
-          textInput("save_filter_name", "Save as:", width = "100%"),
+          title = "Saved column sets",
+          div(selectInput( 
+            "sets_to_delete", 
+            "Existing presets:", 
+            sapply(user_config$fieldsets$custom, function(s) setNames(s$id, s$name)), 
+            multiple = TRUE,
+            selectize = FALSE, width = "100%"),
+            hidden(actionLink("del_filter_btn", "× Delete selected", class = "warn-text"))),
+          textInput(
+            "save_filter_name", 
+            tagList(span("Save current column selection as:"),
+                bslib::tooltip(
+                  icon("circle-question"),
+                  "Using the name of an existing preset will update/overwrite it.")),
+            width = "100%"),
           footer = tagList(
             div(),
             div(id="modal_confirm",
@@ -425,11 +478,36 @@
     
     # field set save logic
     observeEvent(input$save_filter_btn, {
+      req(isTruthy(input$save_filter_name), isTruthy(input$filt_opt))
       removeModal()
-      filter_set <- save_custom_fieldset(input$save_filter_name, outdata$select_fields)
+      filter_set <- modify_custom_fieldset(input$save_filter_name, input$filt_opt)
       updateSelectizeInput(session,"filt_opt",
                            choices = filter_options(),
                            selected = filter_set)
+    })
+    
+    # reactively show/hide delete button
+    observeEvent(input$sets_to_delete, {
+      if(isTruthy(input$sets_to_delete)) {
+        shinyjs::show("del_filter_btn")
+      } else {
+        shinyjs::hide("del_filter_btn")
+      }
+    }, ignoreInit = TRUE, ignoreNULL = FALSE)
+    
+    # field set delete logic
+    observeEvent(input$del_filter_btn, {
+      for(s in input$sets_to_delete) {
+        filter_set <- modify_custom_fieldset(s, operation = "delete")
+      }
+      updateSelectInput(
+        inputId = "sets_to_delete", 
+        choices = sapply(user_config$fieldsets$custom, function(s) s$name),
+        selected = NULL
+      )
+      updateSelectizeInput(session,"filt_opt",
+                           choices = filter_options(),
+                           selected = input$filt_opt[input$filt_opt %in% unname(unlist(input$filt_opt))])
     })
     
     # keep marker filters updated based on available data
@@ -454,7 +532,8 @@
         }
       }
       if(length(nuc_cols) > 0) {
-        keep_seq[[3]] <- Reduce("|", data[, lapply(.SD, function(x) !is.na(x) & x != ""), .SDcols = nuc_cols])
+        #keep_seq[[3]] <- Reduce("|", data[, lapply(.SD, function(x) !is.na(x) & x != ""), .SDcols = nuc_cols])
+        keep_seq[[3]] <- rowSums(data[, lapply(.SD, function(x) !is.na(x) & x != ""), .SDcols = nuc_cols]) > 0
       }
       
       if(length(keep_seq) > 0) {
@@ -480,8 +559,8 @@
       }
       
       if(!isTRUE(input$include_nts)) {
-        data <- data[!grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) &
-                       !grepl("^BIOUG.+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
+        nts_idx <- if (input$collapse_mrkrs == TRUE) coll_nts_idx() else outdata$nts_idx
+        data <- data[!nts_idx]
       }
       
       data[seq_filter(data, input$filt_seq)]
@@ -634,7 +713,6 @@
       insert_portal_warning(init_stats)
     })
     
-    
     # select BIN reps and inject as a new tab
     observeEvent(input$bin_rep_btn, {
       req(outdata$data)
@@ -658,7 +736,7 @@
       } 
     })
     
-    # plot records on a map and display in a new tab
+    # insert map tab when button is pressed (or jump to existing tab)
     observeEvent(input$map_btn, {
       req(outdata$data)
       if(!tab_status$map_tab) {
@@ -672,11 +750,59 @@
                 leafletOutput("record_map"))
           )
         )
-        tab_status$map_tab <- TRUE
+        shinyjs::delay(500, {
+          tab_status$map_tab <- TRUE
+          bslib::nav_select(id = "tabs", selected = "map_tab")
+        })
       } else {
-        bslib::nav_select(id = "tabs", selected = "map_tab")
-      } 
+        bslib::nav_select(id = "tabs", selected = "map_tab")  
+      }
     })
+    
+    # plot/update records on the map (update function is further below)
+    observeEvent(list(input$map_btn, tab_status$map_tab, input$tabs, input$data_table_rows_all, filtered_data()), {
+      req(tab_status$map_tab, input$tabs == "map_tab")
+      update_map()
+    })
+    
+    # function used to update the rendered markers on the occurrence point map
+    update_map <- function() {
+      req(input$data_table_rows_all)
+      data <- filtered_data()[input$data_table_rows_all, ]
+      data <- unique(data[!is.na(lat) & !is.na(lon) & lat != "" & lon != ""], by = "processid")
+      req(nrow(data) > 0)
+      pal <- colorFactor(
+        palette = map_colours,
+        domain = data$identification
+      )
+      leafletProxy("record_map") |>
+        clearMarkers() |>
+        clearMarkerClusters() |>
+        fitBounds(
+          lng1 = min(data$lon),
+          lat1 = min(data$lat),
+          lng2 = max(data$lon),
+          lat2 = max(data$lat)
+        ) |>
+        addCircleMarkers(lat = data$lat,
+                         lng = data$lon,
+                         color = "#444",
+                         fillColor = pal(data$identification),
+                         weight = 2,
+                         radius = 9,
+                         opacity = 0.3,
+                         fillOpacity = 0.7,
+                         popup = paste0(
+                           '<span class="tag">Sample ID:</span><span class="value"><a href="https://bench.boldsystems.org/index.php/MAS_DataRetrieval_OpenSpecimen?selectedrecordid=', data$processid, '" target="_blank">', data$sampleid,'</a></span>',
+                           '<span class="tag">Process ID:</span><span class="value">', data$processid, '</span>',
+                           '<span class="tag">Identification:</span><span class="value">', data$identification,'</span>',
+                           '<span class="tag">Country:</span><span class="value">', data$country.ocean, '</span>',
+                           '<span class="tag">Province/State:</span><span class="value">', data$province.state, '</span>',
+                           '<span class="tag">Region:</span><span class="value">', data$region, '</span>',
+                           '<span class="tag">Sector:</span><span class="value">', data$sector, '</span>',
+                           '<span class="tag">Site:</span><span class="value">', data$site, '</span>'),
+                         clusterOptions = markerClusterOptions())
+    }
     
     # reactively subset the filtered data table based on selected fields
     out_table <- reactive({
@@ -692,31 +818,14 @@
                  .SDcols = intersect(outdata$select_fields, names(outdata$data))]
     })
     
-    # all filtered rows, any page:
-    # out_table()[input$TABLEID_rows_all, ]
-    # current page rows:
-    # out_table()[input$TABLEID_rows_current, ]
-    # selected rows:
-    # out_table()[input$TABLEID_rows_selected, ]
-    
     ### OUTPUT RENDERING
     
-    # build a reactive JSON lookup map (and corresponding callback JS) to support hyperlinking of sample IDs and process IDs
-    lookup_map_json <- reactive({
-      jsonlite::toJSON(outdata$data[, .(sampleid, processid, specimenid)], auto_unbox = TRUE)
-    })
-    
-    callback_js <- reactive({
-      DT::JS(paste0(
-        "var rawMap = ", lookup_map_json(), ";
-        window.mapBySID = {};
-        window.mapByPID = {};
-        rawMap.forEach(function(row) {
-          window.mapBySID[row.sampleid] = row.processid;
-          window.mapByPID[row.processid] = row.specimenid;
-        });
-        "
-      ))
+    # build a reactive JSON lookup map and send it to the window
+    # (enables hyperlinking of sample IDs and process IDs even when dependent columns are excluded)
+    observeEvent(outdata$data, {
+      req(outdata$data)
+      json <- jsonlite::toJSON(outdata$data[, .(sampleid, processid, specimenid)], auto_unbox = TRUE)
+      session$sendCustomMessage("initLookupMap", json)
     })
     
     # define options once, then add them to each table individually
@@ -726,18 +835,18 @@
                      list(
                        targets = "_all",
                        render = column_js)),
-                   # scrollX = TRUE,
-                   # scrollY = "900px",
                    scrollCollapse = TRUE,
-                   lengthMenu = list(c(100, 500, 1000, -1), c('100', '500', '1000', 'All')),
+                   lengthMenu = list(c(100, 500, 1000, 2000), c('100', '500', '1000', '2000')),
                    fixedHeader = TRUE,
                    fixedColumns = list(leftColumns = 1),
+                   stateSave = FALSE,
+                   searchDelay = 500,
                    initComplete = DT::JS("function(settings, json) {
-                          var dt = this.api();
-                          $(document).on('shown.bs.tab', function() {
-                            dt.columns.adjust();
-                          });
-                        }"))
+                                            var dt = this.api();
+                                            $(document).off('shown.bs.tab.dt').on('shown.bs.tab.dt', function() {
+                                              dt.columns.adjust();
+                                            });
+                                          }"))
     
     # generate binmate list for display
     output$binmate_pids <- renderPrint(writeLines(outdata$binmates))
@@ -750,8 +859,9 @@
       rownames = FALSE,
       selection = 'none',
       extensions = DT_extensions,
-      callback = callback_js(),
-      options = DT_options)) 
+      callback = callback_js,
+      options = DT_options),
+      server = TRUE)
     
     # summary analysis table
     output$summary_table <- DT::renderDataTable(DT::datatable({
@@ -760,8 +870,9 @@
       rownames = FALSE,
       selection = 'none',
       extensions = DT_extensions,
-      callback = callback_js(),
-      options = DT_options))
+      callback = callback_js,
+      options = DT_options),
+      server = TRUE)
     
     # BIN consensus table
     output$bincons_table <- DT::renderDataTable(DT::datatable({
@@ -771,8 +882,9 @@
       rownames = FALSE,
       selection = 'none',
       extensions = DT_extensions,
-      callback = callback_js(), 
-      options = DT_options))
+      callback = callback_js, 
+      options = DT_options),
+      server = TRUE)
     
     # BIN discordance table
     output$bindisc_table <- DT::renderDataTable(DT::datatable({
@@ -782,8 +894,9 @@
       rownames = FALSE,
       selection = 'none',
       extensions = DT_extensions,
-      callback = callback_js(), 
-      options = DT_options))
+      callback = callback_js, 
+      options = DT_options),
+      server = TRUE)
     
     # BIN reps table
     output$binrep_table <- DT::renderDataTable(DT::datatable({
@@ -793,75 +906,58 @@
       rownames = FALSE,
       selection = 'none',
       extensions = DT_extensions,
-      callback = callback_js(), 
-      options = DT_options))
+      callback = callback_js, 
+      options = DT_options),
+      server = TRUE)
     
+    # base map for occurrence data
     output$record_map <- renderLeaflet({
-      
-      #colors <- c("#a50026","#d73027","#f46d43","#fdae61","#fee090","#ffffbf","#e0f3f8","#abd9e9","#74add1","#4575b4","#313695")
-      colors <- c("#9e0142","#d53e4f","#f46d43","#fdae61","#fee08b","#ffffbf","#e6f598","#abdda4","#66c2a5","#3288bd","#5e4fa2")
-      pal <- colorFactor(palette = colorRampPalette(colors, alpha = TRUE)(20), 
-                         domain = isolate(filtered_data()$identification))
-      
-      leaflet(data = filtered_data()[input$data_table_rows_all, ]) |> 
+      leaflet() |>
         addTiles(group = "Base") |>
         addProviderTiles("Stadia.StamenTerrainBackground",
                          options = providerTileOptions(noWrap = TRUE),
                          group = "Terrain") |>
         addProviderTiles("Esri.WorldImagery",
-                         options = providerTileOptions(noWrap = TRUE), 
+                         options = providerTileOptions(noWrap = TRUE),
                          group = "Satellite") |>
-        addCircleMarkers(lat = ~lat,
-                   lng = ~lon,
-                   color = "#444",
-                   fillColor = ~pal(identification),
-                   weight = 2,
-                   radius = 9,
-                   opacity = 0.3,
-                   fillOpacity = 0.7,
-                   popup = ~paste0(
-                     '<span class="tag">Sample ID:</span><span class="value"><a href="https://bench.boldsystems.org/index.php/MAS_DataRetrieval_OpenSpecimen?selectedrecordid=', processid, '" target="_blank">', sampleid,'</a></span>',
-                     '<span class="tag">Process ID:</span><span class="value">', processid, '</span>',
-                     '<span class="tag">Identification:</span><span class="value">', identification,'</span>',
-                     '<span class="tag">Country:</span><span class="value">', country.ocean, '</span>',
-                     '<span class="tag">Province/State:</span><span class="value">', province.state, '</span>',
-                     '<span class="tag">Region:</span><span class="value">', region, '</span>',
-                     '<span class="tag">Sector:</span><span class="value">', sector, '</span>',
-                     '<span class="tag">Site:</span><span class="value">', site, '</span>'),
-                   clusterOptions = markerClusterOptions())|>
         addScaleBar(position = 'topright')%>%
         addLayersControl(baseGroups = c("Base",
                                         "Terrain",
-                                        "Satellite"), 
+                                        "Satellite"),
                          options = layersControlOptions(collapsed = FALSE))
     })
-    
+
     # convenience list object to handle download/copy from current tab 
     tab_data <- list(
       data = 
         list(basename = "BOLD_fetch_", 
-             output = out_table, 
+             output = out_table,
+             current_rows = reactive(input$data_table_rows_all),
              copy_btns = list(copy_table = FALSE, copy_fasta = TRUE, copy_reps = FALSE),
              dl_btns = TRUE),
       summary = 
         list(basename = "summary_", 
              output = reactive(outdata$summary),
+             current_rows = reactive(input$summary_table_rows_all),
              copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, copy_reps = FALSE),
-             dl_btns = TRUE),
-      bin_reps = 
-        list(basename = "BIN-tax_reps_",
-             output = rep_table,
-             copy_btns = list(copy_table = FALSE, copy_fasta = TRUE, copy_reps = TRUE),
              dl_btns = TRUE),
       consensus_tab =
         list(basename = "bin_consensus_",
              output = reactive(outdata$bin_consensus),
+             current_rows = reactive(input$bincons_table_rows_all),
              copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, copy_reps = FALSE),
              dl_btns = TRUE),
       discordance_tab =
         list(basename = "bin_discordance_",
              output = reactive(outdata$bin_discordance),
+             current_rows = reactive(input$bindisc_table_rows_all),
              copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, copy_reps = FALSE),
+             dl_btns = TRUE),
+      bin_reps = 
+        list(basename = "BIN-tax_reps_",
+             output = rep_table,
+             current_rows = reactive(input$binrep_table_rows_all),
+             copy_btns = list(copy_table = FALSE, copy_fasta = TRUE, copy_reps = TRUE),
              dl_btns = TRUE),
       map_tab = 
         list(basename = NULL,
@@ -885,17 +981,19 @@
     })
     
     # copy button logic
-    observeEvent(input$copy_table, { cb(as.data.frame(tab_data[[input$tabs]]$output())) })
-    observeEvent(input$copy_reps, { cb(tab_data[[input$tabs]]$output()[["processid"]], header = FALSE) })
+    observeEvent(input$copy_table, { cb(as.data.frame(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()])) })
+    observeEvent(input$copy_reps, { cb(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()][["processid"]], header = FALSE) })
     observeEvent(input$copy_fasta, { 
       collapse_mrkrs <- if(input$collapse_mrkrs == TRUE) { coll_mrkr_fields()[grepl(paste0("^",paste(input$filt_seq, collapse="|")), coll_mrkr_fields())] } else { NULL }
-      clip_fasta(filtered_data(), collapse_mrkrs = collapse_mrkrs) })
+      clip_fasta(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()], collapse_mrkrs = collapse_mrkrs) })
     observeEvent(input$copy_binmates, { cb(outdata$binmates, header = FALSE) })
     
     # column copy logic
     observeEvent(input$col_copy_clicked, {
-      col_index <- input$col_copy_clicked$col  # 0-based index from JS
-      cb(tab_data[[input$tabs]]$output()[[col_index + 1]], header = FALSE)
+      col_index <- input$col_copy_clicked$col  # JS uses 0-based index
+      vals <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()][[col_index + 1]]
+      vals[vals == "NA"] <- ""
+      cb(vals, header = FALSE)
     })
     
     # download (save) logic

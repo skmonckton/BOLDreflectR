@@ -12,12 +12,19 @@ ui <- bslib::page_fillable(
             Shiny.setInputValue('fetch_ctrl_enter', Math.random(), {priority: 'event'});
           }
         });
+      Shiny.addCustomMessageHandler("initLookupMap", function(data) {
+        window.mapBySID = {};
+        window.mapByPID = {};
+        data.forEach(function(row) {
+          window.mapBySID[row.sampleid] = row.processid;
+          window.mapByPID[row.processid] = row.specimenid;
+        });
+      });
     )"))
   ),
   useShinyjs(),
   sidebarLayout(
     sidebarPanel(
-      #div(id="side-title",span(img(src = "reflectr.png", height = 35)),HTML(paste0("<h2 data-ver=\"v",ver,"\">BOLDreflectR</h2>"))),
       div(id="side-title",span(img(src = "reflectR-name.png", alt = "BOLDreflectR", style = "height: 3rem;")), `data-ver` = paste0("v", ver), style = "height: 4.16rem;"),
       bslib::accordion(
         id="optpanels",
@@ -114,7 +121,7 @@ ui <- bslib::page_fillable(
                          tagList(div("Columns to show:"),
                                  actionLink(
                                    "save_filter_set",
-                                   icon("floppy-disk"))),
+                                   icon("bookmark"))),
                          filter_options(),
                          multiple = TRUE,
                          options = list(plugins = list("drag_drop"))
@@ -130,18 +137,10 @@ ui <- bslib::page_fillable(
                          multiple = TRUE
           ),
           div(class="form-group shiny-input-container",
-              # actionButton(
-              #   "filter_btn",
-              #   "Apply"
-              #   ),
               actionButton(
                 "reset_btn",
                 "Reset"
                 )),
-          #actionButton(
-          #  "get_binmates_btn",
-          #  "Get additional BIN members"
-          #),
           div(class="flex-div",
             bslib::input_switch(
               "include_binmates",
@@ -149,7 +148,6 @@ ui <- bslib::page_fillable(
               ),
             actionLink(
               "view_binmates",
-              #tags$i(class = "fa-regular fa-square-arrow-up-right")
               icon("square-arrow-up-right")
               )),
           bslib::input_switch(
@@ -208,14 +206,14 @@ ui <- bslib::page_fillable(
               div(class="control-label summary-section-header", "Consensus BIN taxonomy"),
               numericInput(
                 "bc_threshold",
-                div("Consensus ID threshold:",
+                div("Consensus threshold:",
                     bslib::tooltip(
                       icon("circle-question"),
                       paste0("Minimum proportion of records in a BIN that must have a concordant identification in order to establish consensus."))),
                 1, min = 0.5, max = 1.0, step = 0.05),
               numericInput(
                 "bc_minids",
-                div("Minimum IDs for consensus:",
+                div("Minimum IDs:",
                     bslib::tooltip(
                       icon("circle-question"),
                       paste0("Minimum number of concordant identifications needed to establish a consensus identification. If a BIN contains fewer records than this number, then they must all have matching identifications to reach consensus."))),                2, min = 1, step = 1),
