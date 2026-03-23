@@ -39,9 +39,9 @@ ui <- bslib::page_fillable(
                   icon("circle-question"),
                   paste0("The API key is saved to your system's credential store (",keystore,") when the 'Get data' button is pressed."),
                   id = "api_key_tip")),
-            value=tryCatch({
+            value = tryCatch({
               key_get("BOLD.apikey")
-            }, error=function(e){
+            }, error = function(e){
               ""
             })
           ),

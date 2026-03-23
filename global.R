@@ -305,7 +305,8 @@ bold.fetch.shiny <- function (get_by,
       showNotification(notif_txt, id = notification_id, duration = dwell, type = "message")
     })
   }, error = function(e) {
-    showNotification(paste("BOLDconnectR error:", clean_ansi(conditionMessage(e))), id = notification_id, duration = NULL, type = "error")
+    showNotification(paste("Error fetching data:", clean_ansi(conditionMessage(e))), id = notification_id, duration = NULL, type = "error")
+    return(NULL)
   })
 }
 

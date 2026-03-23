@@ -151,9 +151,17 @@
     observeEvent(input$fetch_btn | input$fetch_ctrl_enter, {
       shinyjs::hide("main_panel")
       req(input$api_key)
-      try(key_set_with_value("BOLD.apikey", password = input$api_key), silent=TRUE)
-      bold.apikey(input$api_key)
-      req(isTruthy(input$fetch_id_list) || isTruthy(input$search_tax) || isTruthy(input$search_geo) || isTruthy(input$seq_marker))
+      tryCatch({
+        key <- trimws(gsub('"', "", input$api_key))
+        if (Sys.getenv("api_key") != key) {
+          bold.apikey(key)
+          try(key_set_with_value("BOLD.apikey", password = key), silent=TRUE)
+        }
+      }, error = function(e) {
+        showNotification(e$message, id="fetch_msg", type = "error")
+      })
+      req(isTruthy(input$fetch_id_list) || isTruthy(input$search_tax) || isTruthy(input$search_geo) || 
+            isTruthy(input$seq_marker) || isTruthy(Sys.getenv("api_key")))
       shinyjs::show('table_area')
       shinyjs::hide('table_buttons')
       reset_ui()
@@ -189,7 +197,7 @@
       }, error = function(e) {
         showNotification(paste0("Error processing record identifiers: ", e$message), id="fetch_msg", type = "error")
       })
-    })
+    }, ignoreInit = TRUE)
     
     # modal to call up upon finding over 100k records from search
     search_confirm_modal <- function() {
@@ -216,42 +224,44 @@
     observeEvent(input$search_confirm_btn, {
       removeModal()
       search_token <- fetch_params$search_token
-      showNotification(paste0("Downloading ids of ",
-                              format(search_token$num_of_accessible, big.mark = ",", scientific = FALSE),
-                              "  matching records..."), id = "fetch_msg", duration=NULL, type = "message")
-      fetch_params$fetch_by <- "processid"
-      fetch_params$fetch_ids <- bold.full.search.step2(search_token)$processid
+      tryCatch({
+        showNotification(paste0("Downloading ids of ",
+                                format(search_token$num_of_accessible, big.mark = ",", scientific = FALSE),
+                                "  matching records..."), id = "fetch_msg", duration=NULL, type = "message")
+        fetch_params$fetch_by <- "processid"
+        fetch_params$fetch_ids <- bold.full.search.step2(search_token)$processid
+      }, error = function(e) {
+        showNotification(paste0("Error retrieving records from BOLD: ", e$message), id="fetch_msg", type = "error")
+      }) 
     })
     
     # perform fetch and populate data
     observeEvent(fetch_params$fetch_ids, {
       req(fetch_params$fetch_ids, fetch_params$fetch_by)
-      tryCatch({
-        data <- as.data.table(bold.fetch.shiny(get_by = fetch_params$fetch_by,
-                                 query = fetch_params$fetch_ids,
-                                 BCDM_only = FALSE))[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
-        cols_to_factor <- intersect(config$fieldsets$factorfields, names(data))
-        data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
-        if(fetch_params$fetch_by == "bin_uris") {
-          shinyjs::hide("include_binmates")
-          shinyjs::hide("view_binmates")
-        } else {
-          shinyjs::show("include_binmates")
-          shinyjs::show("view_binmates")
-        }
-        outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
-        outdata$nts_idx <- data[, grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) |
-                                  grepl("^BIOUG.+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
-        outdata$data <- data
-        shinyjs::show('table_buttons')
-        bslib::accordion_panel_close(id="optpanels", values="fetchdata")
-        bslib::accordion_panel_open(id="optpanels", values=c("customize","summarize","analyze"))
-        if (input$fetch_binmates == TRUE) {
-          binmate_modal()
-        }
-      }, error = function(e) {
-        showNotification(paste0("Error fetching data: ", e$message), id="fetch_msg", type = "error")
-      })
+      data <- as.data.table(bold.fetch.shiny(get_by = fetch_params$fetch_by,
+                               query = fetch_params$fetch_ids,
+                               BCDM_only = FALSE))
+      req(nrow(data) > 0)
+      data[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
+      cols_to_factor <- intersect(config$fieldsets$factorfields, names(data))
+      data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
+      if(fetch_params$fetch_by == "bin_uris") {
+        shinyjs::hide("include_binmates")
+        shinyjs::hide("view_binmates")
+      } else {
+        shinyjs::show("include_binmates")
+        shinyjs::show("view_binmates")
+      }
+      outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
+      outdata$nts_idx <- data[, grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) |
+                                grepl("^BIOUG.+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
+      outdata$data <- data
+      shinyjs::show('table_buttons')
+      bslib::accordion_panel_close(id="optpanels", values="fetchdata")
+      bslib::accordion_panel_open(id="optpanels", values=c("customize","summarize","analyze"))
+      if (input$fetch_binmates == TRUE) {
+        binmate_modal()
+      }
     })
     
     # logic for initiating search for additional BIN records ("BIN mates")
@@ -398,8 +408,6 @@
         for(o in input$filt_opt) {
           if (grepl("^userset", o)) {
             field_opts <- unique(c(field_opts, unlist(sapply(user_config$fieldsets$custom, function(x) if(x$id == o) x$fields))))
-          } else {
-            showNotification(paste0(o))
           }
         }
 
