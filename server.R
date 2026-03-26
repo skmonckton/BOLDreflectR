@@ -408,12 +408,14 @@
         for(o in input$filt_opt) {
           if (grepl("^userset", o)) {
             field_opts <- unique(c(field_opts, unlist(sapply(user_config$fieldsets$custom, function(x) if(x$id == o) x$fields))))
+          } else {
+            field_opts <- unique(c(field_opts, o))
           }
         }
-
+        
         # determine which filter selections are field sets from config specification
         sets <- field_opts[(field_opts %in% names(config$fieldsets)) | grepl("|", field_opts, fixed=T)]
-
+        
         fields <- c()
         # step through selected fields, handling them according to whether they are preset field sets, custom field sets, or individual fields
         for(o in field_opts) {
