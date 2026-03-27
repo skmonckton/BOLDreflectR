@@ -77,13 +77,13 @@ clip_fasta <- function(bold_df, cols_for_fas_names = NULL, collapse_mrkrs = NULL
     if(!is.null(collapse_mrkrs)) {
       showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
       cols_for_fas_names <- intersect(cols_for_fas_names, names(bold_df))
-      mrkrs <- sapply(collapse_mrkrs[grepl("_nuc$", collapse_mrkrs)], function(x) unlist(strsplit(x, "_"))[1])
+      mrkrs <- sapply(collapse_mrkrs, function(x) unlist(strsplit(x, "_"))[1])
       fas <- NULL
       for(i in seq_along(mrkrs)) {
         fas <- c(fas, paste0(">",
-                             bold_df[!is.na(bold_df[[names(mrkrs)[i]]]), do.call(paste, c(.SD, unname(mrkrs[i]), sep = "|")), .SDcols = c(cols_for_fas_names)],
+                             bold_df[!is.na(get(names(mrkrs)[i])), do.call(paste, c(.SD, unname(mrkrs[i]), sep = "|")), .SDcols = c(cols_for_fas_names)],
                              "\n",
-                             bold_df[!is.na(bold_df[[names(mrkrs)[i]]]), get(names(mrkrs)[i])]))
+                             bold_df[!is.na(get(names(mrkrs)[i])), get(names(mrkrs)[i])]))
       }
       fas
     } else {

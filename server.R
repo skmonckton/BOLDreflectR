@@ -19,6 +19,7 @@
       fetch_ids = NULL,
       fetch_by = NULL,
       search_token = NULL,
+      binmates_checked = FALSE,
       binmates_fetched = FALSE
     )
     
@@ -31,7 +32,6 @@
       select_fields = config$fieldsets$bcdm,
       id_field = "processid",
       markers = NULL,
-      nts_idx = NULL,
       filt_seq = NULL,
       filt_seq_idx = NULL,
       summary = NULL,
@@ -253,8 +253,6 @@
         shinyjs::show("view_binmates")
       }
       outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
-      outdata$nts_idx <- data[, grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) |
-                                grepl("^BIOUG.+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
       outdata$data <- data
       shinyjs::show('table_buttons')
       bslib::accordion_panel_close(id="optpanels", values="fetchdata")
@@ -264,12 +262,26 @@
       }
     })
     
-    # logic for initiating search for additional BIN records ("BIN mates")
+    # logic for initiating search (or fetch) of additional BIN records ("BIN mates") 
     # if the BIN mates switch is toggled on, a modal opens to report the number of additional BIN records
     observeEvent(input$include_binmates, {
       req(outdata$data)
-      if ((input$include_binmates == TRUE) & (fetch_params$binmates_fetched == FALSE)) {
-        binmate_modal()
+      if (input$include_binmates == TRUE) {
+        if(fetch_params$binmates_checked == FALSE) {
+          binmate_modal()  
+        } else if(fetch_params$binmates_fetched == FALSE) {
+          binmate_data <- as.data.table(bold.fetch.shiny(get_by = "processid", 
+                                                         query = outdata$binmates,
+                                                         BCDM_only = FALSE))[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
+          cols_to_factor <- intersect(config$fieldsets$factorfields, names(binmate_data))
+          binmate_data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
+          data <- unique(rbindlist(list(outdata$data,
+                                        binmate_data),
+                                   fill = TRUE))
+          outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
+          outdata$data <- data
+          fetch_params$binmates_fetched <- TRUE
+        }
       }
     }, ignoreInit = TRUE, ignoreNULL = TRUE)
     
@@ -282,17 +294,19 @@
     # modal logic for BIN mates
     binmate_modal <- function() {
       req(outdata$data)
+      binmate_pids <- outdata$binmates
       if (is.null(outdata$binmates)) {
-        outdata$binmates <- get_binmate_pids(outdata$data[!is.na(bin_uri)])
+        binmate_pids <- get_binmate_pids(outdata$data[!is.na(bin_uri)])
+        outdata$binmates <- binmate_pids
       }
-      if(length(outdata$binmates) == 0) {
+      if(length(binmate_pids) == 0) {
         modal_msg <- div(HTML(paste0("No additional BIN members found.")))
         modal_footer <- tagList(
           div(id="modal_confirm",
               actionButton("binmate_btn", "OK")))
         binmate_list <- div("")
-      } else if (fetch_params$binmates_fetched == FALSE) {
-        modal_msg <- div(HTML(paste0("Found <strong>",length(outdata$binmates),"</strong> additional BIN members. Fetch and add to table?")))
+      } else if (fetch_params$binmates_checked == FALSE) {
+        modal_msg <- div(HTML(paste0("Found <strong>",length(binmate_pids),"</strong> additional BIN members. Fetch and add to table?")))
         modal_footer <- tagList(
           actionButton("copy_binmates", "Copy"),
           div(id="modal_confirm",
@@ -301,7 +315,7 @@
         )
         binmate_list <- verbatimTextOutput("binmate_pids")
       } else {
-        modal_msg <- div(HTML(paste0("The following <strong>",length(outdata$binmates),"</strong> additional BIN members were added to the fetched data.")))
+        modal_msg <- div(HTML(paste0("The following <strong>",length(binmate_pids),"</strong> additional BIN members were added to the fetched data.")))
         modal_footer <- tagList(
           actionButton("copy_binmates", "Copy"),
           div(id="modal_confirm",
@@ -315,7 +329,7 @@
           modal_msg,
           binmate_list,
           footer = modal_footer,
-          easyClose = (fetch_params$binmates_fetched == TRUE)
+          easyClose = (fetch_params$binmates_checked == TRUE)
         )
       )
     }
@@ -330,23 +344,11 @@
     observeEvent(input$binmate_btn, {
       removeModal()
       if(length(outdata$binmates) > 0) {
-        binmate_data <- as.data.table(bold.fetch.shiny(get_by = "processid", 
-                                                       query = outdata$binmates,
-                                                       BCDM_only = FALSE))[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
-        cols_to_factor <- intersect(config$fieldsets$factorfields, names(binmate_data))
-        binmate_data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
-        data <- unique(rbindlist(list(outdata$data,
-                                      binmate_data),
-                                 fill = TRUE))
-        outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
-        outdata$nts_idx <- data[, grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) |
-                                  grepl("^BIOUG.+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
-        outdata$data <- data
         bslib::update_switch("include_binmates",label="Include additional BIN members",value=TRUE,session)
       } else {
         bslib::update_switch("include_binmates",label="Include additional BIN members",value=FALSE,session)
       }
-      fetch_params$binmates_fetched <- TRUE
+      fetch_params$binmates_checked <- TRUE
       
     })
     
@@ -386,20 +388,12 @@
       setdiff(names(cd), c(config$fieldsets$all, config$fieldsets$parsed))
     })
     
-    # reactive to store NTS row indexer for collapsed data
-    coll_nts_idx <- reactive({
-      cd <- collapsed_data()
-      req(cd)
-      cd[, grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) |
-           grepl("^BIOUG.+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
-    })
-    
     # reactive object for user-selected fields/column filters
     computed_fields <- reactive({
       # if no column filters have been selected, select all fields (plus collapsed table fields if there are any) 
       if (length(input$filt_opt) == 0) {
         fields <- c(config$fieldsets$bcdm, coll_mrkr_fields())
-        show_copy_fasta <- TRUE
+        # show_copy_fasta <- TRUE
         id_field <- "processid"
       } else {
         
@@ -433,12 +427,12 @@
           }
         }
         
-        if (any(input$filt_opt %in% c("all","bcdm","sequence"))) {
-          fields <- unique(c(fields, coll_mrkr_fields()))
-          show_copy_fasta <- TRUE
-        } else {
-          show_copy_fasta <- FALSE
-        }
+        # if (any(input$filt_opt %in% c("all","bcdm","sequence"))) {
+        #   fields <- unique(c(fields, coll_mrkr_fields()))
+        #   show_copy_fasta <- TRUE
+        # } else {
+        #   show_copy_fasta <- FALSE
+        # }
         id_idx <- which(c("processid", "sampleid") %in% fields)
         if(length(id_idx) == 0) {
           fields <- c("processid", fields)
@@ -447,7 +441,8 @@
           id_field <- c("processid", "sampleid")[min(id_idx)]
         }
       }
-      list(fields = fields, show_copy_fasta = show_copy_fasta, id_field = id_field)
+      # list(fields = fields, show_copy_fasta = show_copy_fasta, id_field = id_field)
+      list(fields = fields, id_field = id_field)
     })
     
     # consume computed filter fields and record them in the reactive value list
@@ -455,7 +450,7 @@
       result <- computed_fields()
       outdata$select_fields <- result$fields
       outdata$id_field <- result$id_field
-      if (result$show_copy_fasta) shinyjs::show("copy_fasta") else shinyjs::hide("copy_fasta")
+      #if (result$show_copy_fasta) shinyjs::show("copy_fasta") else shinyjs::hide("copy_fasta")
     })
     
     # modal logic for saving custom field sets
@@ -553,6 +548,21 @@
       }
     }
     
+    # reactive computation of NTS row indexer
+    nts_idx <- reactive({
+      req(outdata$data)
+      if (input$collapse_mrkrs == TRUE) {
+        dt <- collapsed_data()
+        req(dt)
+        dt[, grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) |
+             grepl("^BIOUG.+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
+      } else {
+        dt <- outdata$data
+        grepl("NTS(?:_[A-Za-z]+)?_OF:", dt$associated_specimens, perl = TRUE) |
+          grepl("^BIOUG.+?\\.NTS[0-9]*?$", dt$sampleid, perl = TRUE)
+      }
+    })
+    
     # reactive computation of filtered data table
     filtered_data <- reactive({
       req(outdata$data)
@@ -564,13 +574,12 @@
         outdata$data
       }
       
-      if (!isTRUE(input$include_binmates) || length(outdata$binmates) == 0) {
-        data <- data[!processid %in% outdata$binmates]
+      if(!isTRUE(input$include_nts)) {
+        data <- data[!nts_idx()]
       }
       
-      if(!isTRUE(input$include_nts)) {
-        nts_idx <- if (input$collapse_mrkrs == TRUE) coll_nts_idx() else outdata$nts_idx
-        data <- data[!nts_idx]
+      if (!isTRUE(input$include_binmates) || length(outdata$binmates) == 0) {
+        data <- data[!processid %in% outdata$binmates]
       }
       
       data[seq_filter(data, input$filt_seq)]
@@ -994,8 +1003,29 @@
     observeEvent(input$copy_table, { cb(as.data.frame(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()])) })
     observeEvent(input$copy_reps, { cb(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()][["processid"]], header = FALSE) })
     observeEvent(input$copy_fasta, { 
-      collapse_mrkrs <- if(input$collapse_mrkrs == TRUE) { coll_mrkr_fields()[grepl(paste0("^",paste(input$filt_seq, collapse="|")), coll_mrkr_fields())] } else { NULL }
-      clip_fasta(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()], collapse_mrkrs = collapse_mrkrs) })
+      #collapse_mrkrs <- if(input$collapse_mrkrs == TRUE) { coll_mrkr_fields()[grepl(paste0("^",paste(input$filt_seq, collapse="|")), coll_mrkr_fields())] } else { NULL }
+      collapse_mrkrs <- if(input$collapse_mrkrs == TRUE) { 
+        coll_fields <- coll_mrkr_fields()[grepl(paste0("^",paste(input$filt_seq, collapse="|")), coll_mrkr_fields())]
+        coll_fields[grepl("_nuc$", coll_fields)]
+      } else {
+        NULL
+      }
+      
+      data <- if(input$tabs == "data") {
+        fetch_by <- fetch_params$fetch_by
+        ids <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), get(fetch_by)]
+        if(input$collapse_mrkrs == TRUE) {
+          collapsed_data()[get(fetch_by) %in% ids]
+        } else if(!is.null(input$filt_seq)) {
+          outdata$data[(get(fetch_by) %in% ids) & (marker_code %in% input$filt_seq)]
+        } else {
+          outdata$data[(get(fetch_by) %in% ids)]
+        }
+      } else {
+        tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()]
+      }
+      clip_fasta(data, collapse_mrkrs = collapse_mrkrs)
+      })
     observeEvent(input$copy_binmates, { cb(outdata$binmates, header = FALSE) })
     
     # column copy logic
