@@ -33,7 +33,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v5
         with:
-          path: MYAPP  # checkout into a subdirectory instead of the root
+          path: BOLDreflectR
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
