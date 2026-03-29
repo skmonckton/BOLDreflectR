@@ -1,4 +1,5 @@
 # Copyright (c) 2018 Dirk Schumacher, Noam Ross, Rich FitzJohn
+# Modified by Spencer K. Monckton (2026)
 
 # Script that starts the shiny webserver
 # Parameters are supplied using environment variables
