@@ -43,17 +43,14 @@ jobs:
         if: failure()
         run: |
           export R_HOME="${{ github.workspace }}/app/r-nhyris"
-          echo "--- Testing bare Rscript launch ---"
-          "$R_HOME/bin/Rscript" --version
-          echo "--- Testing Rscript with -e ---"
-          "$R_HOME/bin/Rscript" -e "cat('R is working\n')"
-          echo "--- Testing Rscript with script file ---"
-          echo "cat('script works\n')" > /tmp/test.R
-          "$R_HOME/bin/Rscript" /tmp/test.R
-          echo "--- Checking R lib directory ---"
+          echo "--- R_HOME contents ---"
+          ls "$R_HOME"
+          echo "--- lib contents ---"
           ls "$R_HOME/lib"
-          echo "--- Checking LD_LIBRARY_PATH ---"
-          echo $LD_LIBRARY_PATH
+          echo "--- etc contents ---"
+          ls "$R_HOME/etc"
+          echo "--- Rscript with strace ---"
+          strace -e trace=openat "$R_HOME/bin/Rscript" -e "cat('hello')" 2>&1 | grep "No such file" | head -20
       - name: Debug R_HOME
         if: failure()
         run: |
