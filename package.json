@@ -24,6 +24,6 @@
     "@electron-forge/maker-squirrel": "^7.8.0"
   },
   "scripts": {
-    "install-r": "node scripts/install-r.js"
+    "install-R": "node scripts/install-R.js"
   }
 }
