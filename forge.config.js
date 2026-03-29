@@ -35,18 +35,42 @@ module.exports = {
     postMake: async (config, makeResults) => {
       const fs = require("fs");
       const path = require("path");
-  
-      // Remove all package output dirs (e.g. out/app-win32-x64/)
       const outDir = path.join(__dirname, "out");
+      const makeDir = path.join(outDir, "make");
+
+      // Remove intermediate package dirs (e.g. out/app-win32-x64/)
       for (const entry of fs.readdirSync(outDir)) {
-        const fullPath = path.join(outDir, entry);
-        // Skip the make/ subdirectory — that's your artifacts
         if (entry === "make") continue;
+        const fullPath = path.join(outDir, entry);
         if (fs.statSync(fullPath).isDirectory()) {
           fs.rmSync(fullPath, { recursive: true, force: true });
           console.log(`Cleaned up package dir: ${entry}`);
         }
       }
+
+      // Flatten make/ by hoisting all files up, zip artifacts go into make/zip/
+      const zipDir = path.join(makeDir, "zip");
+      fs.mkdirSync(zipDir, { recursive: true });
+
+      const hoistDir = (dir) => {
+        for (const entry of fs.readdirSync(dir)) {
+          const fullPath = path.join(dir, entry);
+          if (fs.statSync(fullPath).isDirectory()) {
+            hoistDir(fullPath);
+          } else {
+            const renamedEntry = entry.replace("-darwin-", "-macOS-");
+            const isZip = renamedEntry.endsWith(".zip");
+            const dest = path.join(isZip ? zipDir : makeDir, renamedEntry);
+            fs.renameSync(fullPath, dest);
+          }
+        }
+        const rel = path.relative(makeDir, dir);
+        if (rel !== "" && rel !== "zip") {
+          fs.rmdirSync(dir);
+        }
+      };
+
+      hoistDir(makeDir);
     },
    packageAfterCopy: async (config, buildPath, electronVersion, platform, arch) => {
       // Map Forge's platform string to your folder names
