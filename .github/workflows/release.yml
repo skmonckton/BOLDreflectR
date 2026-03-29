@@ -84,8 +84,11 @@ jobs:
           ls r-nhyris/library/ 2>/dev/null || echo "library missing"
           echo "--- bin/R first 10 lines ---"
           head -10 r-nhyris/bin/R 2>/dev/null || echo "bin/R missing"
-          echo "--- bin/Rscript first 10 lines ---"
-          head -10 r-nhyris/bin/Rscript 2>/dev/null || echo "bin/Rscript missing"
+          echo "--- bin/Rscript first 3 lines ---"
+          head -3 r-nhyris/bin/Rscript 2>/dev/null || echo "bin/Rscript missing"
+          echo "--- Missing shared libraries ---"
+          ldd r-nhyris/bin/exec/R 2>/dev/null | grep "not found"
+          ldd r-nhyris/lib/R/lib/libR.so 2>/dev/null | grep "not found"
           echo "--- Test Rscript ---"
           R_HOME_DIR="$(pwd)/r-nhyris" RHOME="$(pwd)/r-nhyris" r-nhyris/bin/Rscript -e "cat('Rscript works\n')" 2>&1 || echo "Rscript failed"
       - name: Install dependencies
