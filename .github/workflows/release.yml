@@ -72,6 +72,20 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ (matrix.os == 'windows-latest' && 'app/out/make/!(*.zip)') || 'app/out/make/**/*' }}
+          generate_release_notes: true
+          body: |
+            <img height="60" alt="BOLDreflectR" src="https://github.com/skmonckton/BOLDreflectR/raw/main/shiny/www/reflectR-name.png" />
+
+            **BOLDreflectR** is a graphical user interface for [BOLDconnectR](https://doi.org/10.32614/CRAN.package.BOLDconnectR) allowing basic exploration and analysis of data from BOLD.
+            
+            ### Installation
+            **Windows**: Download and install from the provided `.exe` file.
+            **macOS & Linux**: Download the relevant `.zip` archive, then unpack and copy to your applications folder.
+            
+            ### Run in RStudio
+            BOLDreflectR can also be run directly from the R Shiny code available in the repository's `shiny` sub-directory: [BOLDreflectR/tree/main/shiny](https://github.com/skmonckton/BOLDreflectR/tree/main/shiny).
+
+            ### Changes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload artifacts for inspection (on manual trigger)
