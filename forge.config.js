@@ -23,13 +23,30 @@ module.exports = {
   },
   makers: [
     {
-      name: "@electron-forge/maker-zip"
+      name: "@electron-forge/maker-zip",
+      platforms: ["windows"],
     },
     {
       name: "@electron-forge/maker-squirrel",
+      platforms: ["windows"],
       config: {
         setupIcon: "assets/icon.ico",
         loadingGif: "assets/install-spinner.gif"
+      }
+    },
+    {
+      name: "@electron-forge/maker-dmg",
+      platforms: ["darwin"],
+      config: {
+        icon: "assets/icon.icns",
+        overwrite: true
+      }
+    },
+    {
+      name: "@electron-forge/maker-appimage",
+      platforms: ["linux"],
+      config: {
+        icon: "assets/icon.png"
       }
     }
   ],
