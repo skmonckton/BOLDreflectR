@@ -44,25 +44,20 @@ jobs:
       - name: Re-install standalone R
         working-directory: app
         run: npm run install-R
-      - name: Debug r-nhyris contents
-        if: failure()
+      - name: Debug R installation
+        if: always()
         working-directory: app
         run: |
           echo "--- r-nhyris top level ---"
-          ls r-nhyris/
-          echo "--- tarball structure (re-download) ---"
-          curl -L -o /tmp/r-test.tar.gz "https://cdn.posit.co/r/ubuntu-2404/R-4.5.0-ubuntu-2404.tar.gz"
-          tar -tzf /tmp/r-test.tar.gz | head -40
-      - name: Debug macOS R internals
-        if: failure() && runner.os == 'macOS'
-        working-directory: app
-        run: |
-          echo "--- bin/R contents ---"
-          cat r-nhyris/bin/R
-          echo "--- etc/Renviron contents ---"
-          cat r-nhyris/etc/Renviron
-          echo "--- etc/ldpaths contents ---"
-          cat r-nhyris/etc/ldpaths
+          ls r-nhyris/ 2>/dev/null || echo "r-nhyris missing entirely"
+          echo "--- etc ---"
+          ls r-nhyris/etc/ 2>/dev/null || echo "etc missing"
+          echo "--- library ---"
+          ls r-nhyris/library/ 2>/dev/null || echo "library missing"
+          echo "--- bin/R first 30 lines ---"
+          head -30 r-nhyris/bin/R 2>/dev/null || echo "bin/R missing"
+          echo "--- Test Rscript ---"
+          R_HOME_DIR="$(pwd)/r-nhyris" RHOME="$(pwd)/r-nhyris" r-nhyris/bin/Rscript -e "cat('Rscript works\n')" 2>&1 || echo "Rscript failed"
       - name: Install dependencies
         run: nhyris update app
       - name: Build app
