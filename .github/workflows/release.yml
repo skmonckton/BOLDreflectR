@@ -39,6 +39,21 @@ jobs:
       - name: Re-install standalone R
         working-directory: app
         run: npm run install-R
+      - name: Debug Rscript launch
+        if: failure()
+        run: |
+          export R_HOME="${{ github.workspace }}/app/r-nhyris"
+          echo "--- Testing bare Rscript launch ---"
+          "$R_HOME/bin/Rscript" --version
+          echo "--- Testing Rscript with -e ---"
+          "$R_HOME/bin/Rscript" -e "cat('R is working\n')"
+          echo "--- Testing Rscript with script file ---"
+          echo "cat('script works\n')" > /tmp/test.R
+          "$R_HOME/bin/Rscript" /tmp/test.R
+          echo "--- Checking R lib directory ---"
+          ls "$R_HOME/lib"
+          echo "--- Checking LD_LIBRARY_PATH ---"
+          echo $LD_LIBRARY_PATH
       - name: Debug R_HOME
         if: failure()
         run: |
