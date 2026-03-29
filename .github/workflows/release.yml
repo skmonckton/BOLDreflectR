@@ -36,45 +36,14 @@ jobs:
           node-version: 24
       - name: Install nhyris
         run: npm install -g github:skmonckton/nhyris
+      - name: Debug working directory
+        working-directory: app
+        run: |
+          pwd
+          ls
       - name: Re-install standalone R
         working-directory: app
         run: npm run install-R
-      - name: Debug tarball structure
-        if: runner.os == 'Linux'
-        run: |
-          curl -L -o /tmp/r-prebuilt.tar.gz "https://cdn.posit.co/r/ubuntu-2404/R-4.5.0-ubuntu-2404.tar.gz"
-          echo "--- Top level ---"
-          tar -tzf /tmp/r-prebuilt.tar.gz | head -30
-          echo "--- Extracting ---"
-          mkdir /tmp/r-test
-          tar -xzf /tmp/r-prebuilt.tar.gz -C /tmp/r-test
-          echo "--- Extracted structure ---"
-          find /tmp/r-test -maxdepth 4 -type d
-      - name: Debug Rscript launch
-        if: failure()
-        run: |
-          export R_HOME="${{ github.workspace }}/app/r-nhyris"
-          echo "--- R_HOME contents ---"
-          ls "$R_HOME"
-          echo "--- lib contents ---"
-          ls "$R_HOME/lib"
-          echo "--- etc contents ---"
-          ls "$R_HOME/etc"
-          echo "--- Rscript with strace ---"
-          strace -e trace=openat "$R_HOME/bin/Rscript" -e "cat('hello')" 2>&1 | grep "No such file" | head -20
-      - name: Debug R_HOME
-        if: failure()
-        run: |
-          export R_HOME="${{ github.workspace }}/app/r-nhyris"
-          echo "R_HOME=$R_HOME"
-          ls "$R_HOME"
-          "$R_HOME/bin/Rscript" --version
-      - name: Debug R installation
-        if: failure()
-        run: |
-          ls -la app/r-nhyris/bin/
-          file app/r-nhyris/bin/Rscript
-          ldd app/r-nhyris/bin/Rscript
       - name: Install dependencies
         run: nhyris update app
       - name: Build app
