@@ -1,0 +1,26 @@
+{
+  "name": "BOLDreflectR",
+  "productName": "BOLDreflectR",
+  "version": "1.3.3",
+  "description": "A graphical user interface for BOLDconnectR (https://doi.org/10.32614/CRAN.package.BOLDconnectR) allowing basic exploration and analysis of BOLD data. This installable executable is bundled using a modified version of nhyris (https://github.com/jahnen/nhyris).",
+  "main": "src/index.js",
+  "author": {
+    "name": "Spencer K. Monckton",
+    "email": "smonckto@uoguelph.ca"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/skmonckton/BOLDreflectR"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "electron-squirrel-startup": "^1.0.1"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.8.0",
+    "@electron-forge/maker-zip": "^7.8.0",
+    "electron": "^36.4.0",
+    "@electron-forge/maker-squirrel": "^7.8.0"
+  }
+}

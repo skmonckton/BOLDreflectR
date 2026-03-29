@@ -1,3 +1,12 @@
+# Electron/nhyris files
+node_modules/
+out/
+r-nhyris/
+package-lock.json
+
+# Development files
+dev/
+
 # History files
 .Rhistory
 .Rapp.history
@@ -8,7 +17,7 @@
 
 # User-specific files
 .Ruserdata
-data/user_config.yaml
+shiny/data/user_config.yaml
 
 # Example code in package build process
 *-Ex.R
@@ -21,7 +30,7 @@ data/user_config.yaml
 
 # RStudio files
 .Rproj.user/
-/*.Rproj
+*.Rproj
 
 # produced vignettes
 vignettes/*.html
