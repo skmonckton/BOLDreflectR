@@ -45,7 +45,7 @@ jobs:
         working-directory: app
         run: npm run install-R
       - name: Debug R installation
-        if: always()
+        if: always() && runner.os != 'Windows'
         working-directory: app
         run: |
           echo "--- r-nhyris top level ---"
