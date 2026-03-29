@@ -82,7 +82,7 @@ jobs:
         if: ${{ !inputs.dry_run && startsWith(github.ref, 'refs/tags/') && steps.check.outputs.run == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
-          files: app/out/make/**/*
+          path: ${{ matrix.os == 'windows-latest' && 'app/out/make/!(*.zip)' || 'app/out/make/**/*' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload artifacts for inspection (dry run)
@@ -90,5 +90,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}-artifacts
-          path: app/out/make/**/*
+          path: ${{ matrix.os == ('windows-latest' && 'app/out/make/!(*.zip)') || 'app/out/make/**/*' }}
           retention-days: 3
