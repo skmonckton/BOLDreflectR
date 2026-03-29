@@ -43,7 +43,7 @@ module.exports = {
       }
     },
     {
-      name: "@electron-forge/maker-appimage",
+      name: "@reforged/maker-appimage",
       platforms: ["linux"],
       config: {
         icon: "assets/icon.png"

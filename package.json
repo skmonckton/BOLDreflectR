@@ -14,14 +14,16 @@
     "url": "https://github.com/skmonckton/BOLDreflectR"
   },
   "dependencies": {
-    "node-fetch": "^3.3.2",
-    "electron-squirrel-startup": "^1.0.1"
+    "electron-squirrel-startup": "^1.0.1",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.8.0",
+    "@electron-forge/maker-dmg": "^7.11.1",
+    "@electron-forge/maker-squirrel": "^7.8.0",
     "@electron-forge/maker-zip": "^7.8.0",
-    "electron": "^36.4.0",
-    "@electron-forge/maker-squirrel": "^7.8.0"
+    "@reforged/maker-appimage": "^5.2.0",
+    "electron": "^36.4.0"
   },
   "scripts": {
     "install-R": "node src/install-R.js"
