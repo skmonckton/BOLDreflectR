@@ -50,12 +50,16 @@ jobs:
         run: |
           echo "--- r-nhyris top level ---"
           ls r-nhyris/ 2>/dev/null || echo "r-nhyris missing entirely"
+          echo "--- bin ---"
+          ls r-nhyris/bin/ 2>/dev/null || echo "bin missing"
+          echo "--- bin/exec ---"
+          ls r-nhyris/bin/exec/ 2>/dev/null || echo "bin/exec missing"
           echo "--- etc ---"
           ls r-nhyris/etc/ 2>/dev/null || echo "etc missing"
           echo "--- library ---"
           ls r-nhyris/library/ 2>/dev/null || echo "library missing"
-          echo "--- bin/R first 30 lines ---"
-          head -30 r-nhyris/bin/R 2>/dev/null || echo "bin/R missing"
+          echo "--- bin/R first 10 lines ---"
+          head -10 r-nhyris/bin/R 2>/dev/null || echo "bin/R missing"
           echo "--- Test Rscript ---"
           R_HOME_DIR="$(pwd)/r-nhyris" RHOME="$(pwd)/r-nhyris" r-nhyris/bin/Rscript -e "cat('Rscript works\n')" 2>&1 || echo "Rscript failed"
       - name: Install dependencies
