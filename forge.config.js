@@ -3,7 +3,7 @@ const fs = require("fs");
 
 module.exports = {
   packagerConfig: {
-    icon: "icon",
+    icon: "assets/icon",
     ignore: [
       /^\/dev/,
       /^\/bin/,
@@ -27,7 +27,8 @@ module.exports = {
     {
       name: "@electron-forge/maker-squirrel",
       config: {
-        setupIcon: "assets/icon.ico"
+        setupIcon: "assets/icon.ico",
+        loadingGif: "assets/install-spinner.gif"
       }
     }
   ],
