@@ -44,6 +44,15 @@ jobs:
       - name: Re-install standalone R
         working-directory: app
         run: npm run install-R
+      - name: Debug r-nhyris contents
+        if: failure()
+        working-directory: app
+        run: |
+          echo "--- r-nhyris top level ---"
+          ls r-nhyris/
+          echo "--- tarball structure (re-download) ---"
+          curl -L -o /tmp/r-test.tar.gz "https://cdn.posit.co/r/ubuntu-2404/R-4.5.0-ubuntu-2404.tar.gz"
+          tar -tzf /tmp/r-test.tar.gz | head -40
       - name: Install dependencies
         run: nhyris update app
       - name: Build app
