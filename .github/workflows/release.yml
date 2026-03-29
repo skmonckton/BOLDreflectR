@@ -43,6 +43,7 @@ jobs:
     steps:
       - name: Check if platform is selected for build
         id: check
+        shell: bash
         run: echo "run=${{ github.event_name == 'push' || (matrix.name == 'windows' && inputs.build_windows) || (matrix.name == 'macos' && inputs.build_macos) || (matrix.name == 'linux' && inputs.build_linux) }}" >> $GITHUB_OUTPUT
       - name: Checkout repo
         if: steps.check.outputs.run == 'true'
@@ -83,6 +84,8 @@ jobs:
           ls r-nhyris/library/ 2>/dev/null || echo "library missing"
           echo "--- bin/R first 10 lines ---"
           head -10 r-nhyris/bin/R 2>/dev/null || echo "bin/R missing"
+          echo "--- bin/Rscript first 10 lines ---"
+          head -10 r-nhyris/bin/Rscript 2>/dev/null || echo "bin/Rscript missing"
           echo "--- Test Rscript ---"
           R_HOME_DIR="$(pwd)/r-nhyris" RHOME="$(pwd)/r-nhyris" r-nhyris/bin/Rscript -e "cat('Rscript works\n')" 2>&1 || echo "Rscript failed"
       - name: Install dependencies
