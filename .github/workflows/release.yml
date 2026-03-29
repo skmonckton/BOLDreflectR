@@ -53,6 +53,16 @@ jobs:
           echo "--- tarball structure (re-download) ---"
           curl -L -o /tmp/r-test.tar.gz "https://cdn.posit.co/r/ubuntu-2404/R-4.5.0-ubuntu-2404.tar.gz"
           tar -tzf /tmp/r-test.tar.gz | head -40
+      - name: Debug macOS R internals
+        if: failure() && runner.os == 'macOS'
+        working-directory: app
+        run: |
+          echo "--- bin/R contents ---"
+          cat r-nhyris/bin/R
+          echo "--- etc/Renviron contents ---"
+          cat r-nhyris/etc/Renviron
+          echo "--- etc/ldpaths contents ---"
+          cat r-nhyris/etc/ldpaths
       - name: Install dependencies
         run: nhyris update app
       - name: Build app
