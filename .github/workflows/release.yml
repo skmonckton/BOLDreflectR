@@ -39,6 +39,12 @@ jobs:
       - name: Re-install standalone R
         working-directory: app
         run: npm run install-R
+      - name: Debug R installation
+        if: failure()
+        run: |
+          ls -la app/r-nhyris/bin/
+          file app/r-nhyris/bin/Rscript
+          ldd app/r-nhyris/bin/Rscript
       - name: Install dependencies
         run: nhyris update app
       - name: Build app
