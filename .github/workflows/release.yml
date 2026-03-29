@@ -36,7 +36,10 @@ jobs:
           node-version: 24
       - name: Install nhyris
         run: npm install -g github:skmonckton/nhyris
-      - name: Install electron & R dependencies
+      - name: Re-install standalone R
+        working-directory: app
+        run: npm run install-R
+      - name: Install dependencies
         run: nhyris update app
       - name: Build app
         run: nhyris build app
