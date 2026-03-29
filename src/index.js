@@ -1,5 +1,7 @@
-// Copyright (c) 2018 Dirk Schumacher, Noam Ross, Rich FitzJohn
-// Copyright (c) 2025 Jinhwan Kim
+// Original code: Copyright (c) 2018 Dirk Schumacher, Noam Ross, Rich FitzJohn
+// Additions: Copyright (c) 2025 Jinhwan Kim
+// Further modifications by Spencer K. Monckton
+
 const { app, session, autoUpdater } = require("electron");
 const { spawn } = require('child_process');
 const path = require('path');
