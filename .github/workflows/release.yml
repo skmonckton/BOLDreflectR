@@ -57,10 +57,10 @@ jobs:
       - name: Install R system dependencies (Linux)
         if: steps.check.outputs.run == 'true' && runner.os == 'Linux'
         run: sudo apt-get install -y libblas3 liblapack3 libgfortran5 libgomp1
-      - name: Install base R & Node packages
-        if: steps.check.outputs.run == 'true'
-        working-directory: app
-        run: npm run install-R
+      # - name: Install base R & Node packages
+        # if: steps.check.outputs.run == 'true'
+        # working-directory: app
+        # run: npm run install-R
       - name: Install/update dependencies
         if: steps.check.outputs.run == 'true'
         run: nhyris update app

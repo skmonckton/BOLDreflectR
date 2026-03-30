@@ -7,6 +7,5 @@ const nhyrisInstall = pathToFileURL(`${nhyrisRoot}/nhyris/utils/install.js`).hre
 const { installStandaloneR, installDependencies } = await import(nhyrisInstall);
 
 const projectPath = process.cwd();
-console.log("projectPath:", projectPath);
 installStandaloneR(projectPath);
 installDependencies(projectPath);

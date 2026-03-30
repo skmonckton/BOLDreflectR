@@ -28,7 +28,7 @@ jobs:
           cat /tmp/app-output.log
       - name: Upload log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: app-output-log
           path: /tmp/app-output.log
