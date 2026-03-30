@@ -5,7 +5,6 @@ const { name } = require("./package.json");
 module.exports = {
   packagerConfig: {
     icon: "assets/icon",
-    executableName: name.toLowerCase(),
     ignore: [
       /^\/dev/,
       /^\/bin/,
