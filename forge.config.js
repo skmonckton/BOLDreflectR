@@ -1,9 +1,11 @@
 const path = require("path");
 const fs = require("fs");
+const { name } = require("./package.json");
 
 module.exports = {
   packagerConfig: {
     icon: "assets/icon",
+    executableName: name,
     ignore: [
       /^\/dev/,
       /^\/bin/,
@@ -24,11 +26,11 @@ module.exports = {
   makers: [
     {
       name: "@electron-forge/maker-zip",
-      platforms: ["windows"],
+      platforms: ["win32"],
     },
     {
       name: "@electron-forge/maker-squirrel",
-      platforms: ["windows"],
+      platforms: ["win32"],
       config: {
         setupIcon: "assets/icon.ico",
         loadingGif: "assets/install-spinner.gif"
@@ -46,7 +48,8 @@ module.exports = {
       name: "@reforged/maker-appimage",
       platforms: ["linux"],
       config: {
-        icon: "assets/icon.png"
+        icon: "assets/icon.png",
+        bin: name
       }
     }
   ],
