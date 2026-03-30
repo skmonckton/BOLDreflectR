@@ -24,10 +24,6 @@ jobs:
         run: nhyris update app
       - name: Run app with virtual display
         run: |
-          export DISPLAY=:99
-          Xvfb :99 -screen 0 1024x768x24 &
-          sleep 2
-          cd app
           timeout 60 nhyris run app 2>&1 | tee /tmp/app-output.log || true
           cat /tmp/app-output.log
       - name: Upload log
