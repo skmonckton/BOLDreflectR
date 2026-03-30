@@ -24,7 +24,7 @@ jobs:
         run: nhyris update app
       - name: Run app with timeout
         run: |
-          sudo chmod 4755 chrome-sandbox
+          sudo chmod 4755 app/node_modules/electron/dist/chrome-sandbox
           timeout 60 nhyris run app 2>&1 | tee /tmp/app-output.log || true
           cat /tmp/app-output.log
       - name: Upload log
