@@ -1,0 +1,35 @@
+name: Test Run on macOS
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v5
+        with:
+          path: app
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Install nhyris fork
+        run: npm install -g github:skmonckton/nhyris
+      - name: Install R system dependencies (Linux)
+        run: sudo apt-get install -y libblas3 liblapack3 libgfortran5 libgomp1
+      - name: Install base R & Node packages
+        working-directory: app
+        run: npm run install-R
+      - name: Install/update dependencies
+        run: nhyris update app
+      - name: Run app with virtual display
+        run: |
+          timeout 60 nhyris run app 2>&1 | tee /tmp/app-output.log || true
+          cat /tmp/app-output.log
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-output-log
+          path: /tmp/app-output.log
+          retention-days: 3
