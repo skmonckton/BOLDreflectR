@@ -5,7 +5,7 @@ const { name } = require("./package.json");
 module.exports = {
   packagerConfig: {
     icon: "assets/icon",
-    executableName: name,
+    executableName: name.toLowerCase(),
     ignore: [
       /^\/dev/,
       /^\/bin/,
@@ -47,9 +47,12 @@ module.exports = {
     {
       name: "@reforged/maker-appimage",
       platforms: ["linux"],
-      config: {
-        icon: "assets/icon.png"
-      }
+        config: {
+          options: {
+            bin: name,
+            icon: "assets/icon.png"
+          }
+        }
     }
   ],
   hooks: {
