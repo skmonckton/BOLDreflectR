@@ -24,6 +24,7 @@ jobs:
         run: nhyris update app
       - name: Run app with virtual display
         run: |
+          sudo chmod 4755 chrome-sandbox
           timeout 60 nhyris run app 2>&1 | tee /tmp/app-output.log || true
           cat /tmp/app-output.log
       - name: Upload log
