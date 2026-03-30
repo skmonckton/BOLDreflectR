@@ -48,8 +48,7 @@ module.exports = {
       name: "@reforged/maker-appimage",
       platforms: ["linux"],
       config: {
-        icon: "assets/icon.png",
-        bin: name
+        icon: "assets/icon.png"
       }
     }
   ],
