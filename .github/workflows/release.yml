@@ -76,7 +76,11 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/') && steps.check.outputs.run == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ (matrix.os == 'windows-latest' && 'app/out/make/!(*.zip)') || 'app/out/make/**/*' }}
+          files: |
+            ${{ matrix.os == 'windows-latest' && 'app/out/make/*.exe' || '' }}
+            ${{ matrix.os == 'windows-latest' && 'app/out/make/*.nupkg' || '' }}
+            ${{ matrix.os == 'windows-latest' && 'app/out/make/RELEASES' || '' }}
+            ${{ matrix.os != 'windows-latest' && 'app/out/make/**/*' || '' }}
           generate_release_notes: true
           body: |
             <img height="60" alt="BOLDreflectR" src="https://github.com/skmonckton/BOLDreflectR/raw/main/shiny/www/reflectR-name.png" />
@@ -98,5 +102,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}-artifacts
-          path: ${{ (matrix.os == 'windows-latest' && 'app/out/make/!(*.zip)') || 'app/out/make/**/*' }}
+          path: |
+            ${{ matrix.os == 'windows-latest' && 'app/out/make/*.exe' || '' }}
+            ${{ matrix.os == 'windows-latest' && 'app/out/make/*.nupkg' || '' }}
+            ${{ matrix.os == 'windows-latest' && 'app/out/make/RELEASES' || '' }}
+            ${{ matrix.os != 'windows-latest' && 'app/out/make/**/*' || '' }}
           retention-days: 3
