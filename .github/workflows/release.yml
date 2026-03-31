@@ -84,7 +84,9 @@ jobs:
 
             ### Installation
             **Windows**: Download and install from the provided `.exe` file.
-            **macOS**: Download and open the provided `.dmg` file, then drag and drop to your applications folder.
+
+            **macOS**: Download and open the provided `.dmg` file, then drag and drop to your applications folder. To run the app you may need to override Apple's security settings, either by following [Apple's suggested method](https://support.apple.com/en-gb/guide/mac-help/mh40616/mac) or by running the following code in the terminal: `xattr -d com.apple.quarantine /Applications/BOLDreflectR.app`.
+
             **Linux**: Download the provided `.AppImage` file to the desired directory. To run, make the file executable via the file manager (Right-click -> Properties -> Permissions -> Allow executing file as program) or by running `chmod +x BOLDreflectR-x.x.x-x64.AppImage` in the terminal.
 
             ### Run in RStudio
