@@ -208,6 +208,11 @@ if (handleSquirrelStartup()) {
   process.exit(0);
 }
 
+// Disable sandbox requirement on Linux
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("no-sandbox");
+}
+
 // Application bootstrap
 app.on("ready", async () => {
   
