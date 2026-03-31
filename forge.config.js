@@ -49,7 +49,8 @@ module.exports = {
         config: {
           options: {
             bin: name,
-            icon: "assets/icon.png"
+            icon: "assets/icon.png",
+            executableArgs: ["--no-sandbox"]
           }
         }
     }
