@@ -230,10 +230,13 @@ ui <- bslib::page_fillable(
               "view_binmates",
               icon("square-arrow-up-right")
               )),
-          bslib::input_switch(
+          hidden(bslib::input_switch(
             "include_nts",
-            "Include NTS records"
-          ),
+            div("Show NTS records in fetched data",
+                bslib::tooltip(
+                  icon("circle-question"),
+                  "Shows or hides non-target sequence records within existing results (i.e., NTS records matching initial query terms)."))
+          )),
           bslib::input_switch(
             "collapse_mrkrs",
             "Collapse multiple markers into single rows"

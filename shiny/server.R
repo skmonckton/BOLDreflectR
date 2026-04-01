@@ -189,6 +189,17 @@
       if(isTRUE((input$last_blurred == "seq_min") & (input$seq_min > input$seq_max))) { updateNumericInput(inputId = "seq_min", value = input$seq_max) }
     }, ignoreInit = TRUE)
     
+    # only show NTS toggle when data contains NTS records
+    observe({
+      nts_idx <- nts_idx()
+      req(length(nts_idx) > 0)
+      if(sum(nts_idx) > 0) {
+        show('include_nts')
+      } else {
+        hide('include_nts')
+      }
+    })
+    
     # function to reset filter options
     reset_filter <- function() {
       if (!isolate(input$tabs) %in% c("data", "bin_reps", "map_tab")) {bslib::nav_select(id="tabs", selected="data")}
@@ -221,9 +232,9 @@
       for(i in seq_along(tab_status)) tab_status[[names(tab_status)[i]]] <- FALSE
       #for(t in ls(tab_status)) assign(t, FALSE, envir = tab_status)
       reset_filter()
-      bslib::update_switch("include_binmates", label = "Include additional BIN members", value = FALSE, session)
-      bslib::update_switch("include_nts", label = "Include NTS records", value = FALSE, session)
-      bslib::update_switch("collapse_mrkrs", label = "Collapse multiple markers into single rows", value = FALSE, session)
+      bslib::update_switch("include_binmates", value = FALSE)
+      bslib::update_switch("include_nts", value = FALSE)
+      bslib::update_switch("collapse_mrkrs", value = FALSE)
       updateCheckboxInput(inputId = "disc_portal", value = FALSE)
     }
     
