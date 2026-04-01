@@ -110,51 +110,27 @@ ui <- bslib::page_fillable(
                              div("Selected data package"),
                              textAreaInput( 
                                "node_id_list", 
-                               div("Identifiers:",
-                                   bslib::tooltip(
-                                     icon("circle-question"),
-                                     paste0("Comma-separated or one per line."),
-                                     id = "query_tip"))
+                               "Process IDs and/or Sample IDs:"
                              ),
                              textAreaInput( 
                                "node_tax", 
-                               div("Taxonomy:",
-                                   bslib::tooltip(
-                                     icon("circle-question"),
-                                     paste0("Comma-separated or one taxon per line, no quotes."),
-                                     id = "tax_search_tip"))
+                               "Taxonomy:"
                              ),
                              textAreaInput( 
                                "node_geo", 
-                               div("Geography:",
-                                   bslib::tooltip(
-                                     icon("circle-question"),
-                                     paste0("Comma-separated or one term per line, no quotes."),
-                                     id = "geo_search_tip"))
+                               "Geography:"
                              ),
                              textAreaInput( 
-                               "node_inst_lsit", 
-                               div("Institutes:",
-                                   bslib::tooltip(
-                                     icon("circle-question"),
-                                     paste0("Comma-separated or one per line."),
-                                     id = "query_tip"))
+                               "node_inst_list",
+                               "Institutes:"
                              ),
                              textAreaInput( 
-                               "node_ider_list", 
-                               div("Identified by:",
-                                   bslib::tooltip(
-                                     icon("circle-question"),
-                                     paste0("Comma-separated or one per line."),
-                                     id = "query_tip"))
+                               "node_ider_list",
+                               "Identified by:"
                              ),
                              textAreaInput( 
-                               "node_seqinst_list", 
-                               div("Sequence run sites:",
-                                   bslib::tooltip(
-                                     icon("circle-question"),
-                                     paste0("Comma-separated or one per line."),
-                                     id = "query_tip"))
+                               "node_seqinst_list",
+                               "Sequence run sites:"
                              ),
                              div(class="form-group shiny-input-container marker-select",
                                  div(class="control-label", "Marker:"),
@@ -174,23 +150,17 @@ ui <- bslib::page_fillable(
                                        label = "",
                                        value = NULL,
                                        min = 5, max = 2000, step = 1)),
-                                 actionButton("node_add_marker","+")
+                                 div(class="flex-div",
+                                     actionButton("node_add_marker", icon("plus")),
+                                     actionButton("node_del_marker", icon("minus")))
                              ),
                              textAreaInput( 
                                "node_biogeo_list", 
-                               div("Biome, realm, or ecoregion:",
-                                   bslib::tooltip(
-                                     icon("circle-question"),
-                                     paste0("Comma-separated or one per line."),
-                                     id = "query_tip"))
+                               "Biome, realm, or ecoregion:"
                              ),
                              textAreaInput( 
                                "node_recset_list", 
-                               div("Projects/Datasets:",
-                                   bslib::tooltip(
-                                     icon("circle-question"),
-                                     paste0("Comma-separated or one per line."),
-                                     id = "query_tip"))
+                               "Projects/Datasets:"
                              ),
                              div(class="form-group shiny-input-container", id = "node-bounding-box",
                                  div(class="control-label", "Coordinate bounding box:"),

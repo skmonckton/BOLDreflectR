@@ -149,18 +149,34 @@ input[type=number] {
   align-content: center;
 }
 
-#query_params .nav-link {
+#query_params .nav-link,
+#node_add_marker,
+#node_del_marker {
   border: 1px #007bc260 solid;
   padding: 3px 10px ;
 }
 
 #query_params .nav-item:first-child:before,
-#query_params .nav-link {
+#query_params .nav-link,
+#node_add_marker,
+#node_del_marker {
     margin: 0.1rem 0.4rem 1rem 0;
 }
 
 #query_params .nav-link:hover {
   border-color: #007bc2;
+}
+
+#node_add_marker,
+#node_del_marker {
+  border-color: #007bc2;
+  color: #007bc2;
+}
+
+#node_add_marker:hover,
+#node_del_marker:hover {
+  background-color: #007bc2;
+  color: #ffffff;
 }
 
 ::-webkit-scrollbar {

@@ -15,10 +15,32 @@
           $('.single-marker div:has(.shiny-input-number):nth-child(1 of div:has(.shiny-input-number)) .shiny-input-number').attr('placeholder', 'Min');
           $('.single-marker div:has(.shiny-input-number):nth-last-child(1 of div:has(.shiny-input-number)) .shiny-input-number').attr('placeholder', 'Max');
         }
+        
+        var lastSent = null;
+        
+        function reportValues() {
+          var vals = $('.tab-pane[data-value=\"source-local\"] .single-marker .shiny-input-select option').map(function() {
+            return $(this).val();
+          }).get();
+          var serialized = JSON.stringify(vals);
+          console.log('serialized:', serialized, 'lastSent:', lastSent);
+          if (serialized === lastSent) return;
+          lastSent = serialized;
+          Shiny.setInputValue('local_markers', vals, {priority: 'event'});
+        }
+    
         setPlaceholders();
+        reportValues();
+    
+        $(document).on('change', '.seq-value-input input', function() {
+          reportValues();
+        });
+    
         var observer = new MutationObserver(function() {
           setPlaceholders();
+          reportValues(); // re-emit when DOM changes (inputs added/removed)
         });
+    
         observer.observe(document.body, { childList: true, subtree: true });
       ")
     }, once = TRUE)
@@ -27,7 +49,7 @@
     
     # initialize object to store search parameters
     fetch_params <- reactiveValues(
-      node_markers = 1
+      n_node_markers = 1
     )
     
     init_fetch_params <- list(
@@ -85,8 +107,34 @@
     
     ### REACTIVE UI
     
+    # disable option to find additional BIN records when fetching by BIN
+    # (in this case, fetching BIN mates will always return zero records)
+    observe({
+      if((input$fetch_by == "bin_uris") & (input$query_params == "fetch_opts")) {
+        updateCheckboxInput(inputId = "fetch_binmates", value = FALSE)
+        disable("fetch_binmates")
+      } else {
+        enable("fetch_binmates")
+      }
+    })
+    
+    # conditional input logic to constrain marker search options when using API (min/max requires a marker to be selected)
+    observeEvent(input$seq_marker, {
+      if((!is.null(input$seq_marker)) & (input$seq_marker != "")) {
+        shinyjs::enable("seq_min")
+        shinyjs::enable("seq_max")
+      } else {
+        shinyjs::disable("seq_min")
+        shinyjs::disable("seq_max")
+        updateNumericInput(inputId = "seq_min", value = character())
+        updateNumericInput(inputId = "seq_max", value = character())
+      }
+    })
+    
+    # logic for multiple markers when searching local data
     observeEvent(input$node_add_marker, {
-      n <- fetch_params$n_node_markers + 1
+      i <- fetch_params$n_node_markers
+      n <- i + 1
       fetch_params$n_node_markers <- n
       insertUI(selector = '.tab-pane[data-value="source-local"] div.marker-select div.single-marker:nth-last-child(1 of .single-marker)',
                where = "afterEnd",
@@ -108,27 +156,27 @@
                           min = 5, max = 2000, step = 1)))
     })
     
-    # conditional input logic to constrain marker search options (min/max requires a marker to be selected)
-    observeEvent(input$seq_marker, {
-      if((!is.null(input$seq_marker)) & (input$seq_marker != "")) {
-        shinyjs::enable("seq_min")
-        shinyjs::enable("seq_max")
-      } else {
-        shinyjs::disable("seq_min")
-        shinyjs::disable("seq_max")
-        updateNumericInput(inputId = "seq_min", value = character())
-        updateNumericInput(inputId = "seq_max", value = character())
-      }
+    # remove marker from search
+    observeEvent(input$node_del_marker, {
+      i <- fetch_params$n_node_markers
+      req(i > 1)
+      n <- i - 1
+      fetch_params$n_node_markers <- n
+      shinyjs::runjs(paste0("Shiny.setInputValue(\"node_seq_marker_", i, "\", null);"))
+      removeUI(selector = '.tab-pane[data-value="source-local"] div.marker-select div.single-marker:nth-last-child(1 of .single-marker)',
+               immediate = TRUE)
     })
     
-    # disable option to find additional BIN records when fetching by BIN
-    # (in this case, fetching BIN mates will always return zero records)
-    observe({
-      if((input$fetch_by == "bin_uris") & (input$query_params == "fetch_opts")) {
-        updateCheckboxInput(inputId = "fetch_binmates", value = FALSE)
-        disable("fetch_binmates")
-      } else {
-        enable("fetch_binmates")
+    # update select inputs to permit only one input per marker
+    observeEvent(input$local_markers, {
+      selected <- input$local_markers
+      for(i in 1:isolate(fetch_params$n_node_markers)) {
+        marker_i <- input[[paste0("node_seq_marker_", i)]]
+        update_opts <- lapply(marker_options, function(m) m[!m %in% c(setdiff(selected, marker_i))])
+        updateSelectInput(session,
+                          paste0("node_seq_marker_", i),
+                          choices = update_opts,
+                          selected = ifelse(is.null(marker_i), "", marker_i))
       }
     })
     
