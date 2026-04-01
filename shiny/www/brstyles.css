@@ -67,6 +67,14 @@ a#del_filter_btn {
   height: 2.5rem;
 }
 
+.accordion-item[data-value="fetchdata"] .accordion-body {
+  padding-top: 0;
+}
+
+.accordion-item[data-value="fetchdata"] ul.nav-tabs {
+  margin-bottom: 1rem;
+}
+
 .flex-div .form-check {
   margin-bottom: 0;
 }
@@ -75,35 +83,35 @@ a#del_filter_btn {
   display: inline;
 }
 
-#marker-select > .form-group.shiny-input-container {
+.marker-select > .form-group.shiny-input-container {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 5px;
 }
 
-#marker-select > .form-group.shiny-input-container div:first-child {
+.marker-select > .form-group.shiny-input-container div:first-child {
   flex-grow: 1;
 }
 
-#marker-select > .form-group.shiny-input-container .form-group {
+.marker-select > .form-group.shiny-input-container .form-group {
   margin-bottom: 0;
 }
 
-#marker-select label {
+.marker-select label {
   display: none;
 }
 
-#marker-select #seq_max,
-#marker-select #seq_min {
+.marker-select #seq_max,
+.marker-select #seq_min {
   padding-left: 0.4rem;
   padding-right: 0.4rem;
 }
 
-#marker-select input#seq_max::-webkit-inner-spin-button,
-#marker-select input#seq_max::-webkit-outer-spin-button,
-#marker-select input#seq_min::-webkit-inner-spin-button,
-#marker-select input#seq_min::-webkit-outer-spin-button {
+.marker-select input#seq_max::-webkit-inner-spin-button,
+.marker-select input#seq_max::-webkit-outer-spin-button,
+.marker-select input#seq_min::-webkit-inner-spin-button,
+.marker-select input#seq_min::-webkit-outer-spin-button {
   margin-left: 0.4rem;
 }
 

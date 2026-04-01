@@ -32,77 +32,187 @@ ui <- bslib::page_fillable(
           value="fetchdata",
           "Get data",
           icon = bsicons::bs_icon("cloud-arrow-down"),
-          passwordInput( 
-            "api_key", 
-            div("BOLD API key:",
-                bslib::tooltip(
-                  icon("circle-question"),
-                  paste0("The API key is saved to your system's credential store (",keystore,") when the 'Get data' button is pressed."),
-                  id = "api_key_tip")),
-            value = tryCatch({
-              key_get("BOLD.apikey")
-            }, error = function(e){
-              ""
-            })
-          ),
-          bslib::navset_pill( 
-            id="query_params",
-            bslib::nav_panel(value="fetch_opts",
-                      "Fetch",
-                      selectInput("fetch_by",
-                                  "Parameter to fetch by:",
-                                  list("Process ID" = "processid",
-                                       "Sample ID" = "sampleid",
-                                       "BIN" = "bin_uris",
-                                       "Dataset codes" = "dataset_codes",
-                                       "Project codes" = "project_codes"
-                                  )
-                      ),
-                      textAreaInput( 
-                        "fetch_id_list", 
-                        div("Identifiers:",
+          bslib::navset_tab( 
+            bslib::nav_panel("BOLD Data API", value = "source-api",
+                      passwordInput( 
+                        "api_key", 
+                        div("BOLD API key:",
                             bslib::tooltip(
                               icon("circle-question"),
-                              paste0("Comma-separated or one per line."),
-                              id = "query_tip"))
+                              paste0("The API key is saved to your system's credential store (",keystore,") when the 'Get data' button is pressed."),
+                              id = "api_key_tip")),
+                        value = tryCatch({
+                          key_get("BOLD.apikey")
+                        }, error = function(e){
+                          ""
+                        })
+                      ),
+                      bslib::navset_pill( 
+                        id="query_params",
+                        bslib::nav_panel(value="fetch_opts",
+                                         "Fetch",
+                                         selectInput("fetch_by",
+                                                     "Parameter to fetch by:",
+                                                     list("Process ID" = "processid",
+                                                          "Sample ID" = "sampleid",
+                                                          "BIN" = "bin_uris",
+                                                          "Dataset codes" = "dataset_codes",
+                                                          "Project codes" = "project_codes"
+                                                     )
+                                         ),
+                                         textAreaInput( 
+                                           "fetch_id_list", 
+                                           div("Identifiers:",
+                                               bslib::tooltip(
+                                                 icon("circle-question"),
+                                                 paste0("Comma-separated or one per line."),
+                                                 id = "query_tip"))
+                                         )), 
+                        bslib::nav_panel(value="search_opts",
+                                         "Full search",
+                                         textAreaInput( 
+                                           "search_tax", 
+                                           div("Taxonomy:",
+                                               bslib::tooltip(
+                                                 icon("circle-question"),
+                                                 paste0("Comma-separated or one taxon per line, no quotes."),
+                                                 id = "tax_search_tip"))
+                                         ),
+                                         textAreaInput( 
+                                           "search_geo", 
+                                           div("Geography:",
+                                               bslib::tooltip(
+                                                 icon("circle-question"),
+                                                 paste0("Comma-separated or one term per line, no quotes."),
+                                                 id = "geo_search_tip"))
+                                         ),
+                                         div(class="form-group shiny-input-container marker-select",
+                                             div(class="control-label", "Marker:"),
+                                             div(class="form-group shiny-input-container single-marker",
+                                                 selectInput(
+                                                   "seq_marker",
+                                                   label = "",
+                                                   selected = "",
+                                                   marker_options),
+                                                 numericInput(
+                                                   "seq_min",
+                                                   label = "",
+                                                   value = NULL,
+                                                   min = 5, max = 2000, step = 1),
+                                                 numericInput(
+                                                   "seq_max",
+                                                   label = "",
+                                                   value = NULL,
+                                                   min = 5, max = 2000, step = 1))
+                                         ))
                       )), 
-            bslib::nav_panel(value="search_opts",
-                      "Full search",
-                      textAreaInput( 
-                        "search_tax", 
-                        div("Taxonomy:",
-                            bslib::tooltip(
-                              icon("circle-question"),
-                              paste0("Comma-separated or one taxon per line, no quotes."),
-                              id = "tax_search_tip"))
-                      ),
-                      textAreaInput( 
-                        "search_geo", 
-                        div("Geography:",
-                            bslib::tooltip(
-                              icon("circle-question"),
-                              paste0("Comma-separated or one term per line, no quotes."),
-                              id = "geo_search_tip"))
-                      ),
-                      div(class="form-group shiny-input-container", id = "marker-select",
-                          div(class="control-label", "Marker:"),
-                          div(class="form-group shiny-input-container",
-                            selectInput(
-                              "seq_marker",
-                              label = "",
-                              selected = "",
-                              marker_options),
-                            numericInput(
-                              "seq_min",
-                              label = "",
-                              value = NULL,
-                              min = 5, max = 2000, step = 1),
-                            numericInput(
-                              "seq_max",
-                              label = "",
-                              value = NULL,
-                              min = 5, max = 2000, step = 1))
-                      ))
+            bslib::nav_panel("Local data package", value = "source-local",
+                             div("Selected data package"),
+                             textAreaInput( 
+                               "node_id_list", 
+                               div("Identifiers:",
+                                   bslib::tooltip(
+                                     icon("circle-question"),
+                                     paste0("Comma-separated or one per line."),
+                                     id = "query_tip"))
+                             ),
+                             textAreaInput( 
+                               "node_tax", 
+                               div("Taxonomy:",
+                                   bslib::tooltip(
+                                     icon("circle-question"),
+                                     paste0("Comma-separated or one taxon per line, no quotes."),
+                                     id = "tax_search_tip"))
+                             ),
+                             textAreaInput( 
+                               "node_geo", 
+                               div("Geography:",
+                                   bslib::tooltip(
+                                     icon("circle-question"),
+                                     paste0("Comma-separated or one term per line, no quotes."),
+                                     id = "geo_search_tip"))
+                             ),
+                             textAreaInput( 
+                               "node_inst_lsit", 
+                               div("Institutes:",
+                                   bslib::tooltip(
+                                     icon("circle-question"),
+                                     paste0("Comma-separated or one per line."),
+                                     id = "query_tip"))
+                             ),
+                             textAreaInput( 
+                               "node_ider_list", 
+                               div("Identified by:",
+                                   bslib::tooltip(
+                                     icon("circle-question"),
+                                     paste0("Comma-separated or one per line."),
+                                     id = "query_tip"))
+                             ),
+                             textAreaInput( 
+                               "node_seqinst_list", 
+                               div("Sequence run sites:",
+                                   bslib::tooltip(
+                                     icon("circle-question"),
+                                     paste0("Comma-separated or one per line."),
+                                     id = "query_tip"))
+                             ),
+                             div(class="form-group shiny-input-container marker-select",
+                                 div(class="control-label", "Marker:"),
+                                 div(class="form-group shiny-input-container single-marker",
+                                     selectInput(
+                                       "node_seq_marker_1",
+                                       label = "",
+                                       selected = "",
+                                       marker_options),
+                                     numericInput(
+                                       "node_seq_min_1",
+                                       label = "",
+                                       value = NULL,
+                                       min = 5, max = 2000, step = 1),
+                                     numericInput(
+                                       "node_seq_max_1",
+                                       label = "",
+                                       value = NULL,
+                                       min = 5, max = 2000, step = 1)),
+                                 actionButton("node_add_marker","+")
+                             ),
+                             textAreaInput( 
+                               "node_biogeo_list", 
+                               div("Biome, realm, or ecoregion:",
+                                   bslib::tooltip(
+                                     icon("circle-question"),
+                                     paste0("Comma-separated or one per line."),
+                                     id = "query_tip"))
+                             ),
+                             textAreaInput( 
+                               "node_recset_list", 
+                               div("Projects/Datasets:",
+                                   bslib::tooltip(
+                                     icon("circle-question"),
+                                     paste0("Comma-separated or one per line."),
+                                     id = "query_tip"))
+                             ),
+                             div(class="form-group shiny-input-container", id = "node-bounding-box",
+                                 div(class="control-label", "Coordinate bounding box:"),
+                                 div(class="form-group shiny-input-container",
+                                     sliderInput(
+                                       "node-lon-range", "Longitude range:",
+                                       min = -180, max = 180,
+                                       step = 0.01,
+                                       ticks = FALSE,
+                                       post = "°",
+                                       value = c(-180, 180) 
+                                     ),
+                                     sliderInput(
+                                       "node-lat-range", "Latitude range:",
+                                       min = -90, max = 90,
+                                       step = 0.01,
+                                       ticks = FALSE,
+                                       post = "°",
+                                       value = c(-90, 90) 
+                                     ),
+                                     actionButton("reset-bounding-box", "Reset")))
+                             )
           ),
           checkboxInput(
             "fetch_binmates",

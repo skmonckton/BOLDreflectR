@@ -5,22 +5,38 @@
     })
     
     # some manual JavaScript for placeholder values
+    # session$onFlushed(function() {
+    #   shinyjs::runjs("$('#seq_min').attr('placeholder', 'Min');
+    #                   $('#seq_max').attr('placeholder', 'Max');")
+    # }, once = TRUE)
     session$onFlushed(function() {
-      shinyjs::runjs("$('#seq_min').attr('placeholder', 'Min');
-                  $('#seq_max').attr('placeholder', 'Max');")
+      shinyjs::runjs("
+        function setPlaceholders() {
+          $('.single-marker div:has(.shiny-input-number):nth-child(1 of div:has(.shiny-input-number)) .shiny-input-number').attr('placeholder', 'Min');
+          $('.single-marker div:has(.shiny-input-number):nth-last-child(1 of div:has(.shiny-input-number)) .shiny-input-number').attr('placeholder', 'Max');
+        }
+        setPlaceholders();
+        var observer = new MutationObserver(function() {
+          setPlaceholders();
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      ")
     }, once = TRUE)
     
     ### SETUP
     
     # initialize object to store search parameters
-    fetch_params <- reactiveValues()
+    fetch_params <- reactiveValues(
+      node_markers = 1
+    )
     
     init_fetch_params <- list(
       fetch_ids = NULL,
       fetch_by = NULL,
       search_token = NULL,
       binmates_checked = FALSE,
-      binmates_fetched = FALSE
+      binmates_fetched = FALSE,
+      n_node_markers = 1
     )
     
     # initialize object to store fetched records and associated data
@@ -68,6 +84,29 @@
     }
     
     ### REACTIVE UI
+    
+    observeEvent(input$node_add_marker, {
+      n <- fetch_params$n_node_markers + 1
+      fetch_params$n_node_markers <- n
+      insertUI(selector = '.tab-pane[data-value="source-local"] div.marker-select div.single-marker:nth-last-child(1 of .single-marker)',
+               where = "afterEnd",
+               ui = div(class="form-group shiny-input-container single-marker",
+                        selectInput(
+                          paste0("node_seq_marker_",n),
+                          label = "",
+                          selected = "",
+                          marker_options),
+                        numericInput(
+                          paste0("node_seq_max_",n),
+                          label = "",
+                          value = NULL,
+                          min = 5, max = 2000, step = 1),
+                        numericInput(
+                          paste0("node_seq_max_",n),
+                          label = "",
+                          value = NULL,
+                          min = 5, max = 2000, step = 1)))
+    })
     
     # conditional input logic to constrain marker search options (min/max requires a marker to be selected)
     observeEvent(input$seq_marker, {
