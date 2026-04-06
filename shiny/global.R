@@ -11,8 +11,16 @@ library(shinyjs)
 library(writexl)
 library(yaml)
 
+library(duckdb)
+library(dplyr)
+library(DBI)
+library(dbplyr)
+library(tidyr)
+library(sf)
+
 source("R/tctools.R")
 source("R/bold.full.search.two.step.R")
+for(s in list.files("R/node/", full.names = TRUE)) source(s)
 
 keystore <- switch(Sys.info()['sysname'],
                   Windows = "Windows Credential Manager",
@@ -20,8 +28,8 @@ keystore <- switch(Sys.info()['sysname'],
                   Linux = "Linux Secret Service")
 
 # in the packaged app, these values are passed in during start-up by electron
-ver <- Sys.getenv("APP_VER")
-user_data_path <- ifelse(Sys.getenv("USER_DATA_PATH") != "", Sys.getenv("USER_DATA_PATH"), "data/")
+ver <- ifelse(Sys.getenv("APP_VER") != "", Sys.getenv("APP_VER"), jsonlite::read_json("../package.json")$version)
+user_data_path <- ifelse(Sys.getenv("USER_DATA_PATH") != "", Sys.getenv("USER_DATA_PATH"), "user_data")
 
 # initialize user_config file in user data directory
 # (currently only for custom field sets)
@@ -62,10 +70,37 @@ marker_options <- list(" " = "",
                        Primary = stats::setNames(config$markercodes$major, config$markercodes$major),
                        Other = stats::setNames(config$markercodes$other, config$markercodes$other))
 
+# datapkgs <- user_config$datapackages
+
+update_datapackages <- function() {
+  datapkgs <- data.table(file.info(list.files(path = file.path(user_data_path, "BOLD_data_packages"), full.names = TRUE))[c("size", "ctime")],
+                         keep.rownames = TRUE)[, .(id = tools::file_path_sans_ext(basename(rn)),
+                                                   path = rn, size_kb = format(size, scientific = FALSE),
+                                                   created = format(ctime, "%Y-%m-%d"))]
+  user_config[["datapackages"]] <- apply(datapkgs, 1, as.list)
+  write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+  return(datapkgs)
+}
+
+datapkgs <- update_datapackages()
+
+# datapkgs <- rbindlist(list(datapkgs, datapkgs))
+
+#datapkgs <- data.table(do.call(unlist(cbind), user_config[["datapackages"]]))
+
+#datapkgs <- rbindlist(user_config[["datapackages"]])
+
+#if(nrow(datapkgs) > 0) datapkgs <- datapkgs[, .(id, path, size_kb = as.numeric(size_kb), created = as.Date(created, format = "%Y-%m-%d"))]
+
 # copy to clipboard with size limit
 cb <- function(df, header=TRUE, sep="\t", max.size=(200*1000)){
   write.table(df, paste0("clipboard-", formatC(max.size, format="f", digits=0)), sep=sep, col.names=header, row.names=FALSE, quote=FALSE, na="NA")
   showNotification(paste0("Copied to clipboard."), type = "message", id = "copy_msg")
+}
+
+# convenience function to check for NA or ""
+empty <- function(x) {
+  (is.na(x) | (x == ""))
 }
 
 # assemble FASTA and copy to clipboard
@@ -122,6 +157,38 @@ split_query <- function(query_input, list = FALSE) {
       terms
     }
   }
+}
+
+# save or delete local data packages
+modify_datapackage <- function(dtpkg, operation = "save") {
+  if(operation == "save") {
+    outdir <- file.path(user_data_path, "BOLD_data_packages")
+    if (!dir.exists(outdir)) {
+      dir.create(outdir, recursive = TRUE)
+    }
+    save_id <- tools::file_path_sans_ext(basename(dtpkg))
+    save_path <- file.path(outdir, basename(dtpkg))
+    if(save_id %in% datapkgs$id) {
+      showNotification("There is already a data package with this ID. If you wish to overwrite the existing file, please delete it first.", id = "fileio", type = "error")
+    } else {
+      file.copy(dtpkg, save_path)
+      datapkg <- data.table(file.info(dtpkg)[c("size", "ctime")],
+                            keep.rownames = TRUE)[, .(id = save_id, path = save_path,
+                                                      size_kb = format(size, scientific = FALSE),
+                                                      created = format(ctime, "%Y-%m-%d"))]
+      datapkgs <<- rbindlist(list(datapkgs, datapkg))
+      user_config[["datapackages"]] <- apply(datapkgs, 1, as.list)
+      write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+      showNotification("Data package saved!", id = "fileio", type = "message")
+    }
+  } else if(operation == "delete") {
+    del_path <- datapkgs[id == dtpkg, path]
+    datapkgs <<- datapkgs[id != dtpkg]
+    user_config[["datapackages"]] <- apply(datapkgs, 1, as.list)
+    file.remove(del_path)
+    write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+  }
+  invisible(datapkgs)
 }
 
 # save or delete user field sets
@@ -196,7 +263,7 @@ collapse_markers <- function(data) {
 
 # decompose recordset column into a list of dataset or project codes
 list_recordsets <- function(data, set_type, list_by) {
-  recordsets <- data[, .(set = unique(unlist(strsplit(bold_recordset_code_arr, ",")))), by = list_by] 
+  recordsets <- data[, .(set = unique(trimws(unlist(strsplit(gsub("\\'|\\[|\\]", "", bold_recordset_code_arr), ","))))), by = list_by] 
   if(set_type == "parse_project") {
     merge(data[, list_by, with = FALSE], unique(recordsets[!grepl("^DS-|^DATASET", set), c(list_by, "set"), with = FALSE]), all.x = TRUE, by = list_by)[, set]
   } else if(set_type == "projects") {
@@ -232,16 +299,32 @@ summarize_table <- function(data, sum_type, list_by) {
 
 # extracts identification dates from taxonomy_notes
 parse_id_date <- function(data) {
-  str_match <- function(x, pat) regmatches(x, gregexpr(pat, x, perl=TRUE), invert = NA)
-  id_date_verb <- lubridate::my(sapply(str_match(data$specimendetails.verbatim_identification_method, "(?<=\\()[A-Za-z]{3,9} [0-9]{2,4}(?=\\))"), `[`, 2))
-  id_date_note <- lubridate::my(sapply(str_match(data$taxonomy_notes, "(?<=id-date:\\s?)[A-Za-z]{3,9} [0-9]{2,4}"), `[`, 2))
-  id_date <-  format(as.Date(do.call(pmax, c(data.table(id_date_verb,id_date_note), na.rm = TRUE)), format = "%Y-%m-%d"), format = "%b %Y")              
+  string_match <- function(x, pat) regmatches(x, gregexpr(pat, x, perl=TRUE), invert = NA)
+  id_date_verb <- if("specimendetails.verbatim_identification_method" %in% names(data)) {
+    lubridate::my(sapply(string_match(data$specimendetails.verbatim_identification_method, "(?<=\\()[A-Za-z]{3,9} [0-9]{2,4}(?=\\))"), `[`, 2))
+  } else {
+    NULL
+  }
+  id_date_note <- lubridate::my(sapply(string_match(data$taxonomy_notes, "(?<=id-date:\\s?)[A-Za-z]{3,9} [0-9]{2,4}"), `[`, 2))
+  id_date <- format(as.Date(do.call(pmax, c(data.table(id_date_verb,id_date_note), na.rm = TRUE)), format = "%Y-%m-%d"), format = "%b %Y")
   return(id_date)
 }
 
+# parse_id_date <- function(data) {
+#   str_match <- function(x, pat) regmatches(x, gregexpr(pat, x, perl=TRUE), invert = NA)
+#   id_date_verb <- lubridate::my(sapply(str_match(data$specimendetails.verbatim_identification_method, "(?<=\\()[A-Za-z]{3,9} [0-9]{2,4}(?=\\))"), `[`, 2))
+#   id_date_note <- lubridate::my(sapply(str_match(data$taxonomy_notes, "(?<=id-date:\\s?)[A-Za-z]{3,9} [0-9]{2,4}"), `[`, 2))
+#   id_date <-  format(as.Date(do.call(pmax, c(data.table(id_date_verb,id_date_note), na.rm = TRUE)), format = "%Y-%m-%d"), format = "%b %Y")
+#   return(id_date)
+# }
+
 # extracts lats and longs from the BCDM coord column
 parse_lat_lon <- function(coord) {
-  lapply(tstrsplit(coord, ",", fixed = TRUE), as.numeric)
+  if(all(is.na(coord))) {
+    list(rep(as.numeric(NA), length(coord)), rep(as.numeric(NA), length(coord)))
+  } else {
+    lapply(tstrsplit(gsub("\\[|\\]|\\s", "", coord), ",", fixed = TRUE), as.numeric)
+  }
 }
 
 # rounds to a multiple, with optional offset (e.g. to account for reading frame)
@@ -279,17 +362,17 @@ get_bin_reps <- function(df) {
   
 }
 
+clean_ansi <- function(x) {
+  gsub("\033\\[[0-9;]*[mK]", "", x)
+}
+
 # wrapper to prepare BOLD fetch/search queries and prepare messages as notifications
 # (note: was intended to handle both fetch and search, but I haven't harmonized the two yet)
 bold.fetch.shiny <- function (get_by,
                               query,
                               BCDM_only = FALSE,
                               notification_id = "fetch_msg") {
-  
-  clean_ansi <- function(x) {
-    gsub("\033\\[[0-9;]*[mK]", "", x)
-  }
-  
+
   tryCatch({
     withCallingHandlers({
       if(get_by == "search") {

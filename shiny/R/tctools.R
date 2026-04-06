@@ -1,74 +1,75 @@
 re_int <- "\\.\\Z|\\S{2,}\\.\\S|[0-9]|\\s[A-Z]|[A-Z]\\Z|[A-Z]{2}|[a-z][A-Z]|_(?!(hn|sl|ss)\\Z)|%|\\?|!|\\[|\\]|\\{|\\}|\\(|\\)|,|\\s(?:aff|agg|cf|complex|group|grp|gr|gp|cmplx|pr|ms|cfr|nr|nsp|near|nomen|hybrid|voucher|form|from|ss|ssl|see|spp?|sample)\\.?(?:\\s|\\Z)"
 
-bold.fetch.plus <- function(get_by, identifiers, cols = NULL, BCDM_only = TRUE, 
-    export = NULL, na.rm = FALSE, filt_taxonomy = NULL, filt_geography = NULL, 
-    filt_latitude = NULL, filt_longitude = NULL, filt_shapefile = NULL, 
-    filt_institutes = NULL, filt_identified.by = NULL, filt_seq_source = NULL, 
-    filt_marker = NULL, filt_collection_period = NULL, filt_basecount = NULL, 
-    filt_altitude = NULL, filt_depth = NULL) 
+bold.fetch.plus <- function (get_by, identifiers, cols = NULL, BCDM_only=TRUE, export = NULL,
+                             na.rm = FALSE, filt_taxonomy = NULL, filt_geography = NULL,
+                             filt_latitude = NULL, filt_longitude = NULL, filt_shapefile = NULL,
+                             filt_institutes = NULL, filt_identified.by = NULL, filt_seq_source = NULL,
+                             filt_marker = NULL, filt_collection_period = NULL, filt_basecount = NULL,
+                             filt_altitude = NULL, filt_depth = NULL)
 {
+  stopifnot(nrow(identifiers) > 0)
   
-    stopifnot(nrow(identifiers) > 0)
-    if (nchar(Sys.getenv("api_key")) == 0) {
-        message("No API key in memory; checking system keystore...")
-        suppressPackageStartupMessages(BOLDconnectR::bold.apikey(get_apikey()))
-        message("BOLD API key set. Proceeding with fetch...")
+  if(nchar(Sys.getenv("api_key")) == 0) {
+    message("No API key in memory; checking system keystore...")
+    suppressPackageStartupMessages(BOLDconnectR::bold.apikey(get_apikey()))
+    message("BOLD API key set. Proceeding with fetch...")
+  }
+  
+  input_data = data.frame(col1 = base::unique(identifiers))
+  names(input_data)[names(input_data) == "col1"] <- get_by
+  switch(get_by, processid = , sampleid = {
+    if (!nrow(input_data) > 0) stop("Please re-check the data provided in the identifiers argument.")
+    json.df = suppressPackageStartupMessages(BOLDconnectR:::fetch.bold.id(data.input = input_data, query_param = get_by))
+  }, dataset_codes = , project_codes = , bin_uris = {
+    if (!nrow(input_data) > 0) stop("Please re-check the data provided in the identifiers argument.")
+    tryCatch({
+      processids = suppressPackageStartupMessages(BOLDconnectR:::get.bin.dataset.project.pids(data.input = input_data, query_param = get_by))
+    }, error = function(msg) {
+      stop("No records were found matching the provided identifiers.")
+    })
+    processids = suppressPackageStartupMessages(BOLDconnectR:::get.bin.dataset.project.pids(data.input = input_data, query_param = get_by))
+    json.df = BOLDconnectR:::fetch.bold.id(data.input = processids, query_param = "processid")
+  }, stop("Input params can only be processid, sampleid, dataset_codes, project_codes, or bin_uris."))
+  if (BCDM_only) json.df = json.df[, intersect(names(json.df), BOLDconnectR::bold.fields.info()[["field"]])]
+  json.df = BOLDconnectR:::bold.fetch.filters(bold.df = json.df, taxon.name = filt_taxonomy,
+                                              location.name = filt_geography, latitude = filt_latitude,
+                                              longitude = filt_longitude, shapefile = filt_shapefile,
+                                              institutes = filt_institutes, identified.by = filt_identified.by,
+                                              seq.source = filt_seq_source, marker = filt_marker, collection.period = filt_collection_period,
+                                              basecount = filt_basecount, altitude = filt_altitude,
+                                              depth = filt_depth)
+  if (!is.null(cols)) {
+    bold_field_data = BOLDconnectR::bold.fields.info(print.output = F) %>%
+      dplyr::select(dplyr::all_of("field"))
+    if (!all(cols %in% bold_field_data[["field"]]))
+      stop("Names provided in the 'cols' argument must match with the names in the 'field' column that is available using the bold.fields.info function.")
+    json.df = json.df %>% dplyr::select(dplyr::all_of(cols))
+  }
+  if (na.rm) {
+    json.df = tidyr::drop_na(json.df)
+  }
+  if (!is.null(export)) {
+    if (!grepl("[/\\\\]", export)) {
+      export <- file.path(getwd(), export)
     }
-    input_data = data.frame(col1 = base::unique(identifiers))
-    names(input_data)[names(input_data) == "col1"] <- get_by
-    switch(get_by, processid = , sampleid = {
-        if (!nrow(input_data) > 0) stop("Please re-check the data provided in the identifiers argument.")
-        json.df = suppressPackageStartupMessages(BOLDconnectR:::fetch.bold.id(data.input = input_data, 
-            query_param = get_by))
-    }, dataset_codes = , project_codes = , bin_uris = {
-        if (!nrow(input_data) > 0) stop("Please re-check the data provided in the identifiers argument.")
-        processids = suppressPackageStartupMessages(BOLDconnectR:::get.bin.dataset.project.pids(data.input = input_data, 
-            query_param = get_by))
-        json.df = BOLDconnectR:::fetch.bold.id(data.input = processids, 
-            query_param = "processid")
-    }, stop("Input params can only be processid, sampleid, dataset_codes, project_codes, or bin_uris."))
-    if (BCDM_only) 
-        json.df = json.df[, intersect(names(json.df), BOLDconnectR::bold.fields.info()[["field"]])]
-    json.df = BOLDconnectR:::bold.fetch.filters(bold.df = json.df, 
-        taxon.name = filt_taxonomy, location.name = filt_geography, 
-        latitude = filt_latitude, longitude = filt_longitude, 
-        shapefile = filt_shapefile, institutes = filt_institutes, 
-        identified.by = filt_identified.by, seq.source = filt_seq_source, 
-        marker = filt_marker, collection.period = filt_collection_period, 
-        basecount = filt_basecount, altitude = filt_altitude, 
-        depth = filt_depth)
-    if (!is.null(cols)) {
-        bold_field_data = BOLDconnectR::bold.fields.info(print.output = F) %>% 
-            dplyr::select(dplyr::all_of("field"))
-        if (!all(cols %in% bold_field_data[["field"]])) 
-            stop("Names provided in the 'cols' argument must match with the names in the 'field' column that is available using the bold.fields.info function.")
-        json.df = json.df %>% dplyr::select(dplyr::all_of(cols))
+    file.type <- if (grepl("\\.csv$", export, ignore.case = TRUE)) {
+      "csv"
     }
-    if (na.rm) {
-        json.df = tidyr::drop_na(json.df)
+    else if (grepl("\\.tsv$", export, ignore.case = TRUE)) {
+      "tsv"
     }
-    if (!is.null(export)) {
-        if (!grepl("[/\\\\]", export)) {
-            export <- file.path(getwd(), export)
-        }
-        file.type <- if (grepl("\\.csv$", export, ignore.case = TRUE)) {
-            "csv"
-        }
-        else if (grepl("\\.tsv$", export, ignore.case = TRUE)) {
-            "tsv"
-        }
-        else {
-            stop("Unsupported file type. Please provide a valid '.csv' or '.tsv' filename.")
-        }
-        switch(file.type, csv = {
-            utils::write.table(json.df, export, sep = ",", row.names = FALSE, 
-                quote = FALSE)
-        }, tsv = {
-            utils::write.table(json.df, export, sep = "\t", row.names = FALSE, 
-                quote = FALSE)
-        })
+    else {
+      stop("Unsupported file type. Please provide a valid '.csv' or '.tsv' filename.")
     }
-    return(json.df)
+    switch(file.type, csv = {
+      utils::write.table(json.df, export, sep = ",", row.names = FALSE,
+                         quote = FALSE)
+    }, tsv = {
+      utils::write.table(json.df, export, sep = "\t", row.names = FALSE,
+                         quote = FALSE)
+    })
+  }
+  return(json.df)
 }
 
 get_bin_consensus <- function(df, ranks = c("kingdom", "phylum", "class", "order", 

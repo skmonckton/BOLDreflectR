@@ -3,12 +3,10 @@
     session$onSessionEnded(function() {
       stopApp()
     })
+
+    bslib::accordion_panel_close("more_opts", "Additional fields")
     
-    # some manual JavaScript for placeholder values
-    # session$onFlushed(function() {
-    #   shinyjs::runjs("$('#seq_min').attr('placeholder', 'Min');
-    #                   $('#seq_max').attr('placeholder', 'Max');")
-    # }, once = TRUE)
+    # some manual JavaScript for placeholder values and multiple marker search
     session$onFlushed(function() {
       shinyjs::runjs("
         function setPlaceholders() {
@@ -26,9 +24,9 @@
           console.log('serialized:', serialized, 'lastSent:', lastSent);
           if (serialized === lastSent) return;
           lastSent = serialized;
-          Shiny.setInputValue('local_markers', vals, {priority: 'event'});
+          Shiny.setInputValue('node_markers', vals, {priority: 'event'});
         }
-    
+        
         setPlaceholders();
         reportValues();
     
@@ -58,7 +56,8 @@
       search_token = NULL,
       binmates_checked = FALSE,
       binmates_fetched = FALSE,
-      n_node_markers = 1
+      n_node_markers = 1,
+      node_result = NULL
     )
     
     # initialize object to store fetched records and associated data
@@ -79,13 +78,6 @@
       bin_portal_stats = NULL)
     
     # keep track of output tabs
-    # tab_status <- new.env(parent = emptyenv())
-    # tab_status$summary <- FALSE
-    # tab_status$bin_reps <- FALSE
-    # tab_status$consensus_tab <- FALSE
-    # tab_status$discordance_tab <- FALSE
-    # tab_status$map_tab <- FALSE
-    
     tab_status <- reactiveValues(
       data = FALSE,
       summary = FALSE,
@@ -140,17 +132,17 @@
                where = "afterEnd",
                ui = div(class="form-group shiny-input-container single-marker",
                         selectInput(
-                          paste0("node_seq_marker_",n),
+                          paste0("node_seq_marker_", n),
                           label = "",
                           selected = "",
                           marker_options),
                         numericInput(
-                          paste0("node_seq_max_",n),
+                          paste0("node_seq_min_", n),
                           label = "",
                           value = NULL,
                           min = 5, max = 2000, step = 1),
                         numericInput(
-                          paste0("node_seq_max_",n),
+                          paste0("node_seq_max_", n),
                           label = "",
                           value = NULL,
                           min = 5, max = 2000, step = 1)))
@@ -168,8 +160,8 @@
     })
     
     # update select inputs to permit only one input per marker
-    observeEvent(input$local_markers, {
-      selected <- input$local_markers
+    observeEvent(input$node_markers, {
+      selected <- input$node_markers
       for(i in 1:isolate(fetch_params$n_node_markers)) {
         marker_i <- input[[paste0("node_seq_marker_", i)]]
         update_opts <- lapply(marker_options, function(m) m[!m %in% c(setdiff(selected, marker_i))])
@@ -182,12 +174,87 @@
     
     # automatically update min/max marker length to avoid impossible ranges
     observeEvent(input$last_blurred, {
-      value <- input[[input$last_blurred]]
-      if(isTRUE(value < 5)) { updateNumericInput(inputId = input$last_blurred, value = 5) }
-      if(isTRUE(value > 2000)) { updateNumericInput(inputId = input$last_blurred, value = 2000) }
-      if(isTRUE((input$last_blurred == "seq_max") & (input$seq_max < input$seq_min))) { updateNumericInput(inputId = "seq_max", value = input$seq_min) }
-      if(isTRUE((input$last_blurred == "seq_min") & (input$seq_min > input$seq_max))) { updateNumericInput(inputId = "seq_min", value = input$seq_max) }
+      id <- input$last_blurred
+      value <- input[[id]]
+      
+      is_min <- grepl("_min", id)
+      is_max <- grepl("_max", id)
+      sibling_id <- if (is_min) sub("_min", "_max", id) else sub("_max", "_min", id)
+      sibling_value <- input[[sibling_id]]
+      
+      val_range <- fcase(grepl("seq", id), list(c(5, 2000)))
+      
+      if(isTRUE(value < val_range[[1]][1])) updateNumericInput(inputId = id, value = val_range[[1]][1])
+      if(isTRUE(value > val_range[[1]][2])) updateNumericInput(inputId = id, value = val_range[[1]][2])
+      if(isTRUE(is_max && value < sibling_value)) updateNumericInput(inputId = id, value = sibling_value)
+      if(isTRUE(is_min && value > sibling_value)) updateNumericInput(inputId = id, value = sibling_value)
     }, ignoreInit = TRUE)
+    
+    # keep coordinate ranges and manual inputs synchronized (and visually indicate "default" state to imply it will be ignored)
+    observeEvent(input$node_lon_range, {
+      range <- input$node_lon_range
+      updateNumericInput(session, "node_lon_min", value = range[1])
+      updateNumericInput(session, "node_lon_max", value = range[2])
+      if(all(range == c(-180, 180))) {
+        shinyjs::addClass(selector = ".coord-range:has(#node_lon_range)", class = "dim-input")
+      } else {
+        shinyjs::removeClass(selector = ".coord-range:has(#node_lon_range)", class = "dim-input")
+      }
+    })
+    observeEvent(input$node_lat_range, {
+      range <- input$node_lat_range
+      updateNumericInput(session, "node_lat_min", value = range[1])
+      updateNumericInput(session, "node_lat_max", value = range[2])
+      if(all(range == c(-90, 90))) {
+        shinyjs::addClass(selector = ".coord-range:has(#node_lat_range)", class = "dim-input")
+      } else {
+        shinyjs::removeClass(selector = ".coord-range:has(#node_lat_range)", class = "dim-input")
+      }
+    })
+    lon_range_man <- debounce(reactive(c(input$node_lon_min, input$node_lon_max)), 800)
+    observeEvent(lon_range_man(), {
+      freezeReactiveValue(input, "node_lon_range")
+      updateSliderInput(session, "node_lon_range", value = lon_range_man())
+    })
+    lat_range_man <- debounce(reactive(c(input$node_lat_min, input$node_lat_max)), 800)
+    observeEvent(lat_range_man(), {
+      freezeReactiveValue(input, "node_lat_range")
+      updateSliderInput(session, "node_lat_range", value = lat_range_man())
+    })
+    
+    # reactively assemble node search query
+    node_query <- reactiveVal()
+    
+    observe({
+      n_node_markers <- fetch_params$n_node_markers
+      node_query <- list(
+        ids = split_query(input$node_id_list),
+        dataset.projects = split_query(input$node_recset_list),
+        taxonomy = split_query(input$node_tax),
+        geography = split_query(input$node_geo),
+        identified.by = split_query(input$node_ider_list),
+        biogeo.cat = split_query(input$node_biogeo_list),
+        institutes = split_query(input$node_inst_list),
+        seq.source = split_query(input$node_seqinst_list),
+        bounding.box = c(input$node_lon_min, input$node_lon_max, input$node_lat_min, input$node_lat_max),
+        marker = sapply(1:n_node_markers, function(m) input[[paste0("node_seq_marker_", m)]]),
+        basecount = setNames(
+          lapply(1:n_node_markers, function(m) {
+            vals <- c(input[[paste0("node_seq_min_", m)]], input[[paste0("node_seq_max_", m)]])
+            if(!all(is.na(vals))) {
+              minmax <- c(5, 2000)
+              minmax[!is.na(vals)] <- vals[!is.na(vals)]
+              minmax
+            } else { NULL }}),
+          sapply(1:n_node_markers, function(m) input[[paste0("node_seq_marker_", m)]])))
+      if(sum(node_query$bounding.box) == 0) node_query$bounding.box <- NULL
+      node_query$marker <- if(all(empty(node_query$marker))) { NULL } else { node_query$marker[!empty(node_query$marker)] }
+      node_query$basecount <- node_query$basecount[!sapply(node_query$basecount, is.null)]
+      for(q in names(node_query)) {
+        if(is.null(unlist(node_query[[q]]))) node_query[[q]] <- NULL
+      }
+      node_query(node_query)
+    })
     
     # only show NTS toggle when data contains NTS records
     observe({
@@ -258,17 +325,29 @@
       }, error = function(e) {
         showNotification(e$message, id="fetch_msg", type = "error")
       })
-      req(isTruthy(input$fetch_id_list) || isTruthy(input$search_tax) || isTruthy(input$search_geo) || 
-            isTruthy(input$seq_marker) || isTruthy(Sys.getenv("api_key")))
+      req(((isTruthy(input$fetch_id_list) || isTruthy(input$search_tax) || isTruthy(input$search_geo) || 
+            isTruthy(input$seq_marker)) && isTruthy(Sys.getenv("api_key")))
+          || (isTruthy(length(node_query()) > 0) && isTruthy(input$datapackage_id)))
       shinyjs::show('table_area')
       shinyjs::hide('table_buttons')
       reset_ui()
       tab_status$data <- TRUE
       shinyjs::show("main_panel")
       tryCatch({
-        if(input$query_params == "search_opts") {
-          showNotification("Searching for matching records...", id = "fetch_msg", duration=NULL, type = "message")
+        if(input$data_source == "source-local") {
           
+          query_params <- node_query()
+          query_params[["input.parquet"]] <- input$datapackage_id
+          showNotification("Searching data package for matching records...", id = "fetch_msg", duration=NULL, type = "message")
+          withCallingHandlers({
+            result <- do.call(bold.data.search, query_params)
+          }, message = function(m) {
+            notif_txt <- clean_ansi(conditionMessage(m))
+            showNotification(notif_txt, id = "fetch_msg", duration = NULL, type = "message")
+          })
+          fetch_params$node_result <- result
+        } else if(input$query_params == "search_opts") {
+          showNotification("Searching for matching records...", id = "fetch_msg", duration=NULL, type = "message")
           search_query <- list(taxonomy = split_query(input$search_tax, list = TRUE),
                                geography = split_query(input$search_geo, list = TRUE),
                                marker = input$seq_marker[input$seq_marker != ""],
@@ -333,13 +412,28 @@
       }) 
     })
     
-    # perform fetch and populate data
+    # perform fetch
     observeEvent(fetch_params$fetch_ids, {
       req(fetch_params$fetch_ids, fetch_params$fetch_by)
       data <- as.data.table(bold.fetch.shiny(get_by = fetch_params$fetch_by,
                                query = fetch_params$fetch_ids,
                                BCDM_only = FALSE))
       req(nrow(data) > 0)
+      populate_data(data)
+    })
+    
+    # collect data from local data package
+    observeEvent(fetch_params$node_result, {
+      req(fetch_params$node_result)
+      showNotification("Assembling data from data package...", id = "fetch_msg", duration=NULL, type = "message")
+      data <- as.data.table(bold.data.collect(fetch_params$node_result))
+      fetch_params$fetch_by <- "processid"
+      showNotification("Data assembled.", id = "fetch_msg", duration=2, type = "message")
+      populate_data(data)
+    })
+    
+    # populate data
+    populate_data <- function(data) {
       data[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
       cols_to_factor <- intersect(config$fieldsets$factorfields, names(data))
       data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
@@ -358,7 +452,7 @@
       if (input$fetch_binmates == TRUE) {
         binmate_modal()
       }
-    })
+    }
     
     # logic for initiating search (or fetch) of additional BIN records ("BIN mates") 
     # if the BIN mates switch is toggled on, a modal opens to report the number of additional BIN records
@@ -472,6 +566,100 @@
                               !names(outdata$data) %in% c("identification","bin_uri","country.ocean","id_date_parsed","project_code")])
                         ))
     })
+    
+    user_datapkgs <- reactiveVal(datapkgs)
+    
+    # modal logic for data package options
+    observeEvent(input$datapackage_btn, {
+      showModal(
+        modalDialog(
+          title = "Saved data packages",
+          HTML('Data packages must be in Parquet format. BOLD data packages are available for download <a href="https://bench.boldsystems.org/index.php/datapackages/" target="_blank" rel="noopener noreferrer">here <i class="fa fa-external-link" aria-hidden="true"></i></a>.'),
+          DT::dataTableOutput("datapkg_table"),
+          div(class = "flex-div",
+              div(hidden(div(id = "delete_confirm", class = "warn-text", "Are you sure? File(s) will be permanently deleted."))),
+              div(actionButton("datapackage_delete",
+                               icon = HTML('<i role="presentation" aria-label="trash icon" class="fa fa-trash"></i>'),
+                               label = "Delete selected"),
+                  hidden(actionButton(inputId = "datapackage_del_cancel", icon = icon("x"), label = "Cancel")),
+                  actionButton("datapackage_browse",
+                               icon = HTML('<i role="presentation" aria-label="folder icon" class="far fa-folder"></i>'),
+                               label = "Add..."))),
+          footer = tagList(div(), modalButton("Close")),
+          easyClose = TRUE,
+          size = "l")
+      )
+    })
+    
+    # record selected file info and copy to user data directory
+    observeEvent(input$datapackage_browse, {
+      path <- try(file.choose(), silent = TRUE)
+      req(path)
+      if (!is.null(path) && nzchar(path)) {
+        if(tools::file_ext(path) != "parquet") {
+          showNotification("Only data packages in Parquet format are currently supported.", type = "error")
+        } else {
+          showNotification(paste0("Copying ", basename(path), " to user data folder..."), duration = NULL, id = "fileio", type = "message")
+          tryCatch({
+            datapkgs <- modify_datapackage(path, "save")
+            user_datapkgs(datapkgs)
+          }, error = function(e) {
+            showNotification(paste0("Error saving data package: ", e$message), duration = NULL, id = "fileio", type = "error")
+          })
+        }
+      }
+    })
+    
+    delete_check <- TRUE
+    
+    # delete selected data package
+    observeEvent(input$datapackage_delete, {
+      req(input$datapkg_table_rows_selected)
+      delete_ids <- user_datapkgs()[input$datapkg_table_rows_selected, id]
+      if(delete_check){
+        shinyjs::show("delete_confirm")
+        updateActionButton(inputId = "datapackage_delete", icon = icon("check"), label = "Delete")
+        shinyjs::show("datapackage_del_cancel")
+        delete_check <<- FALSE
+      } else {
+        shinyjs::hide("delete_confirm")
+        tryCatch({
+          for(id in delete_ids) {
+            datapkgs <- modify_datapackage(id, "delete")
+          }
+          user_datapkgs(datapkgs)
+        }, error = function(e) {
+          showNotification(paste0("Error deleting data package: ", e$message), duration = NULL, id = "fileio", type = "error")
+        })
+        shinyjs::hide("datapackage_del_cancel")
+        updateActionButton(inputId = "datapackage_delete",
+                           icon = HTML('<i role="presentation" aria-label="trash icon" class="fa fa-trash"></i>'),
+                           label = "Delete selected")
+        delete_check <<- TRUE
+      }
+    })
+    
+    observeEvent(input$datapackage_del_cancel, {
+      shinyjs::hide("delete_confirm")
+      shinyjs::hide("datapackage_del_cancel")
+      updateActionButton(inputId = "datapackage_delete",
+                         icon = HTML('<i role="presentation" aria-label="trash icon" class="fa fa-trash"></i>'),
+                         label = "Delete selected")
+      delete_check <<- TRUE
+    })
+    
+    output$datapkg_table <- DT::renderDataTable(DT::datatable({
+      dtpkg_dt <- user_datapkgs()
+      if(nrow(dtpkg_dt) > 0) {
+        datapkgs[, .(`ID` = id,
+                     `Size (MB)` = format(round(as.numeric(size_kb) / 1024^2, 2), big.mark = ","),
+                     `Date added` = as.IDate(created))]
+      } else {
+        data.table(`ID` = character(), `Size (MB)` = character(), `Date added` = character()) 
+      }
+    },
+    rownames = FALSE,
+    options = list(dom = 't')))
     
     # logic for generating marker-collapsed data table
     collapsed_data <- reactive({
@@ -936,7 +1124,7 @@
     })
     
     ### OUTPUT RENDERING
-    
+  
     # build a reactive JSON lookup map and send it to the window
     # (enables hyperlinking of sample IDs and process IDs even when dependent columns are excluded)
     observeEvent(outdata$data, {

@@ -3,10 +3,9 @@ ui <- bslib::page_fillable(
   tags$head(
     tags$link(rel = "stylesheet", type = "text/css", href = "brstyles.css"),
     tags$script(HTML(r"(
-      $(document).on('blur', '#seq_min, #seq_max', function() {
-          let current = Shiny.shinyapp.$inputValues.blur_trigger || 0;
-          Shiny.setInputValue('last_blurred', this.id, {priority: 'event'});      
-        });
+      $(document).on('blur', '.single-marker .shiny-input-number', function() {
+        Shiny.setInputValue('last_blurred', this.id, {priority: 'event'});
+      });
       $(document).on('keydown', 'div[data-value=fetchdata] div.tabbable input, div[data-value=fetchdata] div.tabbable textarea', function(e) {
           if (e.ctrlKey && e.key === 'Enter') {
             Shiny.setInputValue('fetch_ctrl_enter', Math.random(), {priority: 'event'});
@@ -25,7 +24,7 @@ ui <- bslib::page_fillable(
   useShinyjs(),
   sidebarLayout(
     sidebarPanel(
-      div(id="side-title",span(img(src = "reflectR-name.png", alt = "BOLDreflectR", style = "height: 3rem;")), `data-ver` = paste0("v", ver), style = "height: 4.16rem;"),
+      div(id="side-title", span(img(src = "reflectR-name.png", alt = "BOLDreflectR", style = "height: 3rem;")), `data-ver` = paste0("v", ver), style = "height: 4.16rem;"),
       bslib::accordion(
         id="optpanels",
         bslib::accordion_panel(
@@ -33,6 +32,7 @@ ui <- bslib::page_fillable(
           "Get data",
           icon = bsicons::bs_icon("cloud-arrow-down"),
           bslib::navset_tab( 
+            id="data_source",
             bslib::nav_panel("BOLD Data API", value = "source-api",
                       passwordInput( 
                         "api_key", 
@@ -107,33 +107,34 @@ ui <- bslib::page_fillable(
                                          ))
                       )), 
             bslib::nav_panel("Local data package", value = "source-local",
-                             div("Selected data package"),
-                             textAreaInput( 
-                               "node_id_list", 
-                               "Process IDs and/or Sample IDs:"
-                             ),
-                             textAreaInput( 
-                               "node_tax", 
-                               "Taxonomy:"
-                             ),
-                             textAreaInput( 
-                               "node_geo", 
-                               "Geography:"
-                             ),
-                             textAreaInput( 
-                               "node_inst_list",
-                               "Institutes:"
-                             ),
-                             textAreaInput( 
-                               "node_ider_list",
-                               "Identified by:"
-                             ),
-                             textAreaInput( 
-                               "node_seqinst_list",
-                               "Sequence run sites:"
+                             div(class="control-label", h3("Source data:")),
+                             div(class = "shiny-input-container",
+                                      HTML('<label class="control-label">Select a local data package:</label>'),
+                                      div(class = "file-input-wrapper input-group",
+                                          selectInput("datapackage_id", "",
+                                                      choices = stats::setNames(datapkgs$path, datapkgs$id)),
+                                          actionButton("datapackage_btn", "Add/Edit..."))
+                                      ),
+                             div(class="control-label", h3("Search terms:"),
+                                 bslib::tooltip(
+                                   icon("circle-question"),
+                                   paste0("Comma-separated or one term per line, no quotes."))),
+                             textAreaInput("node_id_list", "Process IDs and/or sample IDs:"),
+                             textAreaInput("node_recset_list", "Project and/or dataset codes:"),
+                             textAreaInput("node_tax", "Taxonomy:"),
+                             textAreaInput("node_geo", "Geography:"),
+                             bslib::accordion(
+                               id = "more_opts",
+                               bslib::accordion_panel(
+                                 "Additional fields",
+                                 textAreaInput("node_ider_list", "Identified by:"),
+                                 textAreaInput("node_biogeo_list", "Biome, realm, or ecoregion:"),
+                                 textAreaInput("node_inst_list", "Institutes:"),
+                                 textAreaInput("node_seqinst_list", "Sequence run sites:")
+                               )
                              ),
                              div(class="form-group shiny-input-container marker-select",
-                                 div(class="control-label", "Marker:"),
+                                 div(class="control-label", h3("Markers:")),
                                  div(class="form-group shiny-input-container single-marker",
                                      selectInput(
                                        "node_seq_marker_1",
@@ -154,36 +155,36 @@ ui <- bslib::page_fillable(
                                      actionButton("node_add_marker", icon("plus")),
                                      actionButton("node_del_marker", icon("minus")))
                              ),
-                             textAreaInput( 
-                               "node_biogeo_list", 
-                               "Biome, realm, or ecoregion:"
-                             ),
-                             textAreaInput( 
-                               "node_recset_list", 
-                               "Projects/Datasets:"
-                             ),
-                             div(class="form-group shiny-input-container", id = "node-bounding-box",
-                                 div(class="control-label", "Coordinate bounding box:"),
+                             div(class="form-group shiny-input-container", id = "node_bounding_box",
+                                 div(class="control-label", h3("Coordinates:")),
                                  div(class="form-group shiny-input-container",
-                                     sliderInput(
-                                       "node-lon-range", "Longitude range:",
-                                       min = -180, max = 180,
-                                       step = 0.01,
-                                       ticks = FALSE,
-                                       post = "°",
-                                       value = c(-180, 180) 
-                                     ),
-                                     sliderInput(
-                                       "node-lat-range", "Latitude range:",
-                                       min = -90, max = 90,
-                                       step = 0.01,
-                                       ticks = FALSE,
-                                       post = "°",
-                                       value = c(-90, 90) 
-                                     ),
-                                     actionButton("reset-bounding-box", "Reset")))
+                                     div(class="control-label", "Longitude:"),
+                                     div(class="flex-div coord-range",
+                                         numericInput("node_lon_min", "", value = -180),
+                                         sliderInput(
+                                           "node_lon_range", "",
+                                           min = -180, max = 180,
+                                           step = 0.01,
+                                           ticks = FALSE,
+                                           post = "°",
+                                           value = c(-180, 180) 
+                                         ),
+                                         numericInput("node_lon_max", "", value = 180)),
+                                     div(class="control-label", "Latitude:"),
+                                     div(class="flex-div coord-range",
+                                         numericInput("node_lat_min", "", value = -90),
+                                         sliderInput(
+                                           "node_lat_range", "",
+                                           min = -90, max = 90,
+                                           step = 0.01,
+                                           ticks = FALSE,
+                                           post = "°",
+                                           value = c(-90, 90) 
+                                         ),
+                                         numericInput("node_lat_max", "", value = 90)))
+                                 )
                              )
-          ),
+            ),
           checkboxInput(
             "fetch_binmates",
             "Find additional BIN members"

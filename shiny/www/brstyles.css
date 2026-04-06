@@ -3,6 +3,18 @@ h2 {
   font-size: 1.8rem;
 }
 
+h3 {
+  display: inline-block;
+  margin: 0 0 0.8rem 0;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.fa.fa-external-link {
+  font-size: 0.7rem;
+  baseline-shift: 2px;
+}
+
 #side-title:hover::after {
   content: attr(data-ver);
   font-size: 0.9rem;
@@ -75,6 +87,36 @@ a#del_filter_btn {
   margin-bottom: 1rem;
 }
 
+.file-input-wrapper {
+  display: flex;
+  margin-bottom: 1rem;
+}
+
+.file-input-wrapper .shiny-input-container {
+  flex: 1 1;
+  -webkit-flex: 1 1;
+  width: 1%;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.file-input-wrapper .shiny-input-container .control-label {
+  display: none;
+}
+
+.file-input-wrapper .shiny-input-container input {
+  width: 100%;
+}
+
+.file-input-wrapper div.shiny-input-container > div,
+.file-input-wrapper div.shiny-input-container select,
+.file-input-wrapper div.shiny-input-select,
+.file-input-wrapper div.selectize-input {
+  height: 100%;
+  line-height: 2;
+}
+
 .flex-div .form-check {
   margin-bottom: 0;
 }
@@ -90,33 +132,55 @@ a#del_filter_btn {
   gap: 5px;
 }
 
-.marker-select > .form-group.shiny-input-container div:first-child {
+.marker-select > .form-group.shiny-input-container div:first-child,
+.coord-range .shiny-input-container:has(>.js-range-slider) {
   flex-grow: 1;
+}
+
+.coord-range.flex-div {
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 15px;
+}
+
+.coord-range .shiny-input-number {
+  width: 4.25rem;
+  text-align: center;
 }
 
 .marker-select > .form-group.shiny-input-container .form-group {
   margin-bottom: 0;
 }
 
-.marker-select label {
+.marker-select label,
+.coord-range label {
   display: none;
 }
 
-.marker-select #seq_max,
-.marker-select #seq_min {
+.marker-select .shiny-input-number,
+.coord-range .shiny-input-number {
   padding-left: 0.4rem;
   padding-right: 0.4rem;
 }
 
-.marker-select input#seq_max::-webkit-inner-spin-button,
-.marker-select input#seq_max::-webkit-outer-spin-button,
-.marker-select input#seq_min::-webkit-inner-spin-button,
-.marker-select input#seq_min::-webkit-outer-spin-button {
+.marker-select .shiny-input-number::-webkit-inner-spin-button,
+.marker-select .shiny-input-number::-webkit-outer-spin-button,
+.coord-range .shiny-input-number::-webkit-inner-spin-button,
+.coord-range .shiny-input-number::-webkit-outer-spin-button {
   margin-left: 0.4rem;
 }
 
 input[type=number] {
   -moz-appearance: textfield; /* Hides arrows in Firefox */
+}
+
+.dim-input .shiny-input-number {
+  color: #8D959E;
+}
+
+.dim-input .irs--shiny .irs-from,
+.dim-input .irs--shiny .irs-to {
+  opacity: 0.3;
 }
 
 .form-group .control-label.summary-section-header {
@@ -127,6 +191,44 @@ input[type=number] {
 
 .option-group:not(:last-of-type) {
   margin-bottom: 2rem;
+}
+
+[data-value="Additional fields"] .accordion-button {
+  padding: 0;
+  margin-bottom: .8rem;
+}
+
+[data-value="Additional fields"] .accordion-button::after {
+  display: none;
+}
+
+[data-value="Additional fields"] .accordion-button::before {
+  flex-shrink: 0;
+  -webkit-flex-shrink: 0;
+  width: 0.9rem;
+  height: 0.9rem;
+  margin-right: 0.25rem;
+  content: "";
+  background-image: var(--bs-accordion-btn-icon);
+  background-repeat: no-repeat;
+  background-size: 0.9rem;
+  transition: 0s;
+  transform: rotate(-90deg);
+}
+
+[data-value="Additional fields"] .accordion-button:not(.collapsed)::before {
+  transform: rotate(0deg);
+}
+
+[data-value="Additional fields"] .accordion-title {
+  font-weight: unset;
+} 
+
+[data-value="Additional fields"] .accordion-body,
+[data-value="Additional fields"].accordion-item {
+  padding: 0;
+  border: none;
+  margin-bottom: 1.2rem;
 }
 
 .well {
@@ -160,7 +262,11 @@ input[type=number] {
 #query_params .nav-link,
 #node_add_marker,
 #node_del_marker {
-    margin: 0.1rem 0.4rem 1rem 0;
+    margin: 0.1rem 0.4rem 0 0;
+}
+
+#query_params {
+  margin-bottom: 1rem;
 }
 
 #query_params .nav-link:hover {
@@ -227,6 +333,26 @@ div.form-group:has(.has-items) #save_filter_set {
 
 .tooltip > .tooltip-inner {
   max-width: 400px;
+}
+
+#datapkg_table {
+  margin-top: 1rem;
+}
+
+#datapkg_table,
+#datapkg_table .dataTables_wrapper,
+#datapkg_table table {
+  width: 100%;
+  padding: 0;
+}
+
+.modal-body:has(#datapkg_table) .flex-div {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-body:has(#datapkg_table) .flex-div div {
+ margin-bottom: 0;
 }
 
 .fa-circle-question,
