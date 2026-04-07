@@ -4,6 +4,7 @@
 #'
 #' @param input.parquet Path to the input parquet file
 #' @param ids Vector of process IDs or sample IDs to filter by
+#' @param bin_uris Vector of BIN numbers to filter by
 #' @param taxonomy Vector of taxonomic names to filter by (can include kingdom, phylum, class, order, family, subfamily, genus, species)
 #' @param geography Vector of geographic locations to filter by (can include country/ocean, province/state, region, sector, site)
 #' @param institutes Vector of institute codes to filter by
@@ -14,6 +15,7 @@
 #' @param biogeo.cat Vector of biogeographic/ecological categories to filter by (biome, realm, or ecoregion)
 #' @param dataset.projects Vector of dataset/project codes to filter by
 #' @param bounding.box Numeric vector of length 4: c(min_lon, max_lon, min_lat, max_lat)
+#' @param ambi.base.cutoff Character value for filtering data based proportion of ambiguous bases (IUPAC codes).Three values currently available ("<1%", "1-5%", or ">5%"); Default value is NULL
 #' @param specific.cols Optional character vector of specific columns to return
 #'
 #' @return A tbl_sql object containing the filtered data 
@@ -24,25 +26,27 @@
 #'
 #' @export
 bold.data.search <- function(input.parquet,
-                        ids=NULL,
-                        taxonomy=NULL,
-                        geography=NULL,
-                        institutes=NULL,
-                        identified.by=NULL,
-                        seq.source=NULL,
-                        marker=NULL,
-                        basecount=NULL,
-                        biogeo.cat=NULL,
-                        dataset.projects=NULL,
-                        bounding.box=NULL,
-                        specific.cols=NULL)
+                             ids=NULL,
+                             bin_uris=NULL,
+                             taxonomy=NULL,
+                             geography=NULL,
+                             institutes=NULL,
+                             identified.by=NULL,
+                             seq.source=NULL,
+                             marker=NULL,
+                             basecount=NULL,
+                             biogeo.cat=NULL,
+                             dataset.projects=NULL,
+                             bounding.box=NULL,
+                             ambi.base.cutoff = NULL,
+                             specific.cols=NULL)
 {
   # Condition to check the file extension
   
   if (tolower(tools::file_ext(input.parquet)) != "parquet") {
     stop("Error: Input file must be a parquet")
   }
-
+  
   # Import the parquet data
   
   parquet_data<-import_parquet_data(input.parquet)
@@ -50,18 +54,19 @@ bold.data.search <- function(input.parquet,
   if(nrow(parquet_data%>%head(1)%>%collect())==0) stop("Error: Parquet data is empty")
   
   # mapping the fetch.filter arguments with the bold.search function arguments
-
-  bold.search.args <- list(ids=ids,
+  bold.search.args <- list(ids = ids,
+                           bin_uris = bin_uris,
                            taxonomy = taxonomy,
                            geography = geography,
                            institutes = institutes,
-                           identified.by=identified.by,
-                           seq.source=seq.source,
-                           marker=marker,
-                           basecount=basecount,
-                           biogeo.cat=biogeo.cat,
-                           dataset.projects=dataset.projects,
-                           bounding.box=bounding.box)
+                           identified.by = identified.by,
+                           seq.source = seq.source,
+                           marker = marker,
+                           basecount = basecount,
+                           biogeo.cat = biogeo.cat,
+                           dataset.projects = dataset.projects,
+                           bounding.box = bounding.box,
+                           ambi.base.cutoff = ambi.base.cutoff)
   
   # Filter out NULL values and get their values
   
@@ -82,7 +87,6 @@ bold.data.search <- function(input.parquet,
   result <- do.call(bold.search.filters,
                     non_null_args)
   
-  
   if(!is.null(specific.cols))
   {
     
@@ -91,7 +95,6 @@ bold.data.search <- function(input.parquet,
     
     result
     
-    
   }
   
   else
@@ -99,14 +102,12 @@ bold.data.search <- function(input.parquet,
     result
   }
   
+  tot_records=result%>%
+    summarise(Total_records = n())%>%
+    collect()
   
-    tot_records=result%>%
-      summarise(Total_records = n())%>%
-      collect()
-    
-    message(paste("The search has",tot_records,"records in the dataset",sep=" "))
-    
-   
+  message(paste("The search has",tot_records,"records in the dataset",sep=" "))
+  
   return(invisible(result))
   
 }

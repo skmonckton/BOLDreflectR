@@ -48,30 +48,47 @@ map_colours <- colorRampPalette(c("#9e0142","#d53e4f","#f46d43","#fdae61",
                                   "#66c2a5","#3288bd","#5e4fa2"), alpha = TRUE)(11)
 
 # this is used to re-compute selectize input options when custom filter sets are created or removed
-filter_options <- function() {
-  list("Default" = list("BCDM fields" = "bcdm", 
-                        "All verbatim fields" = "all"),
-       "Saved" = sapply(user_config$fieldsets$custom, function(s) stats::setNames(list(s$id), s$name)),
-       "Presets" = list("Sample ID, Process ID, BIN" = "min",
-                        "Taxonomic identification" = "acctax",
-                        "Verbatim identification" = "verbtax",
-                        "Sequence data" = "sequence",
-                        "Voucher/specimen details" = "specimen",
-                        "Verbatim specimen details" = "verbspec",
-                        "Collection data" = "collection",
-                        "Verbatim collection data" = "verbcollect",
-                        "Projects & datasets" = "recset"),
-       "Parsed fields" = list("Identification date" = "parsed|id_date_parsed",
-                       "Project code" = "parsed|project_code"),
-       "All fields" = config$fieldsets$all)
+filter_options <- function(include_verbatim = TRUE) {
+  if(include_verbatim) { 
+    list("Default" = list("BCDM fields" = "bcdm", 
+                          "All verbatim fields" = "all"),
+         "Saved" = sapply(user_config$fieldsets$custom, function(s) stats::setNames(list(s$id), s$name)),
+         "Presets" = list("Sample ID, Process ID, BIN" = "min",
+                          "Taxonomic identification" = "acctax",
+                          "Verbatim identification" = "verbtax",
+                          "Sequence data" = "sequence",
+                          "Voucher/specimen details" = "specimen",
+                          "Verbatim specimen details" = "verbspec",
+                          "Collection data" = "collection",
+                          "Verbatim collection data" = "verbcollect",
+                          "Projects & datasets" = "recset"),
+         "Parsed fields" = list("Identification date" = "parsed|id_date_parsed",
+                                "Project code" = "parsed|project_code",
+                                "Latitude & longitude" = "parsed|lat|lon"),
+         "All fields" = config$fieldsets$all)
+  } else {
+    list("Default" = list("BCDM fields" = "bcdm",
+                          "BCDM and parsed fields" = "all"),
+         "Saved" = sapply(user_config$fieldsets$custom, function(s) stats::setNames(list(s$id), s$name)),
+         "Presets" = list("Sample ID, Process ID, BIN" = "min",
+                          "Taxonomic identification" = "acctax",
+                          "Sequence data" = "sequence",
+                          "Voucher/specimen details" = "specimen",
+                          "Collection data" = "collection",
+                          "Projects & datasets" = "recset"),
+         "Parsed fields" = list("Identification date" = "parsed|id_date_parsed",
+                                "Project code" = "parsed|project_code",
+                                "Latitude & longitude" = "parsed|lat|lon"),
+         "All fields" = intersect(config$fieldsets$all, c(config$fieldsets$bcdm, config$fieldsets$parsed)))
+  }
+  
 } 
 
 marker_options <- list(" " = "",
                        Primary = stats::setNames(config$markercodes$major, config$markercodes$major),
                        Other = stats::setNames(config$markercodes$other, config$markercodes$other))
 
-# datapkgs <- user_config$datapackages
-
+# function to update user_config.yaml with current list of available data package files (also returns a list of said files)
 update_datapackages <- function() {
   datapkgs <- data.table(file.info(list.files(path = file.path(user_data_path, "BOLD_data_packages"), full.names = TRUE))[c("size", "ctime")],
                          keep.rownames = TRUE)[, .(id = tools::file_path_sans_ext(basename(rn)),
@@ -84,21 +101,13 @@ update_datapackages <- function() {
 
 datapkgs <- update_datapackages()
 
-# datapkgs <- rbindlist(list(datapkgs, datapkgs))
-
-#datapkgs <- data.table(do.call(unlist(cbind), user_config[["datapackages"]]))
-
-#datapkgs <- rbindlist(user_config[["datapackages"]])
-
-#if(nrow(datapkgs) > 0) datapkgs <- datapkgs[, .(id, path, size_kb = as.numeric(size_kb), created = as.Date(created, format = "%Y-%m-%d"))]
-
 # copy to clipboard with size limit
 cb <- function(df, header=TRUE, sep="\t", max.size=(200*1000)){
   write.table(df, paste0("clipboard-", formatC(max.size, format="f", digits=0)), sep=sep, col.names=header, row.names=FALSE, quote=FALSE, na="NA")
   showNotification(paste0("Copied to clipboard."), type = "message", id = "copy_msg")
 }
 
-# convenience function to check for NA or ""
+# convenience function to check for NA or "" in BCDM fields
 empty <- function(x) {
   (is.na(x) | (x == ""))
 }
@@ -108,7 +117,7 @@ clip_fasta <- function(bold_df, cols_for_fas_names = NULL, collapse_mrkrs = NULL
   
   if (is.null(cols_for_fas_names)) cols_for_fas_names <- c("processid", "marker_code")
   
-  clip_fas <- if((!"nuc" %in% names(bold_df)) || (nrow(bold_df[!is.na(nuc)]) == 0)) {
+  clip_fas <- if((!"nuc" %in% names(bold_df)) || (nrow(bold_df[!empty(nuc)]) == 0)) {
     if(!is.null(collapse_mrkrs)) {
       showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
       cols_for_fas_names <- intersect(cols_for_fas_names, names(bold_df))
@@ -127,9 +136,9 @@ clip_fasta <- function(bold_df, cols_for_fas_names = NULL, collapse_mrkrs = NULL
   } else {
     showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
     paste0(">",
-           bold_df[!is.na(nuc), do.call(paste, c(.SD, sep = "|")), .SDcols = c(cols_for_fas_names)],
+           bold_df[!empty(nuc), do.call(paste, c(.SD, sep = "|")), .SDcols = c(cols_for_fas_names)],
            "\n",
-           bold_df[!is.na(nuc), nuc])
+           bold_df[!empty(nuc), nuc])
   }
   
   if(is.null(clip_fas)) {
@@ -150,7 +159,7 @@ split_query <- function(query_input, list = FALSE) {
     NULL
   } else {
     terms <- trimws(strsplit(query_input, "\n|,")[[1]])
-    terms <- terms[(!is.na(terms)) & (terms != "")]
+    terms <- terms[!empty(terms)]
     if(list == TRUE) {
       as.list(terms)
     } else {
@@ -261,9 +270,16 @@ collapse_markers <- function(data) {
   
 }
 
+# modify data from local data package to match format delivered by API
+clean_node_data <- function(data) {
+  data[, c("coord", "bold_recordset_code_arr") := 
+         list(gsub("\\[|\\]|\\s", "", coord), gsub("\\'|\\[|\\]", "", bold_recordset_code_arr))]
+  data.table::setnames(data, old = c("country/ocean", "province/state"), new = c("country.ocean", "province.state"))
+}
+
 # decompose recordset column into a list of dataset or project codes
 list_recordsets <- function(data, set_type, list_by) {
-  recordsets <- data[, .(set = unique(trimws(unlist(strsplit(gsub("\\'|\\[|\\]", "", bold_recordset_code_arr), ","))))), by = list_by] 
+  recordsets <- data[, .(set = unique(trimws(unlist(strsplit(bold_recordset_code_arr, ","))))), by = list_by] 
   if(set_type == "parse_project") {
     merge(data[, list_by, with = FALSE], unique(recordsets[!grepl("^DS-|^DATASET", set), c(list_by, "set"), with = FALSE]), all.x = TRUE, by = list_by)[, set]
   } else if(set_type == "projects") {
@@ -320,10 +336,10 @@ parse_id_date <- function(data) {
 
 # extracts lats and longs from the BCDM coord column
 parse_lat_lon <- function(coord) {
-  if(all(is.na(coord))) {
+  if(all(empty(coord))) {
     list(rep(as.numeric(NA), length(coord)), rep(as.numeric(NA), length(coord)))
   } else {
-    lapply(tstrsplit(gsub("\\[|\\]|\\s", "", coord), ",", fixed = TRUE), as.numeric)
+    lapply(tstrsplit(coord, ",", fixed = TRUE), as.numeric)
   }
 }
 
@@ -342,12 +358,12 @@ deduce_len_in_frame <- function(x) {
 # selected BIN representatives
 get_bin_reps <- function(df) {
   
-  data <- df[(!is.na(bin_uri))]
+  data <- df[!empty(bin_uri)]
   bp_col <- head(c("nuc_basecount", "COI-5P_nuc_basecount")[c("nuc_basecount", "COI-5P_nuc_basecount") %in% names(df)], 1)
 
   # get series of distances between sequence length and in-frame modal barcode length for BIN
   diff_mode <- merge(data,
-                     data[!is.na(bin_uri), .(mode = deduce_len_in_frame(get(bp_col))), by = "bin_uri"],
+                     data[, .(mode = deduce_len_in_frame(get(bp_col))), by = "bin_uri"],
                      by = "bin_uri",
                      all.x = TRUE)[, abs(get(bp_col) - mode)]
   
@@ -393,15 +409,15 @@ bold.fetch.shiny <- function (get_by,
   })
 }
 
-# retrieve process IDs of BIN mates
-get_binmate_pids <- function(df, batch_size=200, sleep=2) {
-  bins <- unique(df[["bin_uri"]][(!is.na(df[["bin_uri"]])) & (df[["bin_uri"]] != "")])
+# retrieve BIN mates
+get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
+  bins <- unique(df[["bin_uri"]][!empty(df[["bin_uri"]])])
   
   add_pids <- character()
   
   if(length(bins) == 0) {
     showNotification("No BINs were found in the fetched data.", id = "bin_msg", duration=2, type = "message")
-  } else {
+  } else if(is.null(dtpkg_parquet)) {
     batches = ceiling(length(bins) / batch_size)
     for (r in 1:batches) {
       start = (r-1) * batch_size + 1
@@ -424,15 +440,27 @@ get_binmate_pids <- function(df, batch_size=200, sleep=2) {
       add_pids <- sort(unique(c(add_pids, setdiff(out[["records"]], df[["processid"]]))))
       Sys.sleep(sleep)
     }
+  } else {
+    showNotification(paste0("Searching data package for additional BIN members from ", length(bins), " BINs..."), id = "bin_msg", duration=NULL, type = "message")
+    current_pids <- unique(df[["processid"]])
+    dtpkg <- import_parquet_data(dtpkg_parquet)
+    result <- dtpkg %>% filter(bin_uri %in% bins) %>% filter(!processid %in% current_pids)
+    showNotification("Assembling data from data package...", id = "bin_msg", duration=NULL, type = "message")
+    binmate_data <- clean_node_data(as.data.table(bold.data.collect(result)))
+    add_pids <- unique(binmate_data$processid)
+  }
     
-    if(length(add_pids) == 0) {
-      showNotification(paste0("No additional BIN members found."), id = "bin_msg", type = "message")
-    } else {
-      showNotification(paste0(length(add_pids), " additional BIN members found."), id = "bin_msg", type = "message")
-    }
+  if(length(add_pids) == 0) {
+    showNotification(paste0("No additional BIN members found."), id = "bin_msg", type = "message")
+  } else {
+    showNotification(paste0(length(add_pids), " additional BIN members found."), id = "bin_msg", type = "message")
   }
   
-  return(add_pids)
+  if(is.null(dtpkg_parquet)) {
+    return(add_pids)
+  } else {
+    return(binmate_data)
+  }
 }
 
 # JavaScript used to render output data tables

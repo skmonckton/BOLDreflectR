@@ -57,6 +57,7 @@
       binmates_checked = FALSE,
       binmates_fetched = FALSE,
       n_node_markers = 1,
+      node_dtpkg = NULL,
       node_result = NULL
     )
     
@@ -89,7 +90,7 @@
     
     # convenience function for interrogating current tab status
     tab_monitor <- function(get = c("status", "current", "absent", "ins_target"), ins_tab = NULL) {
-      tabs <- isolate(reactiveValuesToList(tab_status))
+      tabs <- reactiveValuesToList(tab_status)
       switch(get,
              status = tabs,
              current = names(tabs)[tabs == TRUE],
@@ -267,8 +268,10 @@
       }
     })
     
+    ### SERVER HELPERS
+    
     # function to reset filter options
-    reset_filter <- function() {
+    reset_filter <- function(include_verbatim = TRUE) {
       if (!isolate(input$tabs) %in% c("data", "bin_reps", "map_tab")) {bslib::nav_select(id="tabs", selected="data")}
       outdata$select_fields <- if (is.null(isolate(outdata$data))) {
         config$fieldsets$bcdm
@@ -276,15 +279,12 @@
         c(config$fieldsets$bcdm, isolate(coll_mrkr_fields()))
       }
       updateSelectizeInput(session,"filt_opt",
-                           choices = filter_options(),
+                           choices = filter_options(include_verbatim),
                            selected = NULL)
       updateSelectizeInput(session, "filt_seq",
                            choices = outdata$markers,
                            selected = NULL)
     }
-    
-    
-    ### SERVER HELPERS
     
     # function to reset UI (and reactive values) to blank state
     reset_ui <- function() {
@@ -296,9 +296,7 @@
       }
       bslib::nav_select(id="tabs", selected = "data")
       for(t in names(tab_status)[names(tab_status) != "data"]) bslib::nav_remove(id="tabs", target = t, session)
-      for(i in seq_along(tab_status)) tab_status[[names(tab_status)[i]]] <- FALSE
-      #for(t in ls(tab_status)) assign(t, FALSE, envir = tab_status)
-      reset_filter()
+      for(i in seq_along(reactiveValuesToList(tab_status))) tab_status[[names(tab_status)[i]]] <- FALSE
       bslib::update_switch("include_binmates", value = FALSE)
       bslib::update_switch("include_nts", value = FALSE)
       bslib::update_switch("collapse_mrkrs", value = FALSE)
@@ -307,7 +305,7 @@
     
     # execute reset function when button is pressed
     observeEvent(input$reset_btn, {
-      reset_filter()
+      reset_filter(is.null(fetch_params$node_result))
     })
     
     ### DATA FETCHING
@@ -331,6 +329,7 @@
       shinyjs::show('table_area')
       shinyjs::hide('table_buttons')
       reset_ui()
+      reset_filter(input$data_source == "source-api")
       tab_status$data <- TRUE
       shinyjs::show("main_panel")
       tryCatch({
@@ -345,6 +344,7 @@
             notif_txt <- clean_ansi(conditionMessage(m))
             showNotification(notif_txt, id = "fetch_msg", duration = NULL, type = "message")
           })
+          fetch_params$node_dtpkg <- input$datapackage_id
           fetch_params$node_result <- result
         } else if(input$query_params == "search_opts") {
           showNotification("Searching for matching records...", id = "fetch_msg", duration=NULL, type = "message")
@@ -426,7 +426,7 @@
     observeEvent(fetch_params$node_result, {
       req(fetch_params$node_result)
       showNotification("Assembling data from data package...", id = "fetch_msg", duration=NULL, type = "message")
-      data <- as.data.table(bold.data.collect(fetch_params$node_result))
+      data <- clean_node_data(as.data.table(bold.data.collect(fetch_params$node_result)))
       fetch_params$fetch_by <- "processid"
       showNotification("Data assembled.", id = "fetch_msg", duration=2, type = "message")
       populate_data(data)
@@ -460,19 +460,12 @@
       req(outdata$data)
       if (input$include_binmates == TRUE) {
         if(fetch_params$binmates_checked == FALSE) {
-          binmate_modal()  
+          binmate_modal()
         } else if(fetch_params$binmates_fetched == FALSE) {
-          binmate_data <- as.data.table(bold.fetch.shiny(get_by = "processid", 
-                                                         query = outdata$binmates,
-                                                         BCDM_only = FALSE))[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
-          cols_to_factor <- intersect(config$fieldsets$factorfields, names(binmate_data))
-          binmate_data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
-          data <- unique(rbindlist(list(outdata$data,
-                                        binmate_data),
-                                   fill = TRUE))
-          outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
-          outdata$data <- data
-          fetch_params$binmates_fetched <- TRUE
+          binmates <- as.data.table(bold.fetch.shiny(get_by = "processid", 
+                                                     query = outdata$binmates,
+                                                     BCDM_only = FALSE))
+          add_binmates(binmates)
         }
       }
     }, ignoreInit = TRUE, ignoreNULL = TRUE)
@@ -487,8 +480,18 @@
     binmate_modal <- function() {
       req(outdata$data)
       binmate_pids <- outdata$binmates
-      if (is.null(outdata$binmates)) {
-        binmate_pids <- get_binmate_pids(outdata$data[!is.na(bin_uri)])
+      if(is.null(outdata$binmates)) {
+        
+        binmates <- get_binmates(outdata$data[!empty(bin_uri)], fetch_params$node_dtpkg)
+        
+        if(is.null(fetch_params$node_result)) {
+          binmate_pids <- binmates
+        } else {
+          binmate_pids <- unique(binmates$processid)
+          fetch_params$binmates_checked <- TRUE
+          add_binmates(binmates)
+        }
+        
         outdata$binmates <- binmate_pids
       }
       if(length(binmate_pids) == 0) {
@@ -524,6 +527,19 @@
           easyClose = (fetch_params$binmates_checked == TRUE)
         )
       )
+    }
+    
+    add_binmates <- function(binmate_data) {
+      binmate_data <- binmate_data[, c("id_date_parsed", "project_code", "lat", "lon") :=
+                                     c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
+      cols_to_factor <- intersect(config$fieldsets$factorfields, names(binmate_data))
+      binmate_data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
+      data <- unique(rbindlist(list(outdata$data,
+                                    binmate_data),
+                               fill = TRUE))
+      outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
+      outdata$data <- data
+      fetch_params$binmates_fetched <- TRUE
     }
     
     # user can close the BIN mate modal without fetching BIN mates
@@ -702,7 +718,7 @@
           if(o %in% sets) {
             opt <- unlist(strsplit(o, "|", fixed=TRUE))
             if(length(opt) > 1) {
-              fields <- unique(c(fields, opt[2]))
+              fields <- unique(c(fields, opt[-1]))
             } else {
               fields <- unique(c(fields, config$fieldsets[o][[1]]))
             }
@@ -773,7 +789,7 @@
       removeModal()
       filter_set <- modify_custom_fieldset(input$save_filter_name, input$filt_opt)
       updateSelectizeInput(session,"filt_opt",
-                           choices = filter_options(),
+                           choices = filter_options(is.null(fetch_params$node_result)),
                            selected = filter_set)
     })
     
@@ -797,7 +813,7 @@
         selected = NULL
       )
       updateSelectizeInput(session,"filt_opt",
-                           choices = filter_options(),
+                           choices = filter_options(is.null(fetch_params$node_result)),
                            selected = input$filt_opt[input$filt_opt %in% unname(unlist(input$filt_opt))])
     })
     
@@ -819,12 +835,12 @@
           keep_seq[[1]] <- data[["marker_code"]] %in% filt_markers
         }
         if ("None" %in% filt_seq & ("marker_code" %in% names(data))) {
-          keep_seq[[2]] <- (data[["marker_code"]] == "") | is.na(data[["marker_code"]])  
+          keep_seq[[2]] <- empty(data[["marker_code"]])
         }
       }
       if(length(nuc_cols) > 0) {
         #keep_seq[[3]] <- Reduce("|", data[, lapply(.SD, function(x) !is.na(x) & x != ""), .SDcols = nuc_cols])
-        keep_seq[[3]] <- rowSums(data[, lapply(.SD, function(x) !is.na(x) & x != ""), .SDcols = nuc_cols]) > 0
+        keep_seq[[3]] <- rowSums(data[, lapply(.SD, function(x) !empty(x)), .SDcols = nuc_cols]) > 0
       }
       
       if(length(keep_seq) > 0) {
@@ -876,11 +892,7 @@
     observeEvent(input$ana_btn, {
       req(outdata$data)
       outdata$summary <- NULL
-      outdata$summary <- if(input$ana_opt == "tax_summary") {
-        count_taxa(filtered_data(), outdata$id_field)
-      } else {
-        summarize_table(filtered_data(), input$ana_opt, outdata$id_field)
-      }
+      outdata$summary <- summarize_table(filtered_data(), input$ana_opt, outdata$id_field)
       if(!tab_status$summary) {
         bslib::nav_insert(
           "tabs", target = tab_monitor("ins_target","summary"), position = "after", select = TRUE,
@@ -911,7 +923,7 @@
     observeEvent(input$bin_consensus_btn, {
       req(outdata$data)
       outdata$bin_consensus <- NULL
-      outdata$bin_consensus <- get_bin_consensus(filtered_data()[!is.na(bin_uri)],
+      outdata$bin_consensus <- get_bin_consensus(filtered_data()[!empty(bin_uri)],
                                                threshold = as.double(unlist(unname(input$bc_threshold))),
                                                min_ids = unlist(unname(input$bc_minids)),
                                                enforce_scientific = input$bc_enforcesci,
@@ -940,7 +952,10 @@
     observeEvent(input$bin_disc_btn, {
       req(outdata$data)
       outdata$bin_discordance <- NULL
-      outdata$bin_discordance <- get_bin_discordance(filtered_data()[!is.na(bin_uri)])
+      outdata$bin_discordance <- get_bin_discordance(filtered_data()[!empty(bin_uri)])
+      
+      print(tab_status)
+      print(tab_monitor("ins_target","discordance_tab"))
       
       if(!tab_status$discordance_tab) {
         bslib::nav_insert(
@@ -979,7 +994,7 @@
     # the portal API can be somewhat inconsistent; this will insert a warning message about any BINs for which the query timed out
     insert_portal_warning <- function(portal_stats) {
       removeUI("#disc_portal_warning", immediate = TRUE)
-      failed <- nrow(portal_stats[is.na(member_count)])
+      failed <- nrow(portal_stats[empty(member_count)])
       if(failed > 0) {
         insertUI(
           selector = "div.form-group:has(#disc_portal):not(:has(div.form-group:has(#disc_portal)))",
@@ -1006,7 +1021,7 @@
     observeEvent(input$disc_portal_retry, {
       init_stats <- outdata$bin_portal_stats
       req(init_stats)
-      retry_stats <- get_portal_bin_stats(as.character(init_stats[is.na(member_count), bin_uri]), shiny = TRUE)
+      retry_stats <- get_portal_bin_stats(as.character(init_stats[empty(member_count), bin_uri]), shiny = TRUE)
       init_stats[retry_stats, (names(init_stats)) := mget(paste0("i.", names(init_stats))), on = "bin_uri"]
       disc <- isolate(outdata$bin_discordance)
       outdata$bin_discordance <- merge(disc[, .SD, .SDcols = c("bin_uri",names(disc)[!names(disc) %in% names(init_stats)])],
@@ -1022,7 +1037,7 @@
     observeEvent(input$bin_rep_btn, {
       req(outdata$data)
       outdata$bin_reps <- NULL
-      outdata$bin_reps <- get_bin_reps(filtered_data()[!is.na(bin_uri)])
+      outdata$bin_reps <- get_bin_reps(filtered_data()[!empty(bin_uri)])
       
       if(!tab_status$bin_reps) {
         bslib::nav_insert(
@@ -1074,7 +1089,7 @@
     update_map <- function() {
       req(input$data_table_rows_all)
       data <- filtered_data()[input$data_table_rows_all, ]
-      data <- unique(data[!is.na(lat) & !is.na(lon) & lat != "" & lon != ""], by = "processid")
+      data <- unique(data[!empty(coord)], by = "processid")
       req(nrow(data) > 0)
       pal <- colorFactor(
         palette = map_colours,

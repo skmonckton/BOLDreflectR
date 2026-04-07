@@ -38,6 +38,7 @@ check.tbl.sql <- function(tbl) {
 
 bold.search.filters<-function (bold.df,
                                ids=NULL,
+                               bin_uris=NULL,
                                taxonomy=NULL,
                                geography=NULL,
                                institutes=NULL,
@@ -47,7 +48,8 @@ bold.search.filters<-function (bold.df,
                                basecount=NULL,
                                biogeo_cat=NULL,
                                dataset.projects=NULL,
-                               bounding.box=NULL)
+                               bounding.box=NULL,
+                               ambi.base.cutoff=NULL)
 
 
 
@@ -63,7 +65,15 @@ bold.search.filters<-function (bold.df,
       filter(processid %in% !!ids |
                sampleid  %in% !!ids)
     
-
+  }
+  
+  #0.5 bin_uris
+  
+  if(!is.null(bin_uris)) {
+    
+    bold.df = bold.df %>%
+      filter(bin_uri %in% !!bin_uris)
+    
   }
   
   
@@ -90,7 +100,7 @@ bold.search.filters<-function (bold.df,
   }
   
   
-  #3. specific country/region/site/sector
+  #2. specific country/region/site/sector
   
   
   if(!is.null(geography))
@@ -108,7 +118,7 @@ bold.search.filters<-function (bold.df,
   }
   
   
-  #4. Latitude/Longitude bounding box
+  #3. Latitude/Longitude bounding box
   
   if (!is.null(bounding.box)) {
     
@@ -131,7 +141,7 @@ bold.search.filters<-function (bold.df,
 
   }
   
-  #6. Institutes storing the specimen
+  #4. Institutes storing the specimen
   
   
   if(!is.null(institutes))
@@ -145,7 +155,7 @@ bold.search.filters<-function (bold.df,
   }
   
   
-  #7. Identified by
+  #5. Identified by
   
   
   if(!is.null(identified.by))
@@ -169,7 +179,7 @@ bold.search.filters<-function (bold.df,
   }
   
   
-  #8. sequence source
+  #6. sequence source
   
   
   if(!is.null(seq.source))
@@ -183,7 +193,7 @@ bold.search.filters<-function (bold.df,
   }
   
   
-  #9. Type of marker
+  #7. Type of marker
   
   
   if(!is.null(marker))
@@ -196,7 +206,7 @@ bold.search.filters<-function (bold.df,
   }
   
   
-  #10. basecount
+  #8. basecount
   
   
   if(!is.null(basecount))
@@ -271,7 +281,7 @@ bold.search.filters<-function (bold.df,
     
   }
   
-  # Biogeo/ecological categories
+  #9. Biogeo/ecological categories
   
   if(!is.null(biogeo_cat))
     
@@ -286,7 +296,7 @@ bold.search.filters<-function (bold.df,
     
   }
   
-  # Dataset or project code
+  #10. Dataset or project code
   
   if (!is.null(dataset.projects)) {
     
@@ -299,6 +309,28 @@ bold.search.filters<-function (bold.df,
                             codes_regex))
     
   }
+  
+  #11. Ambiguous bases cutoff
+  
+  # Return unchanged if no cutoff provided
+  if (!is.null(ambi.base.cutoff)) {
+    
+    bold.df = bold.df %>%
+      mutate(
+        count_ambi = sql("
+        ARRAY_LENGTH(
+          ARRAY_FILTER(
+            REGEXP_SPLIT_TO_ARRAY(UPPER(nuc), ''),
+            x -> REGEXP_MATCHES(x, '[NRYSWKMBDHV]')
+          ))"),
+        percent_ambi = (count_ambi * 100.0 / nuc_basecount)) %>%
+      filter(case_when(
+        percent_ambi < 1.00 ~ '<1%',
+        percent_ambi >= 1.00 & percent_ambi <= 5.00 ~ '1-5%',
+        percent_ambi > 5.00 ~ '>5%'
+      ) == !!ambi.base.cutoff) }
+      #select(-count_ambi, -percent_ambi)
+  
   
   return(bold.df)
   
