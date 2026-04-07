@@ -4,7 +4,7 @@
 #'
 #' @param input.parquet Path to the input parquet file
 #' @param ids Vector of process IDs or sample IDs to filter by
-#' @param bin_uris Vector of BIN numbers to filter by
+#' @param bins Vector of BIN numbers (i.e. URIs) to filter by
 #' @param taxonomy Vector of taxonomic names to filter by (can include kingdom, phylum, class, order, family, subfamily, genus, species)
 #' @param geography Vector of geographic locations to filter by (can include country/ocean, province/state, region, sector, site)
 #' @param institutes Vector of institute codes to filter by
@@ -27,7 +27,7 @@
 #' @export
 bold.data.search <- function(input.parquet,
                              ids=NULL,
-                             bin_uris=NULL,
+                             bins=NULL,
                              taxonomy=NULL,
                              geography=NULL,
                              institutes=NULL,
@@ -55,7 +55,7 @@ bold.data.search <- function(input.parquet,
   
   # mapping the fetch.filter arguments with the bold.search function arguments
   bold.search.args <- list(ids = ids,
-                           bin_uris = bin_uris,
+                           bins = bins,
                            taxonomy = taxonomy,
                            geography = geography,
                            institutes = institutes,

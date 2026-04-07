@@ -38,7 +38,7 @@ check.tbl.sql <- function(tbl) {
 
 bold.search.filters<-function (bold.df,
                                ids=NULL,
-                               bin_uris=NULL,
+                               bins=NULL,
                                taxonomy=NULL,
                                geography=NULL,
                                institutes=NULL,
@@ -56,7 +56,7 @@ bold.search.filters<-function (bold.df,
 {
   
 
-  #0 ids
+  #0. ids
   
   # ids is your vector of IDs to filter
   if (!is.null(ids)) {
@@ -67,17 +67,17 @@ bold.search.filters<-function (bold.df,
     
   }
   
-  #0.5 bin_uris
+  #1. BIN
   
-  if(!is.null(bin_uris)) {
+  if(!is.null(bins)) {
     
     bold.df = bold.df %>%
-      filter(bin_uri %in% !!bin_uris)
+      filter(bin_uri %in% !!bins)
     
   }
   
   
-  #1 taxon name
+  #2. taxon name
   
   # condition to check if the taxon name is of the correct data type
   
@@ -100,7 +100,7 @@ bold.search.filters<-function (bold.df,
   }
   
   
-  #2. specific country/region/site/sector
+  #3. specific country/region/site/sector
   
   
   if(!is.null(geography))
@@ -118,7 +118,7 @@ bold.search.filters<-function (bold.df,
   }
   
   
-  #3. Latitude/Longitude bounding box
+  #4. Latitude/Longitude bounding box
   
   if (!is.null(bounding.box)) {
     
@@ -141,7 +141,7 @@ bold.search.filters<-function (bold.df,
 
   }
   
-  #4. Institutes storing the specimen
+  #5. Institutes storing the specimen
   
   
   if(!is.null(institutes))
@@ -155,7 +155,7 @@ bold.search.filters<-function (bold.df,
   }
   
   
-  #5. Identified by
+  #6. Identified by
   
   
   if(!is.null(identified.by))
@@ -179,7 +179,7 @@ bold.search.filters<-function (bold.df,
   }
   
   
-  #6. sequence source
+  #7. sequence source
   
   
   if(!is.null(seq.source))
@@ -193,7 +193,7 @@ bold.search.filters<-function (bold.df,
   }
   
   
-  #7. Type of marker
+  #8. Type of marker
   
   
   if(!is.null(marker))
@@ -206,7 +206,7 @@ bold.search.filters<-function (bold.df,
   }
   
   
-  #8. basecount
+  #9. basecount
   
   
   if(!is.null(basecount))
@@ -281,7 +281,7 @@ bold.search.filters<-function (bold.df,
     
   }
   
-  #9. Biogeo/ecological categories
+  #10. Biogeo/ecological categories
   
   if(!is.null(biogeo_cat))
     
@@ -296,7 +296,7 @@ bold.search.filters<-function (bold.df,
     
   }
   
-  #10. Dataset or project code
+  #11. Dataset or project code
   
   if (!is.null(dataset.projects)) {
     
@@ -310,7 +310,7 @@ bold.search.filters<-function (bold.df,
     
   }
   
-  #11. Ambiguous bases cutoff
+  #12. Ambiguous bases cutoff
   
   # Return unchanged if no cutoff provided
   if (!is.null(ambi.base.cutoff)) {

@@ -427,7 +427,7 @@
     observeEvent(fetch_params$node_result, {
       req(fetch_params$node_result)
       showNotification("Assembling data from data package...", id = "fetch_msg", duration=NULL, type = "message")
-      data <- clean_node_data(as.data.table(bold.data.collect(fetch_params$node_result)))
+      data <- as.data.table(bold.data.collect(fetch_params$node_result))
       fetch_params$fetch_by <- "processid"
       showNotification("Data assembled.", id = "fetch_msg", duration=2, type = "message")
       populate_data(data)

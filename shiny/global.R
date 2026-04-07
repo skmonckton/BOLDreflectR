@@ -270,13 +270,6 @@ collapse_markers <- function(data) {
   
 }
 
-# modify data from local data package to match format delivered by API
-clean_node_data <- function(data) {
-  data[, c("coord", "bold_recordset_code_arr") := 
-         list(gsub("\\[|\\]|\\s", "", coord), gsub("\\'|\\[|\\]", "", bold_recordset_code_arr))]
-  data.table::setnames(data, old = c("country/ocean", "province/state"), new = c("country.ocean", "province.state"))
-}
-
 # decompose recordset column into a list of dataset or project codes
 list_recordsets <- function(data, set_type, list_by) {
   recordsets <- data[, .(set = unique(trimws(trimws(unlist(strsplit(bold_recordset_code_arr, ",")))))), by = list_by] 
@@ -439,7 +432,7 @@ get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
     dtpkg <- import_parquet_data(dtpkg_parquet)
     result <- dtpkg %>% filter(bin_uri %in% bins) %>% filter(!processid %in% current_pids)
     showNotification("Assembling data from data package...", id = "bin_msg", duration=NULL, type = "message")
-    binmate_data <- clean_node_data(as.data.table(bold.data.collect(result)))
+    binmate_data <- as.data.table(bold.data.collect(result))
     add_pids <- unique(binmate_data$processid)
   }
     
