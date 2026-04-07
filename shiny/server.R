@@ -954,9 +954,6 @@
       outdata$bin_discordance <- NULL
       outdata$bin_discordance <- get_bin_discordance(filtered_data()[!empty(bin_uri)])
       
-      print(tab_status)
-      print(tab_monitor("ins_target","discordance_tab"))
-      
       if(!tab_status$discordance_tab) {
         bslib::nav_insert(
           "tabs", target = tab_monitor("ins_target","discordance_tab"), position = "after", select = TRUE,

@@ -30,6 +30,8 @@ keystore <- switch(Sys.info()['sysname'],
 # in the packaged app, these values are passed in during start-up by electron
 ver <- ifelse(Sys.getenv("APP_VER") != "", Sys.getenv("APP_VER"), jsonlite::read_json("../package.json")$version)
 user_data_path <- ifelse(Sys.getenv("USER_DATA_PATH") != "", Sys.getenv("USER_DATA_PATH"), "user_data")
+ver <- ifelse(Sys.getenv("APP_VER") != "", Sys.getenv("APP_VER"), jsonlite::read_json("../package.json")$version)
+user_data_path <- ifelse(Sys.getenv("USER_DATA_PATH") != "", Sys.getenv("USER_DATA_PATH"), "user_data")
 
 # initialize user_config file in user data directory
 # (currently only for custom field sets)
@@ -112,11 +114,17 @@ empty <- function(x) {
   (is.na(x) | (x == ""))
 }
 
+# convenience function to check for NA or "" in BCDM fields
+empty <- function(x) {
+  (is.na(x) | (x == ""))
+}
+
 # assemble FASTA and copy to clipboard
 clip_fasta <- function(bold_df, cols_for_fas_names = NULL, collapse_mrkrs = NULL) {
   
   if (is.null(cols_for_fas_names)) cols_for_fas_names <- c("processid", "marker_code")
   
+  clip_fas <- if((!"nuc" %in% names(bold_df)) || (nrow(bold_df[!empty(nuc)]) == 0)) {
   clip_fas <- if((!"nuc" %in% names(bold_df)) || (nrow(bold_df[!empty(nuc)]) == 0)) {
     if(!is.null(collapse_mrkrs)) {
       showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
@@ -137,7 +145,9 @@ clip_fasta <- function(bold_df, cols_for_fas_names = NULL, collapse_mrkrs = NULL
     showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
     paste0(">",
            bold_df[!empty(nuc), do.call(paste, c(.SD, sep = "|")), .SDcols = c(cols_for_fas_names)],
+           bold_df[!empty(nuc), do.call(paste, c(.SD, sep = "|")), .SDcols = c(cols_for_fas_names)],
            "\n",
+           bold_df[!empty(nuc), nuc])
            bold_df[!empty(nuc), nuc])
   }
   
@@ -159,6 +169,7 @@ split_query <- function(query_input, list = FALSE) {
     NULL
   } else {
     terms <- trimws(strsplit(query_input, "\n|,")[[1]])
+    terms <- terms[!empty(terms)]
     terms <- terms[!empty(terms)]
     if(list == TRUE) {
       as.list(terms)
@@ -279,7 +290,7 @@ clean_node_data <- function(data) {
 
 # decompose recordset column into a list of dataset or project codes
 list_recordsets <- function(data, set_type, list_by) {
-  recordsets <- data[, .(set = unique(trimws(unlist(strsplit(bold_recordset_code_arr, ","))))), by = list_by] 
+  recordsets <- data[, .(set = unique(trimws(trimws(unlist(strsplit(bold_recordset_code_arr, ",")))))), by = list_by] 
   if(set_type == "parse_project") {
     merge(data[, list_by, with = FALSE], unique(recordsets[!grepl("^DS-|^DATASET", set), c(list_by, "set"), with = FALSE]), all.x = TRUE, by = list_by)[, set]
   } else if(set_type == "projects") {
@@ -323,6 +334,14 @@ parse_id_date <- function(data) {
   }
   id_date_note <- lubridate::my(sapply(string_match(data$taxonomy_notes, "(?<=id-date:\\s?)[A-Za-z]{3,9} [0-9]{2,4}"), `[`, 2))
   id_date <- format(as.Date(do.call(pmax, c(data.table(id_date_verb,id_date_note), na.rm = TRUE)), format = "%Y-%m-%d"), format = "%b %Y")
+  string_match <- function(x, pat) regmatches(x, gregexpr(pat, x, perl=TRUE), invert = NA)
+  id_date_verb <- if("specimendetails.verbatim_identification_method" %in% names(data)) {
+    lubridate::my(sapply(string_match(data$specimendetails.verbatim_identification_method, "(?<=\\()[A-Za-z]{3,9} [0-9]{2,4}(?=\\))"), `[`, 2))
+  } else {
+    NULL
+  }
+  id_date_note <- lubridate::my(sapply(string_match(data$taxonomy_notes, "(?<=id-date:\\s?)[A-Za-z]{3,9} [0-9]{2,4}"), `[`, 2))
+  id_date <- format(as.Date(do.call(pmax, c(data.table(id_date_verb,id_date_note), na.rm = TRUE)), format = "%Y-%m-%d"), format = "%b %Y")
   return(id_date)
 }
 
@@ -339,7 +358,11 @@ parse_lat_lon <- function(coord) {
   if(all(empty(coord))) {
     list(rep(as.numeric(NA), length(coord)), rep(as.numeric(NA), length(coord)))
   } else {
+    if(all(empty(coord))) {
+    list(rep(as.numeric(NA), length(coord)), rep(as.numeric(NA), length(coord)))
+  } else {
     lapply(tstrsplit(coord, ",", fixed = TRUE), as.numeric)
+  }
   }
 }
 
@@ -359,10 +382,12 @@ deduce_len_in_frame <- function(x) {
 get_bin_reps <- function(df) {
   
   data <- df[!empty(bin_uri)]
+  data <- df[!empty(bin_uri)]
   bp_col <- head(c("nuc_basecount", "COI-5P_nuc_basecount")[c("nuc_basecount", "COI-5P_nuc_basecount") %in% names(df)], 1)
 
   # get series of distances between sequence length and in-frame modal barcode length for BIN
   diff_mode <- merge(data,
+                     data[, .(mode = deduce_len_in_frame(get(bp_col))), by = "bin_uri"],
                      data[, .(mode = deduce_len_in_frame(get(bp_col))), by = "bin_uri"],
                      by = "bin_uri",
                      all.x = TRUE)[, abs(get(bp_col) - mode)]
@@ -382,12 +407,17 @@ clean_ansi <- function(x) {
   gsub("\033\\[[0-9;]*[mK]", "", x)
 }
 
+clean_ansi <- function(x) {
+  gsub("\033\\[[0-9;]*[mK]", "", x)
+}
+
 # wrapper to prepare BOLD fetch/search queries and prepare messages as notifications
 # (note: was intended to handle both fetch and search, but I haven't harmonized the two yet)
 bold.fetch.shiny <- function (get_by,
                               query,
                               BCDM_only = FALSE,
                               notification_id = "fetch_msg") {
+
 
   tryCatch({
     withCallingHandlers({
