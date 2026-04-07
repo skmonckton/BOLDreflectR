@@ -20,8 +20,8 @@ keystore <- switch(Sys.info()['sysname'],
                   Linux = "Linux Secret Service")
 
 # in the packaged app, these values are passed in during start-up by electron
-ver <- Sys.getenv("APP_VER")
-user_data_path <- ifelse(Sys.getenv("USER_DATA_PATH") != "", Sys.getenv("USER_DATA_PATH"), "data/")
+ver <- ifelse(Sys.getenv("APP_VER") != "", Sys.getenv("APP_VER"), jsonlite::read_json("../package.json")$version)
+user_data_path <- ifelse(Sys.getenv("USER_DATA_PATH") != "", Sys.getenv("USER_DATA_PATH"), "user_data")
 
 # initialize user_config file in user data directory
 # (currently only for custom field sets)
@@ -54,7 +54,8 @@ filter_options <- function() {
                         "Verbatim collection data" = "verbcollect",
                         "Projects & datasets" = "recset"),
        "Parsed fields" = list("Identification date" = "parsed|id_date_parsed",
-                       "Project code" = "parsed|project_code"),
+                              "Project code" = "parsed|project_code",
+                              "Latitude & longitude" = "parsed|lat|lon"),
        "All fields" = config$fieldsets$all)
 } 
 
@@ -68,12 +69,17 @@ cb <- function(df, header=TRUE, sep="\t", max.size=(200*1000)){
   showNotification(paste0("Copied to clipboard."), type = "message", id = "copy_msg")
 }
 
+# convenience function to check for NA or "" in BCDM fields
+empty <- function(x) {
+  (is.na(x) | (x == ""))
+}
+
 # assemble FASTA and copy to clipboard
 clip_fasta <- function(bold_df, cols_for_fas_names = NULL, collapse_mrkrs = NULL) {
   
   if (is.null(cols_for_fas_names)) cols_for_fas_names <- c("processid", "marker_code")
   
-  clip_fas <- if((!"nuc" %in% names(bold_df)) || (nrow(bold_df[!is.na(nuc)]) == 0)) {
+  clip_fas <- if((!"nuc" %in% names(bold_df)) || (nrow(bold_df[!empty(nuc)]) == 0)) {
     if(!is.null(collapse_mrkrs)) {
       showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
       cols_for_fas_names <- intersect(cols_for_fas_names, names(bold_df))
@@ -92,9 +98,9 @@ clip_fasta <- function(bold_df, cols_for_fas_names = NULL, collapse_mrkrs = NULL
   } else {
     showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
     paste0(">",
-           bold_df[!is.na(nuc), do.call(paste, c(.SD, sep = "|")), .SDcols = c(cols_for_fas_names)],
+           bold_df[!empty(nuc), do.call(paste, c(.SD, sep = "|")), .SDcols = c(cols_for_fas_names)],
            "\n",
-           bold_df[!is.na(nuc), nuc])
+           bold_df[!empty(nuc), nuc])
   }
   
   if(is.null(clip_fas)) {
@@ -115,7 +121,7 @@ split_query <- function(query_input, list = FALSE) {
     NULL
   } else {
     terms <- trimws(strsplit(query_input, "\n|,")[[1]])
-    terms <- terms[(!is.na(terms)) & (terms != "")]
+    terms <- terms[!empty(terms)]
     if(list == TRUE) {
       as.list(terms)
     } else {
@@ -196,7 +202,7 @@ collapse_markers <- function(data) {
 
 # decompose recordset column into a list of dataset or project codes
 list_recordsets <- function(data, set_type, list_by) {
-  recordsets <- data[, .(set = unique(unlist(strsplit(bold_recordset_code_arr, ",")))), by = list_by] 
+  recordsets <- data[, .(set = unique(trimws(unlist(strsplit(bold_recordset_code_arr, ","))))), by = list_by] 
   if(set_type == "parse_project") {
     merge(data[, list_by, with = FALSE], unique(recordsets[!grepl("^DS-|^DATASET", set), c(list_by, "set"), with = FALSE]), all.x = TRUE, by = list_by)[, set]
   } else if(set_type == "projects") {
@@ -232,16 +238,24 @@ summarize_table <- function(data, sum_type, list_by) {
 
 # extracts identification dates from taxonomy_notes
 parse_id_date <- function(data) {
-  str_match <- function(x, pat) regmatches(x, gregexpr(pat, x, perl=TRUE), invert = NA)
-  id_date_verb <- lubridate::my(sapply(str_match(data$specimendetails.verbatim_identification_method, "(?<=\\()[A-Za-z]{3,9} [0-9]{2,4}(?=\\))"), `[`, 2))
-  id_date_note <- lubridate::my(sapply(str_match(data$taxonomy_notes, "(?<=id-date:\\s?)[A-Za-z]{3,9} [0-9]{2,4}"), `[`, 2))
-  id_date <-  format(as.Date(do.call(pmax, c(data.table(id_date_verb,id_date_note), na.rm = TRUE)), format = "%Y-%m-%d"), format = "%b %Y")              
+  string_match <- function(x, pat) regmatches(x, gregexpr(pat, x, perl=TRUE), invert = NA)
+  id_date_verb <- if("specimendetails.verbatim_identification_method" %in% names(data)) {
+    lubridate::my(sapply(string_match(data$specimendetails.verbatim_identification_method, "(?<=\\()[A-Za-z]{3,9} [0-9]{2,4}(?=\\))"), `[`, 2))
+  } else {
+    NULL
+  }
+  id_date_note <- lubridate::my(sapply(string_match(data$taxonomy_notes, "(?<=id-date:\\s?)[A-Za-z]{3,9} [0-9]{2,4}"), `[`, 2))
+  id_date <- format(as.Date(do.call(pmax, c(data.table(id_date_verb,id_date_note), na.rm = TRUE)), format = "%Y-%m-%d"), format = "%b %Y")
   return(id_date)
 }
 
 # extracts lats and longs from the BCDM coord column
 parse_lat_lon <- function(coord) {
-  lapply(tstrsplit(coord, ",", fixed = TRUE), as.numeric)
+  if(all(empty(coord))) {
+    list(rep(as.numeric(NA), length(coord)), rep(as.numeric(NA), length(coord)))
+  } else {
+    lapply(tstrsplit(coord, ",", fixed = TRUE), as.numeric)
+  }
 }
 
 # rounds to a multiple, with optional offset (e.g. to account for reading frame)
@@ -259,12 +273,12 @@ deduce_len_in_frame <- function(x) {
 # selected BIN representatives
 get_bin_reps <- function(df) {
   
-  data <- df[(!is.na(bin_uri))]
+  data <- df[!empty(bin_uri)]
   bp_col <- head(c("nuc_basecount", "COI-5P_nuc_basecount")[c("nuc_basecount", "COI-5P_nuc_basecount") %in% names(df)], 1)
 
   # get series of distances between sequence length and in-frame modal barcode length for BIN
   diff_mode <- merge(data,
-                     data[!is.na(bin_uri), .(mode = deduce_len_in_frame(get(bp_col))), by = "bin_uri"],
+                     data[, .(mode = deduce_len_in_frame(get(bp_col))), by = "bin_uri"],
                      by = "bin_uri",
                      all.x = TRUE)[, abs(get(bp_col) - mode)]
   
@@ -279,17 +293,17 @@ get_bin_reps <- function(df) {
   
 }
 
+clean_ansi <- function(x) {
+  gsub("\033\\[[0-9;]*[mK]", "", x)
+}
+
 # wrapper to prepare BOLD fetch/search queries and prepare messages as notifications
 # (note: was intended to handle both fetch and search, but I haven't harmonized the two yet)
 bold.fetch.shiny <- function (get_by,
                               query,
                               BCDM_only = FALSE,
                               notification_id = "fetch_msg") {
-  
-  clean_ansi <- function(x) {
-    gsub("\033\\[[0-9;]*[mK]", "", x)
-  }
-  
+
   tryCatch({
     withCallingHandlers({
       if(get_by == "search") {
@@ -312,7 +326,7 @@ bold.fetch.shiny <- function (get_by,
 
 # retrieve process IDs of BIN mates
 get_binmate_pids <- function(df, batch_size=200, sleep=2) {
-  bins <- unique(df[["bin_uri"]][(!is.na(df[["bin_uri"]])) & (df[["bin_uri"]] != "")])
+  bins <- unique(df[["bin_uri"]][!empty(df[["bin_uri"]])])
   
   add_pids <- character()
   

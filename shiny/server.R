@@ -6,8 +6,18 @@
     
     # some manual JavaScript for placeholder values
     session$onFlushed(function() {
-      shinyjs::runjs("$('#seq_min').attr('placeholder', 'Min');
-                  $('#seq_max').attr('placeholder', 'Max');")
+      shinyjs::runjs("
+        function setPlaceholders() {
+          $('.single-marker div:has(.shiny-input-number):nth-child(1 of div:has(.shiny-input-number)) .shiny-input-number').attr('placeholder', 'Min');
+          $('.single-marker div:has(.shiny-input-number):nth-last-child(1 of div:has(.shiny-input-number)) .shiny-input-number').attr('placeholder', 'Max');
+        }
+        var lastSent = null;
+        setPlaceholders();
+        var observer = new MutationObserver(function() {
+          setPlaceholders();
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      ")
     }, once = TRUE)
     
     ### SETUP
@@ -41,13 +51,6 @@
       bin_portal_stats = NULL)
     
     # keep track of output tabs
-    # tab_status <- new.env(parent = emptyenv())
-    # tab_status$summary <- FALSE
-    # tab_status$bin_reps <- FALSE
-    # tab_status$consensus_tab <- FALSE
-    # tab_status$discordance_tab <- FALSE
-    # tab_status$map_tab <- FALSE
-    
     tab_status <- reactiveValues(
       data = FALSE,
       summary = FALSE,
@@ -95,11 +98,20 @@
     
     # automatically update min/max marker length to avoid impossible ranges
     observeEvent(input$last_blurred, {
-      value <- input[[input$last_blurred]]
-      if(isTRUE(value < 5)) { updateNumericInput(inputId = input$last_blurred, value = 5) }
-      if(isTRUE(value > 2000)) { updateNumericInput(inputId = input$last_blurred, value = 2000) }
-      if(isTRUE((input$last_blurred == "seq_max") & (input$seq_max < input$seq_min))) { updateNumericInput(inputId = "seq_max", value = input$seq_min) }
-      if(isTRUE((input$last_blurred == "seq_min") & (input$seq_min > input$seq_max))) { updateNumericInput(inputId = "seq_min", value = input$seq_max) }
+      id <- input$last_blurred
+      value <- input[[id]]
+      
+      is_min <- grepl("_min", id)
+      is_max <- grepl("_max", id)
+      sibling_id <- if (is_min) sub("_min", "_max", id) else sub("_max", "_min", id)
+      sibling_value <- input[[sibling_id]]
+      
+      val_range <- fcase(grepl("seq", id), list(c(5, 2000)))
+      
+      if(isTRUE(value < val_range[[1]][1])) updateNumericInput(inputId = id, value = val_range[[1]][1])
+      if(isTRUE(value > val_range[[1]][2])) updateNumericInput(inputId = id, value = val_range[[1]][2])
+      if(isTRUE(is_max && value < sibling_value)) updateNumericInput(inputId = id, value = sibling_value)
+      if(isTRUE(is_min && value > sibling_value)) updateNumericInput(inputId = id, value = sibling_value)
     }, ignoreInit = TRUE)
     
     # only show NTS toggle when data contains NTS records
@@ -112,6 +124,8 @@
         hide('include_nts')
       }
     })
+    
+    ### SERVER HELPERS
     
     # function to reset filter options
     reset_filter <- function() {
@@ -129,9 +143,6 @@
                            selected = NULL)
     }
     
-    
-    ### SERVER HELPERS
-    
     # function to reset UI (and reactive values) to blank state
     reset_ui <- function() {
       for(i in seq_along(init_outdata)) {
@@ -142,9 +153,8 @@
       }
       bslib::nav_select(id="tabs", selected = "data")
       for(t in names(tab_status)[names(tab_status) != "data"]) bslib::nav_remove(id="tabs", target = t, session)
-      for(i in seq_along(tab_status)) tab_status[[names(tab_status)[i]]] <- FALSE
-      #for(t in ls(tab_status)) assign(t, FALSE, envir = tab_status)
       reset_filter()
+      for(i in seq_along(reactiveValuesToList(tab_status))) tab_status[[names(tab_status)[i]]] <- FALSE
       bslib::update_switch("include_binmates", value = FALSE)
       bslib::update_switch("include_nts", value = FALSE)
       bslib::update_switch("collapse_mrkrs", value = FALSE)
@@ -171,8 +181,8 @@
       }, error = function(e) {
         showNotification(e$message, id="fetch_msg", type = "error")
       })
-      req(isTruthy(input$fetch_id_list) || isTruthy(input$search_tax) || isTruthy(input$search_geo) || 
-            isTruthy(input$seq_marker) || isTruthy(Sys.getenv("api_key")))
+      req((isTruthy(input$fetch_id_list) || isTruthy(input$search_tax) || isTruthy(input$search_geo) || 
+            isTruthy(input$seq_marker)) && isTruthy(Sys.getenv("api_key")))
       shinyjs::show('table_area')
       shinyjs::hide('table_buttons')
       reset_ui()
@@ -246,13 +256,18 @@
       }) 
     })
     
-    # perform fetch and populate data
+    # perform fetch
     observeEvent(fetch_params$fetch_ids, {
       req(fetch_params$fetch_ids, fetch_params$fetch_by)
       data <- as.data.table(bold.fetch.shiny(get_by = fetch_params$fetch_by,
                                query = fetch_params$fetch_ids,
                                BCDM_only = FALSE))
       req(nrow(data) > 0)
+      populate_data(data)
+    })
+    
+    # populate data
+    populate_data <- function(data) {
       data[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
       cols_to_factor <- intersect(config$fieldsets$factorfields, names(data))
       data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
@@ -271,7 +286,7 @@
       if (input$fetch_binmates == TRUE) {
         binmate_modal()
       }
-    })
+    }
     
     # logic for initiating search (or fetch) of additional BIN records ("BIN mates") 
     # if the BIN mates switch is toggled on, a modal opens to report the number of additional BIN records
@@ -427,7 +442,7 @@
           if(o %in% sets) {
             opt <- unlist(strsplit(o, "|", fixed=TRUE))
             if(length(opt) > 1) {
-              fields <- unique(c(fields, opt[2]))
+              fields <- unique(c(fields, opt[-1]))
             } else {
               fields <- unique(c(fields, config$fieldsets[o][[1]]))
             }
@@ -498,7 +513,7 @@
       removeModal()
       filter_set <- modify_custom_fieldset(input$save_filter_name, input$filt_opt)
       updateSelectizeInput(session,"filt_opt",
-                           choices = filter_options(),
+                           choices = filter_options(is.null(fetch_params$node_result)),
                            selected = filter_set)
     })
     
@@ -522,7 +537,7 @@
         selected = NULL
       )
       updateSelectizeInput(session,"filt_opt",
-                           choices = filter_options(),
+                           choices = filter_options(is.null(fetch_params$node_result)),
                            selected = input$filt_opt[input$filt_opt %in% unname(unlist(input$filt_opt))])
     })
     
@@ -544,12 +559,12 @@
           keep_seq[[1]] <- data[["marker_code"]] %in% filt_markers
         }
         if ("None" %in% filt_seq & ("marker_code" %in% names(data))) {
-          keep_seq[[2]] <- (data[["marker_code"]] == "") | is.na(data[["marker_code"]])  
+          keep_seq[[2]] <- empty(data[["marker_code"]])
         }
       }
       if(length(nuc_cols) > 0) {
         #keep_seq[[3]] <- Reduce("|", data[, lapply(.SD, function(x) !is.na(x) & x != ""), .SDcols = nuc_cols])
-        keep_seq[[3]] <- rowSums(data[, lapply(.SD, function(x) !is.na(x) & x != ""), .SDcols = nuc_cols]) > 0
+        keep_seq[[3]] <- rowSums(data[, lapply(.SD, function(x) !empty(x)), .SDcols = nuc_cols]) > 0
       }
       
       if(length(keep_seq) > 0) {
@@ -632,7 +647,7 @@
     observeEvent(input$bin_consensus_btn, {
       req(outdata$data)
       outdata$bin_consensus <- NULL
-      outdata$bin_consensus <- get_bin_consensus(filtered_data()[!is.na(bin_uri)],
+      outdata$bin_consensus <- get_bin_consensus(filtered_data()[!empty(bin_uri)],
                                                threshold = as.double(unlist(unname(input$bc_threshold))),
                                                min_ids = unlist(unname(input$bc_minids)),
                                                enforce_scientific = input$bc_enforcesci,
@@ -661,7 +676,7 @@
     observeEvent(input$bin_disc_btn, {
       req(outdata$data)
       outdata$bin_discordance <- NULL
-      outdata$bin_discordance <- get_bin_discordance(filtered_data()[!is.na(bin_uri)])
+      outdata$bin_discordance <- get_bin_discordance(filtered_data()[!empty(bin_uri)])
       
       if(!tab_status$discordance_tab) {
         bslib::nav_insert(
@@ -700,7 +715,7 @@
     # the portal API can be somewhat inconsistent; this will insert a warning message about any BINs for which the query timed out
     insert_portal_warning <- function(portal_stats) {
       removeUI("#disc_portal_warning", immediate = TRUE)
-      failed <- nrow(portal_stats[is.na(member_count)])
+      failed <- nrow(portal_stats[empty(member_count)])
       if(failed > 0) {
         insertUI(
           selector = "div.form-group:has(#disc_portal):not(:has(div.form-group:has(#disc_portal)))",
@@ -727,7 +742,7 @@
     observeEvent(input$disc_portal_retry, {
       init_stats <- outdata$bin_portal_stats
       req(init_stats)
-      retry_stats <- get_portal_bin_stats(as.character(init_stats[is.na(member_count), bin_uri]), shiny = TRUE)
+      retry_stats <- get_portal_bin_stats(as.character(init_stats[empty(member_count), bin_uri]), shiny = TRUE)
       init_stats[retry_stats, (names(init_stats)) := mget(paste0("i.", names(init_stats))), on = "bin_uri"]
       disc <- isolate(outdata$bin_discordance)
       outdata$bin_discordance <- merge(disc[, .SD, .SDcols = c("bin_uri",names(disc)[!names(disc) %in% names(init_stats)])],
@@ -743,7 +758,7 @@
     observeEvent(input$bin_rep_btn, {
       req(outdata$data)
       outdata$bin_reps <- NULL
-      outdata$bin_reps <- get_bin_reps(filtered_data()[!is.na(bin_uri)])
+      outdata$bin_reps <- get_bin_reps(filtered_data()[!empty(bin_uri)])
       
       if(!tab_status$bin_reps) {
         bslib::nav_insert(
@@ -795,7 +810,7 @@
     update_map <- function() {
       req(input$data_table_rows_all)
       data <- filtered_data()[input$data_table_rows_all, ]
-      data <- unique(data[!is.na(lat) & !is.na(lon) & lat != "" & lon != ""], by = "processid")
+      data <- unique(data[!empty(coord)], by = "processid")
       req(nrow(data) > 0)
       pal <- colorFactor(
         palette = map_colours,
@@ -845,7 +860,7 @@
     })
     
     ### OUTPUT RENDERING
-    
+  
     # build a reactive JSON lookup map and send it to the window
     # (enables hyperlinking of sample IDs and process IDs even when dependent columns are excluded)
     observeEvent(outdata$data, {

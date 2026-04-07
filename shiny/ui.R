@@ -3,10 +3,9 @@ ui <- bslib::page_fillable(
   tags$head(
     tags$link(rel = "stylesheet", type = "text/css", href = "brstyles.css"),
     tags$script(HTML(r"(
-      $(document).on('blur', '#seq_min, #seq_max', function() {
-          let current = Shiny.shinyapp.$inputValues.blur_trigger || 0;
-          Shiny.setInputValue('last_blurred', this.id, {priority: 'event'});      
-        });
+      $(document).on('blur', '.single-marker .shiny-input-number', function() {
+        Shiny.setInputValue('last_blurred', this.id, {priority: 'event'});
+      });
       $(document).on('keydown', 'div[data-value=fetchdata] div.tabbable input, div[data-value=fetchdata] div.tabbable textarea', function(e) {
           if (e.ctrlKey && e.key === 'Enter') {
             Shiny.setInputValue('fetch_ctrl_enter', Math.random(), {priority: 'event'});
@@ -25,7 +24,7 @@ ui <- bslib::page_fillable(
   useShinyjs(),
   sidebarLayout(
     sidebarPanel(
-      div(id="side-title",span(img(src = "reflectR-name.png", alt = "BOLDreflectR", style = "height: 3rem;")), `data-ver` = paste0("v", ver), style = "height: 4.16rem;"),
+      div(id="side-title", span(img(src = "reflectR-name.png", alt = "BOLDreflectR", style = "height: 3rem;")), `data-ver` = paste0("v", ver), style = "height: 4.16rem;"),
       bslib::accordion(
         id="optpanels",
         bslib::accordion_panel(
@@ -84,26 +83,26 @@ ui <- bslib::page_fillable(
                               paste0("Comma-separated or one term per line, no quotes."),
                               id = "geo_search_tip"))
                       ),
-                      div(class="form-group shiny-input-container", id = "marker-select",
+                      div(class="form-group shiny-input-container marker-select",
                           div(class="control-label", "Marker:"),
-                          div(class="form-group shiny-input-container",
-                            selectInput(
-                              "seq_marker",
-                              label = "",
-                              selected = "",
-                              marker_options),
-                            numericInput(
-                              "seq_min",
-                              label = "",
-                              value = NULL,
-                              min = 5, max = 2000, step = 1),
-                            numericInput(
-                              "seq_max",
-                              label = "",
-                              value = NULL,
-                              min = 5, max = 2000, step = 1))
+                          div(class="form-group shiny-input-container single-marker",
+                              selectInput(
+                                "seq_marker",
+                                label = "",
+                                selected = "",
+                                marker_options),
+                              numericInput(
+                                "seq_min",
+                                label = "",
+                                value = NULL,
+                                min = 5, max = 2000, step = 1),
+                              numericInput(
+                                "seq_max",
+                                label = "",
+                                value = NULL,
+                                min = 5, max = 2000, step = 1))
                       ))
-          ),
+            ),
           checkboxInput(
             "fetch_binmates",
             "Find additional BIN members"

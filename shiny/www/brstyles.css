@@ -3,6 +3,18 @@ h2 {
   font-size: 1.8rem;
 }
 
+h3 {
+  display: inline-block;
+  margin: 0 0 0.8rem 0;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.fa.fa-external-link {
+  font-size: 0.7rem;
+  baseline-shift: 2px;
+}
+
 #side-title:hover::after {
   content: attr(data-ver);
   font-size: 0.9rem;
@@ -75,40 +87,62 @@ a#del_filter_btn {
   display: inline;
 }
 
-#marker-select > .form-group.shiny-input-container {
+.marker-select > .form-group.shiny-input-container {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 5px;
 }
 
-#marker-select > .form-group.shiny-input-container div:first-child {
+.marker-select > .form-group.shiny-input-container div:first-child,
+.coord-range .shiny-input-container:has(>.js-range-slider) {
   flex-grow: 1;
 }
 
-#marker-select > .form-group.shiny-input-container .form-group {
+.coord-range.flex-div {
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 15px;
+}
+
+.coord-range .shiny-input-number {
+  width: 4.25rem;
+  text-align: center;
+}
+
+.marker-select > .form-group.shiny-input-container .form-group {
   margin-bottom: 0;
 }
 
-#marker-select label {
+.marker-select label,
+.coord-range label {
   display: none;
 }
 
-#marker-select #seq_max,
-#marker-select #seq_min {
+.marker-select .shiny-input-number,
+.coord-range .shiny-input-number {
   padding-left: 0.4rem;
   padding-right: 0.4rem;
 }
 
-#marker-select input#seq_max::-webkit-inner-spin-button,
-#marker-select input#seq_max::-webkit-outer-spin-button,
-#marker-select input#seq_min::-webkit-inner-spin-button,
-#marker-select input#seq_min::-webkit-outer-spin-button {
+.marker-select .shiny-input-number::-webkit-inner-spin-button,
+.marker-select .shiny-input-number::-webkit-outer-spin-button,
+.coord-range .shiny-input-number::-webkit-inner-spin-button,
+.coord-range .shiny-input-number::-webkit-outer-spin-button {
   margin-left: 0.4rem;
 }
 
 input[type=number] {
   -moz-appearance: textfield; /* Hides arrows in Firefox */
+}
+
+.dim-input .shiny-input-number {
+  color: #8D959E;
+}
+
+.dim-input .irs--shiny .irs-from,
+.dim-input .irs--shiny .irs-to {
+  opacity: 0.3;
 }
 
 .form-group .control-label.summary-section-header {
@@ -141,14 +175,22 @@ input[type=number] {
   align-content: center;
 }
 
-#query_params .nav-link {
+#query_params .nav-link,
+#node_add_marker,
+#node_del_marker {
   border: 1px #007bc260 solid;
   padding: 3px 10px ;
 }
 
 #query_params .nav-item:first-child:before,
-#query_params .nav-link {
-    margin: 0.1rem 0.4rem 1rem 0;
+#query_params .nav-link,
+#node_add_marker,
+#node_del_marker {
+    margin: 0.1rem 0.4rem 0 0;
+}
+
+#query_params {
+  margin-bottom: 1rem;
 }
 
 #query_params .nav-link:hover {
