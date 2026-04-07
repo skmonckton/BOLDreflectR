@@ -601,11 +601,7 @@
     observeEvent(input$ana_btn, {
       req(outdata$data)
       outdata$summary <- NULL
-      outdata$summary <- if(input$ana_opt == "tax_summary") {
-        count_taxa(filtered_data(), outdata$id_field)
-      } else {
-        summarize_table(filtered_data(), input$ana_opt, outdata$id_field)
-      }
+      outdata$summary <- summarize_table(filtered_data(), input$ana_opt, outdata$id_field)
       if(!tab_status$summary) {
         bslib::nav_insert(
           "tabs", target = tab_monitor("ins_target","summary"), position = "after", select = TRUE,

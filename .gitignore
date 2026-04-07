@@ -16,6 +16,7 @@ dev/
 
 # User-specific files
 .Ruserdata
+shiny/user_data/
 shiny/data/user_config.yaml
 
 # Example code in package build process
