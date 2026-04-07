@@ -93,7 +93,7 @@ update_datapackages <- function() {
   datapkgs <- data.table(file.info(list.files(path = file.path(user_data_path, "BOLD_data_packages"), full.names = TRUE))[c("size", "ctime")],
                          keep.rownames = TRUE)[, .(id = tools::file_path_sans_ext(basename(rn)),
                                                    path = rn, size_kb = format(size, scientific = FALSE),
-                                                   created = format(ctime, "%Y-%m-%d"))]
+                                                   created = format(ctime, "%Y-%m-%d"))][order(-created)]
   user_config[["datapackages"]] <- apply(datapkgs, 1, as.list)
   write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
   return(datapkgs)
@@ -185,14 +185,14 @@ modify_datapackage <- function(dtpkg, operation = "save") {
                             keep.rownames = TRUE)[, .(id = save_id, path = save_path,
                                                       size_kb = format(size, scientific = FALSE),
                                                       created = format(ctime, "%Y-%m-%d"))]
-      datapkgs <<- rbindlist(list(datapkgs, datapkg))
+      datapkgs <<- rbindlist(list(datapkgs, datapkg))[order(-created)]
       user_config[["datapackages"]] <- apply(datapkgs, 1, as.list)
       write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
       showNotification("Data package saved!", id = "fileio", type = "message")
     }
   } else if(operation == "delete") {
     del_path <- datapkgs[id == dtpkg, path]
-    datapkgs <<- datapkgs[id != dtpkg]
+    datapkgs <<- datapkgs[id != dtpkg][order(-created)]
     user_config[["datapackages"]] <- apply(datapkgs, 1, as.list)
     file.remove(del_path)
     write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))

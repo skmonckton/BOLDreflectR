@@ -120,6 +120,7 @@ ui <- bslib::page_fillable(
                                    icon("circle-question"),
                                    paste0("Comma-separated or one term per line, no quotes."))),
                              textAreaInput("node_id_list", "Process IDs and/or sample IDs:"),
+                             textAreaInput("node_bin_list", "BINs:"),
                              textAreaInput("node_recset_list", "Project and/or dataset codes:"),
                              textAreaInput("node_tax", "Taxonomy:"),
                              textAreaInput("node_geo", "Geography:"),

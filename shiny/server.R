@@ -103,7 +103,7 @@
     # disable option to find additional BIN records when fetching by BIN
     # (in this case, fetching BIN mates will always return zero records)
     observe({
-      if((input$fetch_by == "bin_uris") & (input$query_params == "fetch_opts")) {
+      if((input$fetch_by == "bin_uris") & (input$data_source == "source-api") & (input$query_params == "fetch_opts")) {
         updateCheckboxInput(inputId = "fetch_binmates", value = FALSE)
         disable("fetch_binmates")
       } else {
@@ -230,6 +230,7 @@
       n_node_markers <- fetch_params$n_node_markers
       node_query <- list(
         ids = split_query(input$node_id_list),
+        bins = split_query(input$node_bin_list),
         dataset.projects = split_query(input$node_recset_list),
         taxonomy = split_query(input$node_tax),
         geography = split_query(input$node_geo),
@@ -618,6 +619,7 @@
           showNotification(paste0("Copying ", basename(path), " to user data folder..."), duration = NULL, id = "fileio", type = "message")
           tryCatch({
             datapkgs <- modify_datapackage(path, "save")
+            updateSelectInput(inputId = "datapackage_id", choices = stats::setNames(datapkgs$path, datapkgs$id), selected = datapkgs$path[1])
             user_datapkgs(datapkgs)
           }, error = function(e) {
             showNotification(paste0("Error saving data package: ", e$message), duration = NULL, id = "fileio", type = "error")
@@ -642,6 +644,7 @@
         tryCatch({
           for(id in delete_ids) {
             datapkgs <- modify_datapackage(id, "delete")
+            updateSelectInput(inputId = "datapackage_id", choices = stats::setNames(datapkgs$path, datapkgs$id), selected = datapkgs$path[1])
           }
           user_datapkgs(datapkgs)
         }, error = function(e) {

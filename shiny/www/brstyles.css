@@ -111,10 +111,10 @@ a#del_filter_btn {
 
 .file-input-wrapper div.shiny-input-container > div,
 .file-input-wrapper div.shiny-input-container select,
-.file-input-wrapper div.shiny-input-select,
+.file-input-wrapper div.shiny-input-select.selectize-control,
 .file-input-wrapper div.selectize-input {
   height: 100%;
-  line-height: 2;
+  line-height: 2.2;
 }
 
 .flex-div .form-check {
