@@ -395,7 +395,7 @@ bold.fetch.shiny <- function (get_by,
 
 # retrieve BIN mates
 get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
-  bins <- unique(df[["bin_uri"]][!empty(df[["bin_uri"]])])
+  bins <- unique(as.character(df[["bin_uri"]][!empty(df[["bin_uri"]])]))
   
   add_pids <- character()
   
@@ -427,8 +427,7 @@ get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
   } else {
     showNotification(paste0("Searching data package for additional BIN members from ", length(bins), " BINs..."), id = "bin_msg", duration=NULL, type = "message")
     current_pids <- unique(df[["processid"]])
-    dtpkg <- import_parquet_data(dtpkg_parquet)
-    result <- dtpkg %>% filter(bin_uri %in% bins) %>% filter(!processid %in% current_pids)
+    result <- dtpkg %>% dplyr::filter(bin_uri %in% bins) %>% dplyr::filter(!processid %in% current_pids)
     showNotification("Assembling data from data package...", id = "bin_msg", duration=NULL, type = "message")
     binmate_data <- as.data.table(bold.data.collect(result))
     add_pids <- unique(binmate_data$processid)
