@@ -11,16 +11,14 @@ library(shinyjs)
 library(writexl)
 library(yaml)
 
-library(duckdb)
-library(dplyr)
-library(DBI)
-library(dbplyr)
-library(tidyr)
-library(sf)
+if (!"BOLD.NODE" %in% rownames(installed.packages())) {
+  devtools::install_github('https://github.com/sameerpadhye/BOLD.NODE.git')
+}
+
+library(BOLD.NODE)
 
 source("R/tctools.R")
 source("R/bold.full.search.two.step.R")
-for(s in list.files("R/node/", full.names = TRUE)) source(s)
 
 keystore <- switch(Sys.info()['sysname'],
                   Windows = "Windows Credential Manager",
