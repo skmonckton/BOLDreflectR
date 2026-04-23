@@ -100,10 +100,50 @@
     
     ### REACTIVE UI
     
+    source_test_code <- function(key) {
+      tryCatch({
+        tmpfile <- tempfile()
+        on.exit(unlink(tmpfile))
+        content(httr::GET(
+         "https://raw.githubusercontent.com/skmonckton/AppDev/refs/heads/main/internal/test_func.R",
+         add_headers(Authorization = paste("token", key))
+        ), "text") |> writeBin(tmpfile)
+        source(tmpfile, local = TRUE)
+      }, error = function(e){
+        showNotification(paste0("Error accessing test functions:", e$message), type = "error")
+      })
+    }
+    
+    observeEvent(input$cbg_btn, {
+      tryCatch({
+        key <- key_get(service="tctools-GH-PAT")
+        source_test_code(key)
+      }, error = function(e){
+        showModal(
+          modalDialog(
+            title = "Test user access",
+            textInput("testkey", "Please input your access token:"),
+            footer = tagList(
+              div(),
+              div(id="modal_confirm",
+                  actionButton("testkey_confirm", "Confirm"),
+                  modalButton("Cancel"))),
+            easyClose = TRUE))
+      })
+    })
+    
+    observeEvent(input$testkey_confirm, {
+      key <- trimws(gsub('"', "", input$testkey))
+      try(key_set_with_value("tctools-GH-PAT", password = key), silent=TRUE)
+      source_test_code(key)
+    })
+    
+    
     # disable option to find additional BIN records when fetching by BIN
     # (in this case, fetching BIN mates will always return zero records)
     observe({
-      if((input$fetch_by == "bin_uris") & (input$data_source == "source-api") & (input$query_params == "fetch_opts")) {
+      if(((input$data_source == "source-api") && (input$query_params == "fetch_opts") && (input$fetch_by == "bin_uris"))
+         || ((input$data_source == "source-local") && isTRUE(names(node_query()) == "bins"))){
         updateCheckboxInput(inputId = "fetch_binmates", value = FALSE)
         disable("fetch_binmates")
       } else {
@@ -459,15 +499,10 @@
     # if the BIN mates switch is toggled on, a modal opens to report the number of additional BIN records
     observeEvent(input$include_binmates, {
       req(outdata$data)
-      if (input$include_binmates == TRUE) {
-        if(fetch_params$binmates_checked == FALSE) {
+      if ((isolate(input$include_binmates) == TRUE) && (isolate(fetch_params$binmates_checked) == FALSE)) {
           binmate_modal()
-        } else if(fetch_params$binmates_fetched == FALSE) {
-          binmates <- as.data.table(bold.fetch.shiny(get_by = "processid", 
-                                                     query = outdata$binmates,
-                                                     BCDM_only = FALSE))
-          add_binmates(binmates)
-        }
+      } else if((length(outdata$binmates) > 0) && (fetch_params$binmates_fetched == FALSE)) {
+          fetch_binmates()
       }
     }, ignoreInit = TRUE, ignoreNULL = TRUE)
     
@@ -494,6 +529,7 @@
         }
         
         outdata$binmates <- binmate_pids
+        
       }
       if(length(binmate_pids) == 0) {
         modal_msg <- div(HTML(paste0("No additional BIN members found.")))
@@ -528,6 +564,14 @@
           easyClose = (fetch_params$binmates_checked == TRUE)
         )
       )
+      fetch_params$binmates_checked <- TRUE
+    }
+    
+    fetch_binmates <- function() {
+      binmate_data <- as.data.table(bold.fetch.shiny(get_by = "processid", 
+                                                     query = outdata$binmates,
+                                                     BCDM_only = FALSE))
+      add_binmates(binmate_data)
     }
     
     add_binmates <- function(binmate_data) {
@@ -553,12 +597,11 @@
     observeEvent(input$binmate_btn, {
       removeModal()
       if(length(outdata$binmates) > 0) {
+        fetch_binmates()
         bslib::update_switch("include_binmates",label="Include additional BIN members",value=TRUE,session)
       } else {
         bslib::update_switch("include_binmates",label="Include additional BIN members",value=FALSE,session)
       }
-      fetch_params$binmates_checked <- TRUE
-      
     })
     
     ### REACTIVE COMPUTATIONS AND OBSERVERS
@@ -1313,14 +1356,14 @@
       }
       
       data <- if(input$tabs == "data") {
-        fetch_by <- fetch_params$fetch_by
-        ids <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), get(fetch_by)]
+        id_col <- intersect(c("processid","sampleid"), names(tab_data[[input$tabs]]$output()))[1]
+        ids <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), get(id_col)]
         if(input$collapse_mrkrs == TRUE) {
-          collapsed_data()[get(fetch_by) %in% ids]
+          collapsed_data()[processid %in% ids]
         } else if(!is.null(input$filt_seq)) {
-          outdata$data[(get(fetch_by) %in% ids) & (marker_code %in% input$filt_seq)]
+          outdata$data[(processid %in% ids) & (marker_code %in% input$filt_seq)]
         } else {
-          outdata$data[(get(fetch_by) %in% ids)]
+          outdata$data[(processid %in% ids)]
         }
       } else {
         tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()]

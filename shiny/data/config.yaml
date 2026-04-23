@@ -432,6 +432,82 @@ fieldsets:
   - location.verbatim_province
   - specimendetails.verbatim_habitat
   - specimendetails.verbatim_sampling_protocol
+bcdmnames:
+  Process ID: processid
+  Sample ID: sampleid
+  Field ID: fieldid
+  Museum ID: museumid
+  Record ID: record_id
+  Specimen ID: specimenid
+  Record upload date: processid_minted_date
+  BIN: bin_uri
+  BIN created date: bin_created_date
+  Collection code: collection_code
+  Institution: inst
+  Taxon ID: taxid
+  Kingdom: kingdom
+  Phylum: phylum
+  Class: class
+  Order: order
+  Family: family
+  Subfamily: subfamily
+  Tribe: tribe
+  Genus: genus
+  Species: species
+  Subspecies: subspecies
+  Taxon authorship: species_reference
+  Identification: identification
+  ID method: identification_method
+  ID rank: identification_rank
+  Identifier: identified_by
+  Taxonomy notes: taxonomy_notes
+  Sex: sex
+  Reproduction: reproduction
+  Life stage: life_stage
+  Short note: short_note
+  Specimen notes: notes
+  Voucher type: voucher_type
+  Tissue type: tissue_type
+  Associated specimens: associated_specimens
+  Associated taxa: associated_taxa
+  Collector(s): collectors
+  Collection date (start): collection_date_start
+  Collection date (end): collection_date_end
+  Collection event: collection_event_id
+  Collection time: collection_time
+  Collection notes: collection_notes
+  Geography ID: geoid
+  Country: country.ocean
+  Country ISO code: country_iso
+  Province/state: province.state
+  Region: region
+  Sector: sector
+  Site: site
+  Site code: site_code
+  Coordinates: coord
+  GPS accuracy: coord_accuracy
+  GPS source: coord_source
+  Elevation: elev
+  Elevation accuracy: elev_accuracy
+  Depth: depth
+  Depth accuracy: depth_accuracy
+  Habitat: habitat
+  Sampling protocol: sampling_protocol
+  Base count: nuc_basecount
+  INSDC accession: insdc_acs
+  Funding source: funding_src
+  Marker: marker_code
+  Primer (F): primers_forward
+  Primer (R): primers_reverse
+  Sequencing site: sequence_run_site
+  Sequence uploaded: sequence_upload_date
+  Project/dataset code(s): bold_recordset_code_arr
+  Ecoregion: ecoregion
+  Biome: biome
+  Realm: realm
+  Sovereignty: sovereign_inst
+  Record created date: created_at
+  Record updated date: updated_at
 ranknumeric:
   phylum: 2
   class: 5
