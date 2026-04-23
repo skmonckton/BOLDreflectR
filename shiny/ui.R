@@ -24,7 +24,7 @@ ui <- bslib::page_fillable(
   useShinyjs(),
   sidebarLayout(
     sidebarPanel(
-      div(id="side-title", span(img(src = "reflectR-name.png", alt = "BOLDreflectR", style = "height: 3rem;")), `data-ver` = paste0("v", ver), style = "height: 4.16rem;"),
+      div(id="side-title", span(img(src = "reflectR-name.png", alt = "BOLDreflectR", style = "height: 3rem;")), actionLink("cbg_btn", label = " "), `data-ver` = paste0("v", ver), style = "height: 4.16rem;"),
       bslib::accordion(
         id="optpanels",
         bslib::accordion_panel(
@@ -83,7 +83,7 @@ ui <- bslib::page_fillable(
                                            div("Geography:",
                                                bslib::tooltip(
                                                  icon("circle-question"),
-                                                 paste0("Comma-separated or one term per line, no quotes."),
+                                                 HTML("Country, ocean, province, state, region, sector, realm*, biome*, or ecoregion*. Comma-separated or one term per line, no quotes.<br><span style=\"font-size: 0.7rem;\">*As defined by RESOLVE; case-sensitive, spaces replaced by underscores.</span>"),
                                                  id = "geo_search_tip"))
                                          ),
                                          div(class="form-group shiny-input-container marker-select",
@@ -104,88 +104,98 @@ ui <- bslib::page_fillable(
                                                    label = "",
                                                    value = NULL,
                                                    min = 5, max = 2000, step = 1))
-                                         ))
+                                         ),
+                                         shinyWidgets::airDatepickerInput(
+                                           "search_dates",
+                                           label = "Collection date range:",
+                                           value = NULL,
+                                           range = TRUE,
+                                           view = "years",
+                                           clearButton = TRUE,
+                                           addon = "none",
+                                           placeholder = "Start - End",
+                                           minDate = "2000-01-01", maxDate = "2075-01-01"),
+                                         textAreaInput( 
+                                           "search_inst", 
+                                           div("Institutes:",
+                                               bslib::tooltip(icon("circle-question"),
+                                                              "Institute where physical specimen is stored. Comma-separated or one per line, no quotes."))
+                                         )
+                        )
                       )), 
             bslib::nav_panel("Local data package", value = "source-local",
-                             div(class="control-label", h3("Source data:")),
-                             div(class = "shiny-input-container",
-                                      HTML('<label class="control-label">Select a local data package:</label>'),
-                                      div(class = "file-input-wrapper input-group",
-                                          selectInput("datapackage_id", "",
-                                                      choices = stats::setNames(datapkgs$path, datapkgs$id)),
-                                          actionButton("datapackage_btn", "Add/Edit..."))
-                                      ),
-                             div(class="control-label", h3("Search terms:"),
-                                 bslib::tooltip(
-                                   icon("circle-question"),
-                                   paste0("Comma-separated or one term per line, no quotes."))),
-                             textAreaInput("node_id_list", "Process IDs and/or sample IDs:"),
-                             textAreaInput("node_bin_list", "BINs:"),
-                             textAreaInput("node_recset_list", "Project and/or dataset codes:"),
-                             textAreaInput("node_tax", "Taxonomy:"),
-                             textAreaInput("node_geo", "Geography:"),
-                             bslib::accordion(
-                               id = "more_opts",
-                               bslib::accordion_panel(
-                                 "Additional fields",
-                                 textAreaInput("node_ider_list", "Identified by:"),
-                                 textAreaInput("node_biogeo_list", "Biome, realm, or ecoregion:"),
-                                 textAreaInput("node_inst_list", "Institutes:"),
-                                 textAreaInput("node_seqinst_list", "Sequence run sites:")
-                               )
-                             ),
-                             div(class="form-group shiny-input-container marker-select",
-                                 div(class="control-label", h3("Markers:")),
-                                 div(class="form-group shiny-input-container single-marker",
-                                     selectInput(
-                                       "node_seq_marker_1",
-                                       label = "",
-                                       selected = "",
-                                       marker_options),
-                                     numericInput(
-                                       "node_seq_min_1",
-                                       label = "",
-                                       value = NULL,
-                                       min = 5, max = 2000, step = 1),
-                                     numericInput(
-                                       "node_seq_max_1",
-                                       label = "",
-                                       value = NULL,
-                                       min = 5, max = 2000, step = 1)),
-                                 div(class="flex-div",
-                                     actionButton("node_add_marker", icon("plus")),
-                                     actionButton("node_del_marker", icon("minus")))
-                             ),
-                             div(class="form-group shiny-input-container", id = "node_bounding_box",
-                                 div(class="control-label", h3("Coordinates:")),
-                                 div(class="form-group shiny-input-container",
-                                     div(class="control-label", "Longitude:"),
-                                     div(class="flex-div coord-range",
-                                         numericInput("node_lon_min", "", value = -180),
-                                         sliderInput(
-                                           "node_lon_range", "",
-                                           min = -180, max = 180,
-                                           step = 0.01,
-                                           ticks = FALSE,
-                                           post = "°",
-                                           value = c(-180, 180) 
+                             inputGroup(title = "Source data:",
+                                        groupId = "node_source_pkg",
+                                        div(class = "shiny-input-container",
+                                                HTML('<label class="control-label">Select a local data package:</label>'),
+                                                div(class = "file-input-wrapper input-group",
+                                                    selectInput("datapackage_id", "",
+                                                                choices = stats::setNames(datapkgs$path, datapkgs$id)),
+                                                    actionButton("datapackage_btn", "Add/Edit...")))),
+                             inputGroup(title = "Search terms:",
+                                        tipTxt = "Comma-separated or one term per line, no quotes.",
+                                        groupId = "node_source_terms",
+                                        textAreaInput("node_id_list", "Process IDs and/or sample IDs:"),
+                                        textAreaInput("node_bin_list", "BINs:"),
+                                        textAreaInput("node_recset_list", "Project and/or dataset codes:"),
+                                        textAreaInput("node_tax", "Taxonomy:"),
+                                        textAreaInput("node_geo", "Geography:"),
+                                        bslib::accordion(
+                                         id = "more_opts",
+                                         bslib::accordion_panel(
+                                           "Additional fields",
+                                           textAreaInput("node_ider_list", "Identified by:"),
+                                           textAreaInput("node_biogeo_list", "Biome, realm, or ecoregion:"),
+                                           textAreaInput("node_inst_list", "Institutes:"),
+                                           textAreaInput("node_seqinst_list", "Sequence run sites:")))),
+                             inputGroup(title = "Markers:",
+                                         groupId = "node_markers",
+                                         groupClass = "marker-select",
+                                         div(class="form-group shiny-input-container single-marker",
+                                             selectInput(
+                                               "node_seq_marker_1",
+                                               label = "",
+                                               selected = "",
+                                               marker_options),
+                                             numericInput(
+                                               "node_seq_min_1",
+                                               label = "",
+                                               value = NULL,
+                                               min = 5, max = 2000, step = 1),
+                                             numericInput(
+                                               "node_seq_max_1",
+                                               label = "",
+                                               value = NULL,
+                                               min = 5, max = 2000, step = 1)),
+                                         div(class="flex-div",
+                                             actionButton("node_add_marker", icon("plus")),
+                                             actionButton("node_del_marker", icon("minus")))
                                          ),
-                                         numericInput("node_lon_max", "", value = 180)),
-                                     div(class="control-label", "Latitude:"),
-                                     div(class="flex-div coord-range",
-                                         numericInput("node_lat_min", "", value = -90),
-                                         sliderInput(
-                                           "node_lat_range", "",
-                                           min = -90, max = 90,
-                                           step = 0.01,
-                                           ticks = FALSE,
-                                           post = "°",
-                                           value = c(-90, 90) 
-                                         ),
-                                         numericInput("node_lat_max", "", value = 90)))
-                                 )
-                             )
-            ),
+                             inputGroup(title = "Coordinates:",
+                                        groupId = "node_bounding_box",
+                                        div(class="form-group shiny-input-container",
+                                            div(class="control-label", "Longitude:"),
+                                            div(class="flex-div coord-range",
+                                               numericInput("node_lon_min", "", value = -180),
+                                               sliderInput(
+                                                 "node_lon_range", "",
+                                                 min = -180, max = 180,
+                                                 step = 0.01,
+                                                 ticks = FALSE,
+                                                 post = "°",
+                                                 value = c(-180, 180)),
+                                               numericInput("node_lon_max", "", value = 180)),
+                                            div(class="control-label", "Latitude:"),
+                                            div(class="flex-div coord-range",
+                                               numericInput("node_lat_min", "", value = -90),
+                                               sliderInput(
+                                                 "node_lat_range", "",
+                                                 min = -90, max = 90,
+                                                 step = 0.01,
+                                                 ticks = FALSE,
+                                                 post = "°",
+                                                 value = c(-90, 90)),
+                                               numericInput("node_lat_max", "", value = 90)))))),
           checkboxInput(
             "fetch_binmates",
             "Find additional BIN members"
@@ -248,7 +258,7 @@ ui <- bslib::page_fillable(
           value="summarize",
           "Summarize",
           icon = bsicons::bs_icon("bar-chart"),
-          div(class="option-group form-group",
+          inputGroup(
             selectInput("ana_opt",
                         "Summarize by:",
                         list(
@@ -262,87 +272,78 @@ ui <- bslib::page_fillable(
                             "Datasets" = "datasets",
                             "Country" = "country.ocean"),
                           "Unique values - all fields" = as.list(config$fieldsets$bcdm[!config$fieldsets$bcdm %in% c("identification","bin_uri","country.ocean","id_date_parsed","project_code")])
-                          ),
-                        multiple = FALSE
-            ),
+                          ), multiple = FALSE),
             div(class="form-group shiny-input-container",
                 actionButton(
                   "ana_btn",
-                  "Summarize"
-                  ))),
-          div(class="option-group form-group shiny-input-container", id="map-opts",
-              div(class="control-label summary-section-header", "Distribution map"),
-              div(class="form-group",
-                  "Plot filtered records on a map:",
-                  bslib::tooltip(
-                    icon("circle-question"),
-                    HTML("Only rows matching current filters that have valid coordinates will be included on the map."))),
-              div(actionButton(
-                "map_btn",
-                "Generate map"
-              ))
-          )
-        ),
+                  "Summarize"))),
+          inputGroup(title = "Distribution map",
+                     groupId = "map-opts",
+                     div(class="form-group",
+                         "Plot filtered records on a map:",
+                         bslib::tooltip(
+                           icon("circle-question"),
+                           HTML("Only rows matching current filters that have valid coordinates will be included on the map."))),
+                     div(actionButton(
+                       "map_btn",
+                       "Generate map"
+                     )))),
         bslib::accordion_panel(
           value="analyze",
           "Analyze",
           icon = bsicons::bs_icon("graph-up"),
-          div(class="option-group form-group shiny-input-container", id = "bin-cons-opts",
-              div(class="control-label summary-section-header", "Consensus BIN taxonomy"),
-              numericInput(
-                "bc_threshold",
-                div("Consensus threshold:",
-                    bslib::tooltip(
-                      icon("circle-question"),
-                      paste0("Minimum proportion of records in a BIN that must have a concordant identification in order to establish consensus."))),
-                1, min = 0.5, max = 1.0, step = 0.05),
-              numericInput(
-                "bc_minids",
-                div("Minimum IDs:",
-                    bslib::tooltip(
-                      icon("circle-question"),
-                      paste0("Minimum number of concordant identifications needed to establish a consensus identification. If a BIN contains fewer records than this number, then they must all have matching identifications to reach consensus."))),                2, min = 1, step = 1),
-              checkboxInput(
-                "bc_enforcesci",
-                "Limit to scientific names",
-                value = TRUE
-              ),
-              div(actionButton(
-                "bin_consensus_btn",
-                "Get BIN consensus"))
-          ),
-          div(class="option-group form-group shiny-input-container", id = "bin-disc-opts",
-              div(class = "control-label summary-section-header", "BIN discordance"),
-              div(class = "form-group",
-                  "Compute BIN discordance at all ranks. Returns counts and lists of unique taxa per rank, by BIN, from the available data."),
-              checkboxInput(
-                "disc_portal",
-                div("Include BOLD Portal stats",
-                    bslib::tooltip(
-                      icon("circle-question"),
-                      HTML("<strong>Please note</strong>: This can take <strong>several minutes</strong> for more than a few dozen BINs. Additional statistics include member counts (total, private, public), pairwise distances (average, maximum), and nearest-neighbour information (NN distance, NN BIN)."),
-                      id = "portaltip"
-                    ))),
-              div(actionButton(
-                "bin_disc_btn",
-                "Get BIN discordance"
-              ))
-          ),
-          div(class="option-group form-group shiny-input-container", id = "bin-rep-opts",
-              div(class="control-label summary-section-header", "BIN representatives"),
-              div(class="form-group",
-                  "Select one record for each unique BIN-taxon combination:",
-                  bslib::tooltip(
-                    icon("circle-question"),
-                    "BIN reps are chosen per the following criteria in order of priority: (1) sequence length modal and/or closest to 658 bp; (2) identification by morphology or image; (3) voucher deposited at the CBG; (4) recent collection date.",
-                    id = "bintip"
-                  )),
-              div(actionButton(
-                "bin_rep_btn",
-                "Get BIN reps"
-              ))
-          )
-        )
+          inputGroup(title = "Consensus BIN taxonomy",
+                     groupId = "bin-cons-opts",
+                     numericInput(
+                       "bc_threshold",
+                       div("Consensus threshold:",
+                           bslib::tooltip(
+                             icon("circle-question"),
+                             paste0("Minimum proportion of records in a BIN that must have a concordant identification in order to establish consensus."))),
+                       1, min = 0.5, max = 1.0, step = 0.05),
+                     numericInput(
+                       "bc_minids",
+                       div("Minimum IDs:",
+                           bslib::tooltip(
+                             icon("circle-question"),
+                             paste0("Minimum number of concordant identifications needed to establish a consensus identification. If a BIN contains fewer records than this number, then they must all have matching identifications to reach consensus."))),                2, min = 1, step = 1),
+                     checkboxInput(
+                       "bc_enforcesci",
+                       "Limit to scientific names",
+                       value = TRUE
+                     ),
+                     div(actionButton(
+                       "bin_consensus_btn",
+                       "Get BIN consensus"))),
+          inputGroup(title = "BIN discordance",
+                     groupId = "bin-disc-opts",
+                     div(class = "form-group",
+                         "Compute BIN discordance at all ranks. Returns counts and lists of unique taxa per rank, by BIN, from the available data."),
+                     checkboxInput(
+                       "disc_portal",
+                       div("Include BOLD Portal stats",
+                           bslib::tooltip(
+                             icon("circle-question"),
+                             HTML("<strong>Please note</strong>: This can take <strong>several minutes</strong> for more than a few dozen BINs. Additional statistics include member counts (total, private, public), pairwise distances (average, maximum), and nearest-neighbour information (NN distance, NN BIN)."),
+                             id = "portaltip"
+                           ))),
+                     div(actionButton(
+                       "bin_disc_btn",
+                       "Get BIN discordance"
+                     ))),
+          inputGroup(title = "BIN representatives",
+                     groupId = "bin-rep-opts",
+                     div(class="form-group",
+                         "Select one record for each unique BIN-taxon combination:",
+                         bslib::tooltip(
+                           icon("circle-question"),
+                           "BIN reps are chosen per the following criteria in order of priority: (1) sequence length modal and/or closest to 658 bp; (2) identification by morphology or image; (3) voucher deposited at the CBG; (4) recent collection date.",
+                           id = "bintip"
+                         )),
+                     div(actionButton(
+                       "bin_rep_btn",
+                       "Get BIN reps"
+                     ))))
       ), width = 3
     ),
     hidden(mainPanel(

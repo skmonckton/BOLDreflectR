@@ -1,4 +1,8 @@
+if (!"BOLD.NODE" %in% rownames(installed.packages())) {
+  devtools::install_github('https://github.com/sameerpadhye/BOLD.NODE.git')
+}
 library(BOLDconnectR)
+library(BOLD.NODE)
 library(data.table)
 library(httr)
 library(keyring)
@@ -8,14 +12,9 @@ library(pbapply)
 library(shiny)
 library(shinycssloaders)
 library(shinyjs)
+library(shinyWidgets)
 library(writexl)
 library(yaml)
-
-if (!"BOLD.NODE" %in% rownames(installed.packages())) {
-  devtools::install_github('https://github.com/sameerpadhye/BOLD.NODE.git')
-}
-
-library(BOLD.NODE)
 
 source("R/tctools.R")
 source("R/bold.full.search.two.step.R")
@@ -103,11 +102,6 @@ datapkgs <- update_datapackages()
 cb <- function(df, header=TRUE, sep="\t", max.size=(200*1000)){
   write.table(df, paste0("clipboard-", formatC(max.size, format="f", digits=0)), sep=sep, col.names=header, row.names=FALSE, quote=FALSE, na="NA")
   showNotification(paste0("Copied to clipboard."), type = "message", id = "copy_msg")
-}
-
-# convenience function to check for NA or "" in BCDM fields
-empty <- function(x) {
-  (is.na(x) | (x == ""))
 }
 
 # assemble FASTA and copy to clipboard
@@ -395,8 +389,7 @@ bold.fetch.shiny <- function (get_by,
 
 # retrieve BIN mates
 get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
-  bins <- unique(as.character(df[["bin_uri"]][!empty(df[["bin_uri"]])]))
-  
+  bins <- unique(as.character(df[["bin_uri"]][!empty(as.character(df[["bin_uri"]]))]))
   add_pids <- character()
   
   if(length(bins) == 0) {
@@ -406,7 +399,7 @@ get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
     for (r in 1:batches) {
       start = (r-1) * batch_size + 1
       end = min(r * batch_size, length(bins))
-      getids <- levels(bins[start:end])
+      getids <- bins[start:end]
       showNotification(paste0("Checking for additional BIN members from ",length(bins)," BINs... (Batch ",r," of ",batches,")"), id = "bin_msg", duration=NULL, type = "message")
       out <- NA
       fill <- NA
@@ -445,6 +438,20 @@ get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
   } else {
     return(binmate_data)
   }
+}
+
+# repeatable UI grouping
+inputGroup <- function(...,
+                       title = NULL,
+                       tipTxt = NULL,
+                       groupId = NULL,
+                       groupClass = NULL) {
+  div(class = paste("option-group", groupClass),
+      id = groupId,
+      div(class="group-header",
+          if(!is.null(title)) h3(title),
+          if(!is.null(tipTxt)) bslib::tooltip(icon("circle-question"), tipTxt)),
+      ...)
 }
 
 # JavaScript used to render output data tables
