@@ -33,7 +33,7 @@ ui <- bslib::page_fillable(
           icon = bsicons::bs_icon("cloud-arrow-down"),
           bslib::navset_tab( 
             id="data_source",
-            bslib::nav_panel("BOLD Data API", value = "source-api",
+            bslib::nav_panel("BOLD API", value = "source-api",
                       passwordInput( 
                         "api_key", 
                         div("BOLD API key:",
