@@ -367,7 +367,8 @@ ui <- bslib::page_fillable(
                  div(id = "save_buttons",
                      downloadButton("save_tsv","TSV"),
                      downloadButton("save_csv","CSV"),
-                     downloadButton("save_xlsx","XLSX")))
+                     downloadButton("save_xlsx","XLSX"),
+                     actionButton("open_xlsx","Open XLSX",icon=icon("file-excel"))))
       ),
     width = 9))
   )
