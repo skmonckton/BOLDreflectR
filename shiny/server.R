@@ -352,6 +352,7 @@
     observeEvent(input$include_binmates, {
       req(outdata$data)
       if ((isolate(input$include_binmates) == TRUE) && (isolate(fetch_params$binmates_checked) == FALSE)) {
+          binmate_modal()
       } else if((length(outdata$binmates) > 0) && (fetch_params$binmates_fetched == FALSE)) {
           fetch_binmates()
       }
