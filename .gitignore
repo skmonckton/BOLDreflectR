@@ -60,3 +60,5 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 /shiny/R/node
+.Rproj.user
+.positai

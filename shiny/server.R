@@ -73,6 +73,7 @@
       filt_seq = NULL,
       filt_seq_idx = NULL,
       summary = NULL,
+      div_profile = NULL,
       bin_reps = NULL,
       bin_consensus = NULL,
       bin_discordance = NULL,
@@ -82,6 +83,7 @@
     tab_status <- reactiveValues(
       data = FALSE,
       summary = FALSE,
+      div_profile = FALSE,
       bin_reps = FALSE,
       consensus_tab = FALSE,
       discordance_tab = FALSE,
@@ -303,9 +305,9 @@
       nts_idx <- nts_idx()
       req(length(nts_idx) > 0)
       if(sum(nts_idx) > 0) {
-        show('include_nts')
+        shinyjs::show('include_nts')
       } else {
-        hide('include_nts')
+        shinyjs::hide('include_nts')
       }
     })
     
@@ -346,7 +348,7 @@
     
     # execute reset function when button is pressed
     observeEvent(input$reset_btn, {
-      reset_filter(is.null(fetch_params$node_result))
+      reset_filter(is.null(fetch_params$search_token$node_result))
     })
     
     ### DATA FETCHING
@@ -375,18 +377,32 @@
       shinyjs::show("main_panel")
       tryCatch({
         if(input$data_source == "source-local") {
-          
           query_params <- node_query()
           query_params[["input.parquet"]] <- input$datapackage_id
           showNotification("Searching data package for matching records...", id = "fetch_msg", duration=NULL, type = "message")
+          num_records <- 0
           withCallingHandlers({
             result <- do.call(bold.data.search, query_params)
           }, message = function(m) {
             notif_txt <- clean_ansi(conditionMessage(m))
+            if(grepl("^The search has", notif_txt)) {
+              num_records <<- as.numeric(regmatches(notif_txt, gregexpr("(?<=has )[0-9,]+(?= records)", notif_txt, perl = TRUE))[[1]][1])
+            }
             showNotification(notif_txt, id = "fetch_msg", duration = NULL, type = "message")
           })
+          print(num_records)
           fetch_params$node_dtpkg <- input$datapackage_id
-          fetch_params$node_result <- result
+          fetch_params$search_token <- list(num_of_accessible = num_records,
+                                            num_of_records = num_records,
+                                            limit = Inf,
+                                            node_result = result)
+          if(num_records == 0) {
+            showNotification("No records found matching search terms.", id="fetch_msg", type = "warning")
+          } else if(num_records >= 100000) {
+            search_confirm_modal()
+          } else {
+            collect_node_data()
+          }
         } else if(input$query_params == "search_opts") {
           showNotification("Searching for matching records...", id = "fetch_msg", duration=NULL, type = "message")
           search_query <- list(taxonomy = split_query(input$search_tax, list = TRUE),
@@ -442,15 +458,19 @@
     observeEvent(input$search_confirm_btn, {
       removeModal()
       search_token <- fetch_params$search_token
-      tryCatch({
-        showNotification(paste0("Downloading ids of ",
-                                format(search_token$num_of_accessible, big.mark = ",", scientific = FALSE),
-                                "  matching records..."), id = "fetch_msg", duration=NULL, type = "message")
-        fetch_params$fetch_by <- "processid"
-        fetch_params$fetch_ids <- bold.full.search.step2(search_token)$processid
-      }, error = function(e) {
-        showNotification(paste0("Error retrieving records from BOLD: ", e$message), id="fetch_msg", type = "error")
-      }) 
+      if(input$data_source == "source-local") {
+        collect_node_data()
+      } else {
+        tryCatch({
+          showNotification(paste0("Downloading ids of ",
+                                  format(search_token$num_of_accessible, big.mark = ",", scientific = FALSE),
+                                  "  matching records..."), id = "fetch_msg", duration=NULL, type = "message")
+          fetch_params$fetch_by <- "processid"
+          fetch_params$fetch_ids <- bold.full.search.step2(search_token)$processid
+        }, error = function(e) {
+          showNotification(paste0("Error retrieving records from BOLD: ", e$message), id="fetch_msg", type = "error")
+        })
+      }
     })
     
     # perform fetch
@@ -464,14 +484,17 @@
     })
     
     # collect data from local data package
-    observeEvent(fetch_params$node_result, {
-      req(fetch_params$node_result)
-      showNotification("Assembling data from data package...", id = "fetch_msg", duration=NULL, type = "message")
-      data <- as.data.table(bold.data.collect(fetch_params$node_result))
+    collect_node_data <- function() {
+      req(fetch_params$search_token)
+      showNotification(paste0("Collecting ", format(isolate(fetch_params$search_token$num_of_accessible), big.mark = ","),
+                              " records from data package..."),
+                       id = "fetch_msg", duration=NULL, type = "message")
+      data <- as.data.table(bold.data.collect(fetch_params$search_token$node_result))
       fetch_params$fetch_by <- "processid"
-      showNotification("Data assembled.", id = "fetch_msg", duration=2, type = "message")
+      showNotification("Preparing table...", id = "fetch_msg", duration=NULL, type = "message")
       populate_data(data)
-    })
+      showNotification("Data assembled.", id = "fetch_msg", duration=2, type = "message")
+    }
     
     # populate data
     populate_data <- function(data) {
@@ -517,19 +540,8 @@
       req(outdata$data)
       binmate_pids <- outdata$binmates
       if(is.null(outdata$binmates)) {
-        
-        binmates <- get_binmates(outdata$data[!empty(bin_uri)], fetch_params$node_dtpkg)
-        
-        if(is.null(fetch_params$node_result)) {
-          binmate_pids <- binmates
-        } else {
-          binmate_pids <- unique(binmates$processid)
-          fetch_params$binmates_checked <- TRUE
-          add_binmates(binmates)
-        }
-        
+        binmate_pids <- get_binmates(outdata$data[!empty(bin_uri)], fetch_params$node_dtpkg)
         outdata$binmates <- binmate_pids
-        
       }
       if(length(binmate_pids) == 0) {
         modal_msg <- div(HTML(paste0("No additional BIN members found.")))
@@ -538,7 +550,7 @@
               actionButton("binmate_btn", "OK")))
         binmate_list <- div("")
       } else if (fetch_params$binmates_checked == FALSE) {
-        modal_msg <- div(HTML(paste0("Found <strong>",length(binmate_pids),"</strong> additional BIN members. Fetch and add to table?")))
+        modal_msg <- div(HTML(paste0("Found <strong>",length(binmate_pids),"</strong> additional BIN members. Retrieve and add to table?")))
         modal_footer <- tagList(
           actionButton("copy_binmates", "Copy"),
           div(id="modal_confirm",
@@ -547,7 +559,7 @@
         )
         binmate_list <- verbatimTextOutput("binmate_pids")
       } else {
-        modal_msg <- div(HTML(paste0("The following <strong>",length(binmate_pids),"</strong> additional BIN members were added to the fetched data.")))
+        modal_msg <- div(HTML(paste0("The following <strong>",length(binmate_pids),"</strong> additional BIN members were added to the retrieved data.")))
         modal_footer <- tagList(
           actionButton("copy_binmates", "Copy"),
           div(id="modal_confirm",
@@ -567,14 +579,24 @@
       fetch_params$binmates_checked <- TRUE
     }
     
-    fetch_binmates <- function() {
-      binmate_data <- as.data.table(bold.fetch.shiny(get_by = "processid", 
-                                                     query = outdata$binmates,
-                                                     BCDM_only = FALSE))
+    fetch_binmates <- function(dtpkg_parquet = fetch_params$node_dtpkg) {
+      binmate_data <- if(is.null(dtpkg_parquet)) {
+        as.data.table(bold.fetch.shiny(get_by = "processid",
+                                       query = outdata$binmates,
+                                       BCDM_only = FALSE))
+      } else {
+        showNotification("Collecting additional BIN members from data package...",
+                         id = "fetch_msg", duration=NULL, type = "message")
+        as.data.table(
+          bold.data.collect(
+            bold.data.search(dtpkg_parquet,ids = outdata$binmates)))
+      }
       add_binmates(binmate_data)
     }
     
     add_binmates <- function(binmate_data) {
+      showNotification("Processing additional BIN member data...",
+                       id = "fetch_msg", duration=NULL, type = "message")
       binmate_data <- binmate_data[, c("id_date_parsed", "project_code", "lat", "lon") :=
                                      c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
       cols_to_factor <- intersect(config$fieldsets$factorfields, names(binmate_data))
@@ -582,6 +604,8 @@
       data <- unique(rbindlist(list(outdata$data,
                                     binmate_data),
                                fill = TRUE))
+      showNotification("Additional BIN members retrieved.",
+                       id = "fetch_msg", duration=2, type = "message")
       outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
       outdata$data <- data
       fetch_params$binmates_fetched <- TRUE
@@ -626,6 +650,7 @@
                               !names(outdata$data) %in% c("identification","bin_uri","country.ocean","id_date_parsed","project_code")])
                         ))
     })
+
     
     user_datapkgs <- reactiveVal(datapkgs)
     
@@ -768,19 +793,11 @@
             } else {
               fields <- unique(c(fields, config$fieldsets[o][[1]]))
             }
-          # } else if (grepl("^userset", o)) {
-          #   fields <- unique(c(fields, unlist(sapply(config$fieldsets$custom, function(x) if(x$id == o) x$fields))))
           } else {
             fields <- unique(c(fields, o))
           }
         }
         
-        # if (any(input$filt_opt %in% c("all","bcdm","sequence"))) {
-        #   fields <- unique(c(fields, coll_mrkr_fields()))
-        #   show_copy_fasta <- TRUE
-        # } else {
-        #   show_copy_fasta <- FALSE
-        # }
         id_idx <- which(c("processid", "sampleid") %in% fields)
         if(length(id_idx) == 0) {
           fields <- c("processid", fields)
@@ -789,7 +806,6 @@
           id_field <- c("processid", "sampleid")[min(id_idx)]
         }
       }
-      # list(fields = fields, show_copy_fasta = show_copy_fasta, id_field = id_field)
       list(fields = fields, id_field = id_field)
     })
     
@@ -798,7 +814,6 @@
       result <- computed_fields()
       outdata$select_fields <- result$fields
       outdata$id_field <- result$id_field
-      #if (result$show_copy_fasta) shinyjs::show("copy_fasta") else shinyjs::hide("copy_fasta")
     })
     
     # modal logic for saving custom field sets
@@ -835,7 +850,7 @@
       removeModal()
       filter_set <- modify_custom_fieldset(input$save_filter_name, input$filt_opt)
       updateSelectizeInput(session,"filt_opt",
-                           choices = filter_options(is.null(fetch_params$node_result)),
+                           choices = filter_options(is.null(fetch_params$search_token$node_result)),
                            selected = filter_set)
     })
     
@@ -859,7 +874,7 @@
         selected = NULL
       )
       updateSelectizeInput(session,"filt_opt",
-                           choices = filter_options(is.null(fetch_params$node_result)),
+                           choices = filter_options(is.null(fetch_params$search_token$node_result)),
                            selected = input$filt_opt[input$filt_opt %in% unname(unlist(input$filt_opt))])
     })
     
@@ -885,7 +900,6 @@
         }
       }
       if(length(nuc_cols) > 0) {
-        #keep_seq[[3]] <- Reduce("|", data[, lapply(.SD, function(x) !is.na(x) & x != ""), .SDcols = nuc_cols])
         keep_seq[[3]] <- rowSums(data[, lapply(.SD, function(x) !empty(x)), .SDcols = nuc_cols]) > 0
       }
       
@@ -969,11 +983,11 @@
     observeEvent(input$bin_consensus_btn, {
       req(outdata$data)
       outdata$bin_consensus <- NULL
-      outdata$bin_consensus <- get_bin_consensus(filtered_data()[!empty(bin_uri)],
-                                               threshold = as.double(unlist(unname(input$bc_threshold))),
-                                               min_ids = unlist(unname(input$bc_minids)),
-                                               enforce_scientific = input$bc_enforcesci,
-                                               discord_format = "text")
+      outdata$bin_consensus <- get.bin.consensus(bold.df = filtered_data()[!empty(bin_uri)],
+                                                 threshold = as.double(unlist(unname(input$bc_threshold))),
+                                                 min.ids = unlist(unname(input$bc_minids)),
+                                                 enforce.scientific = input$bc_enforcesci,
+                                                 discord.format = "text")
       
       if(!tab_status$consensus_tab) {
         bslib::nav_insert(
@@ -1316,6 +1330,11 @@
              current_rows = reactive(input$bindisc_table_rows_all),
              copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, copy_reps = FALSE),
              dl_btns = TRUE),
+      div_profile = 
+        list(basename = NULL,
+             output = NULL,
+             copy_btns = list(copy_table = FALSE, copy_fasta = FALSE, copy_reps = FALSE),
+             dl_btns = FALSE),
       bin_reps = 
         list(basename = "BIN-tax_reps_",
              output = rep_table,
@@ -1347,7 +1366,6 @@
     observeEvent(input$copy_table, { cb(as.data.frame(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()])) })
     observeEvent(input$copy_reps, { cb(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()][["processid"]], header = FALSE) })
     observeEvent(input$copy_fasta, { 
-      #collapse_mrkrs <- if(input$collapse_mrkrs == TRUE) { coll_mrkr_fields()[grepl(paste0("^",paste(input$filt_seq, collapse="|")), coll_mrkr_fields())] } else { NULL }
       collapse_mrkrs <- if(input$collapse_mrkrs == TRUE) { 
         coll_fields <- coll_mrkr_fields()[grepl(paste0("^",paste(input$filt_seq, collapse="|")), coll_mrkr_fields())]
         coll_fields[grepl("_nuc$", coll_fields)]
@@ -1391,11 +1409,20 @@
                csv = fwrite(tab_data[[input$tabs]]$output(), file, na="", row.names = FALSE),
                xlsx = write_xlsx(tab_data[[input$tabs]]$output(), file, format_headers=FALSE))
         }
-      )}
+    )}
+    
+    # open logic
+    observeEvent(input$open_xlsx, {
+      data <- tab_data[[input$tabs]]$output()
+      filename <- paste0(tab_data[[input$tabs]]$basename, as.character(format(Sys.Date(),"%Y%m%d")), "_")
+      temp <- tempfile(pattern = filename, fileext = ".xlsx")
+      write_xlsx(data, temp, format_headers = FALSE)
+      browseURL(temp)
+    })
     
     # download (save) functions
     output$save_tsv <- download_output("tsv")
     output$save_csv <- download_output("csv")
     output$save_xlsx <- download_output("xlsx")
-    
+
   }

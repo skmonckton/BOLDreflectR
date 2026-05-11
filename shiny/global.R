@@ -420,11 +420,15 @@ get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
   } else {
     showNotification(paste0("Searching data package for additional BIN members from ", length(bins), " BINs..."), id = "bin_msg", duration=NULL, type = "message")
     current_pids <- unique(df[["processid"]])
-    dtpkg <- BOLD.NODE:::import_parquet_data(dtpkg_parquet)
-    result <- dtpkg %>% dplyr::filter(bin_uri %in% bins) %>% dplyr::filter(!processid %in% current_pids)
-    showNotification("Assembling data from data package...", id = "bin_msg", duration=NULL, type = "message")
-    binmate_data <- as.data.table(bold.data.collect(result))
-    add_pids <- unique(binmate_data$processid)
+    pkg_data <- BOLD.NODE:::import_parquet_data(parquet_path)
+    bins_tbl <- dbplyr::copy_inline(pkg_data$src$con, dplyr::tibble(bin_uri = bins))
+    pids_tbl <- dbplyr::copy_inline(pkg_data$src$con, dplyr::tibble(processid = current_pids))
+    add_pids <- pkg_data |>
+      dplyr::semi_join(bins_tbl, by = "bin_uri") |>
+      dplyr::anti_join(pids_tbl, by = "processid") |>
+      distinct(processid) |>
+      collect() |>
+      _$processid
   }
     
   if(length(add_pids) == 0) {
@@ -433,11 +437,7 @@ get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
     showNotification(paste0(length(add_pids), " additional BIN members found."), id = "bin_msg", type = "message")
   }
   
-  if(is.null(dtpkg_parquet)) {
-    return(add_pids)
-  } else {
-    return(binmate_data)
-  }
+  return(add_pids)
 }
 
 # repeatable UI grouping
