@@ -180,16 +180,16 @@
       nts_idx <- nts_idx()
       req(length(nts_idx) > 0)
       if(sum(nts_idx) > 0) {
-        show('include_nts')
+        shinyjs::show('include_nts')
       } else {
-        hide('include_nts')
+        shinyjs::hide('include_nts')
       }
     })
     
     ### SERVER HELPERS
     
     # function to reset filter options
-    reset_filter <- function() {
+    reset_filter <- function(include_verbatim = TRUE) {
       if (!isolate(input$tabs) %in% c("data", "bin_reps", "map_tab")) {bslib::nav_select(id="tabs", selected="data")}
       outdata$select_fields <- if (is.null(isolate(outdata$data))) {
         config$fieldsets$bcdm
@@ -197,7 +197,7 @@
         c(config$fieldsets$bcdm, isolate(coll_mrkr_fields()))
       }
       updateSelectizeInput(session,"filt_opt",
-                           choices = filter_options(),
+                           choices = filter_options(include_verbatim),
                            selected = NULL)
       updateSelectizeInput(session, "filt_seq",
                            choices = outdata$markers,
@@ -214,7 +214,6 @@
       }
       bslib::nav_select(id="tabs", selected = "data")
       for(t in names(tab_status)[names(tab_status) != "data"]) bslib::nav_remove(id="tabs", target = t, session)
-      reset_filter()
       for(i in seq_along(reactiveValuesToList(tab_status))) tab_status[[names(tab_status)[i]]] <- FALSE
       bslib::update_switch("include_binmates", value = FALSE)
       bslib::update_switch("include_nts", value = FALSE)
@@ -242,8 +241,8 @@
       }, error = function(e) {
         showNotification(e$message, id="fetch_msg", type = "error")
       })
-      req((isTruthy(input$fetch_id_list) || isTruthy(input$search_tax) || isTruthy(input$search_geo) || 
-            isTruthy(input$seq_marker)) && isTruthy(Sys.getenv("api_key")))
+      req(((isTruthy(input$fetch_id_list) || isTruthy(input$search_tax) || isTruthy(input$search_geo) || 
+            isTruthy(input$seq_marker)) && isTruthy(Sys.getenv("api_key"))))
       shinyjs::show('table_area')
       shinyjs::hide('table_buttons')
       reset_ui()
@@ -252,7 +251,6 @@
       tryCatch({
         if(input$query_params == "search_opts") {
           showNotification("Searching for matching records...", id = "fetch_msg", duration=NULL, type = "message")
-          
           search_query <- list(taxonomy = split_query(input$search_tax, list = TRUE),
                                geography = split_query(input$search_geo, list = TRUE),
                                marker = input$seq_marker[input$seq_marker != ""],
@@ -353,22 +351,9 @@
     # if the BIN mates switch is toggled on, a modal opens to report the number of additional BIN records
     observeEvent(input$include_binmates, {
       req(outdata$data)
-      if (input$include_binmates == TRUE) {
-        if(fetch_params$binmates_checked == FALSE) {
-          binmate_modal()  
-        } else if(fetch_params$binmates_fetched == FALSE) {
-          binmate_data <- as.data.table(bold.fetch.shiny(get_by = "processid", 
-                                                         query = outdata$binmates,
-                                                         BCDM_only = FALSE))[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
-          cols_to_factor <- intersect(config$fieldsets$factorfields, names(binmate_data))
-          binmate_data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
-          data <- unique(rbindlist(list(outdata$data,
-                                        binmate_data),
-                                   fill = TRUE))
-          outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
-          outdata$data <- data
-          fetch_params$binmates_fetched <- TRUE
-        }
+      if ((isolate(input$include_binmates) == TRUE) && (isolate(fetch_params$binmates_checked) == FALSE)) {
+      } else if((length(outdata$binmates) > 0) && (fetch_params$binmates_fetched == FALSE)) {
+          fetch_binmates()
       }
     }, ignoreInit = TRUE, ignoreNULL = TRUE)
     
@@ -393,7 +378,7 @@
               actionButton("binmate_btn", "OK")))
         binmate_list <- div("")
       } else if (fetch_params$binmates_checked == FALSE) {
-        modal_msg <- div(HTML(paste0("Found <strong>",length(binmate_pids),"</strong> additional BIN members. Fetch and add to table?")))
+        modal_msg <- div(HTML(paste0("Found <strong>",length(binmate_pids),"</strong> additional BIN members. Retrieve and add to table?")))
         modal_footer <- tagList(
           actionButton("copy_binmates", "Copy"),
           div(id="modal_confirm",
@@ -402,7 +387,7 @@
         )
         binmate_list <- verbatimTextOutput("binmate_pids")
       } else {
-        modal_msg <- div(HTML(paste0("The following <strong>",length(binmate_pids),"</strong> additional BIN members were added to the fetched data.")))
+        modal_msg <- div(HTML(paste0("The following <strong>",length(binmate_pids),"</strong> additional BIN members were added to the retrieved data.")))
         modal_footer <- tagList(
           actionButton("copy_binmates", "Copy"),
           div(id="modal_confirm",
@@ -419,6 +404,31 @@
           easyClose = (fetch_params$binmates_checked == TRUE)
         )
       )
+      fetch_params$binmates_checked <- TRUE
+    }
+    
+    fetch_binmates <- function() {
+      as.data.table(bold.fetch.shiny(get_by = "processid",
+                                     query = outdata$binmates,
+                                     BCDM_only = FALSE))
+      add_binmates(binmate_data)
+    }
+    
+    add_binmates <- function(binmate_data) {
+      showNotification("Processing additional BIN member data...",
+                       id = "fetch_msg", duration=NULL, type = "message")
+      binmate_data <- binmate_data[, c("id_date_parsed", "project_code", "lat", "lon") :=
+                                     c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
+      cols_to_factor <- intersect(config$fieldsets$factorfields, names(binmate_data))
+      binmate_data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
+      data <- unique(rbindlist(list(outdata$data,
+                                    binmate_data),
+                               fill = TRUE))
+      showNotification("Additional BIN members retrieved.",
+                       id = "fetch_msg", duration=2, type = "message")
+      outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
+      outdata$data <- data
+      fetch_params$binmates_fetched <- TRUE
     }
     
     # user can close the BIN mate modal without fetching BIN mates
@@ -431,12 +441,11 @@
     observeEvent(input$binmate_btn, {
       removeModal()
       if(length(outdata$binmates) > 0) {
+        fetch_binmates()
         bslib::update_switch("include_binmates",label="Include additional BIN members",value=TRUE,session)
       } else {
         bslib::update_switch("include_binmates",label="Include additional BIN members",value=FALSE,session)
       }
-      fetch_params$binmates_checked <- TRUE
-      
     })
     
     ### REACTIVE COMPUTATIONS AND OBSERVERS
@@ -507,19 +516,11 @@
             } else {
               fields <- unique(c(fields, config$fieldsets[o][[1]]))
             }
-          # } else if (grepl("^userset", o)) {
-          #   fields <- unique(c(fields, unlist(sapply(config$fieldsets$custom, function(x) if(x$id == o) x$fields))))
           } else {
             fields <- unique(c(fields, o))
           }
         }
         
-        # if (any(input$filt_opt %in% c("all","bcdm","sequence"))) {
-        #   fields <- unique(c(fields, coll_mrkr_fields()))
-        #   show_copy_fasta <- TRUE
-        # } else {
-        #   show_copy_fasta <- FALSE
-        # }
         id_idx <- which(c("processid", "sampleid") %in% fields)
         if(length(id_idx) == 0) {
           fields <- c("processid", fields)
@@ -528,7 +529,6 @@
           id_field <- c("processid", "sampleid")[min(id_idx)]
         }
       }
-      # list(fields = fields, show_copy_fasta = show_copy_fasta, id_field = id_field)
       list(fields = fields, id_field = id_field)
     })
     
@@ -537,7 +537,6 @@
       result <- computed_fields()
       outdata$select_fields <- result$fields
       outdata$id_field <- result$id_field
-      #if (result$show_copy_fasta) shinyjs::show("copy_fasta") else shinyjs::hide("copy_fasta")
     })
     
     # modal logic for saving custom field sets
@@ -574,7 +573,7 @@
       removeModal()
       filter_set <- modify_custom_fieldset(input$save_filter_name, input$filt_opt)
       updateSelectizeInput(session,"filt_opt",
-                           choices = filter_options(is.null(fetch_params$node_result)),
+                           choices = filter_options(),
                            selected = filter_set)
     })
     
@@ -598,7 +597,7 @@
         selected = NULL
       )
       updateSelectizeInput(session,"filt_opt",
-                           choices = filter_options(is.null(fetch_params$node_result)),
+                           choices = filter_options(),
                            selected = input$filt_opt[input$filt_opt %in% unname(unlist(input$filt_opt))])
     })
     
@@ -624,7 +623,6 @@
         }
       }
       if(length(nuc_cols) > 0) {
-        #keep_seq[[3]] <- Reduce("|", data[, lapply(.SD, function(x) !is.na(x) & x != ""), .SDcols = nuc_cols])
         keep_seq[[3]] <- rowSums(data[, lapply(.SD, function(x) !empty(x)), .SDcols = nuc_cols]) > 0
       }
       
@@ -1086,7 +1084,6 @@
     observeEvent(input$copy_table, { cb(as.data.frame(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()])) })
     observeEvent(input$copy_reps, { cb(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()][["processid"]], header = FALSE) })
     observeEvent(input$copy_fasta, { 
-      #collapse_mrkrs <- if(input$collapse_mrkrs == TRUE) { coll_mrkr_fields()[grepl(paste0("^",paste(input$filt_seq, collapse="|")), coll_mrkr_fields())] } else { NULL }
       collapse_mrkrs <- if(input$collapse_mrkrs == TRUE) { 
         coll_fields <- coll_mrkr_fields()[grepl(paste0("^",paste(input$filt_seq, collapse="|")), coll_mrkr_fields())]
         coll_fields[grepl("_nuc$", coll_fields)]
@@ -1130,11 +1127,20 @@
                csv = fwrite(tab_data[[input$tabs]]$output(), file, na="", row.names = FALSE),
                xlsx = write_xlsx(tab_data[[input$tabs]]$output(), file, format_headers=FALSE))
         }
-      )}
+    )}
+    
+    # open logic
+    observeEvent(input$open_xlsx, {
+      data <- tab_data[[input$tabs]]$output()
+      filename <- paste0(tab_data[[input$tabs]]$basename, as.character(format(Sys.Date(),"%Y%m%d")), "_")
+      temp <- tempfile(pattern = filename, fileext = ".xlsx")
+      write_xlsx(data, temp, format_headers = FALSE)
+      browseURL(temp)
+    })
     
     # download (save) functions
     output$save_tsv <- download_output("tsv")
     output$save_csv <- download_output("csv")
     output$save_xlsx <- download_output("xlsx")
-    
+
   }
