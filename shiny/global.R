@@ -8,6 +8,7 @@ library(pbapply)
 library(shiny)
 library(shinycssloaders)
 library(shinyjs)
+library(shinyWidgets)
 library(writexl)
 library(yaml)
 
@@ -40,23 +41,40 @@ map_colours <- colorRampPalette(c("#9e0142","#d53e4f","#f46d43","#fdae61",
                                   "#66c2a5","#3288bd","#5e4fa2"), alpha = TRUE)(11)
 
 # this is used to re-compute selectize input options when custom filter sets are created or removed
-filter_options <- function() {
-  list("Default" = list("BCDM fields" = "bcdm", 
-                        "All verbatim fields" = "all"),
-       "Saved" = sapply(user_config$fieldsets$custom, function(s) stats::setNames(list(s$id), s$name)),
-       "Presets" = list("Sample ID, Process ID, BIN" = "min",
-                        "Taxonomic identification" = "acctax",
-                        "Verbatim identification" = "verbtax",
-                        "Sequence data" = "sequence",
-                        "Voucher/specimen details" = "specimen",
-                        "Verbatim specimen details" = "verbspec",
-                        "Collection data" = "collection",
-                        "Verbatim collection data" = "verbcollect",
-                        "Projects & datasets" = "recset"),
-       "Parsed fields" = list("Identification date" = "parsed|id_date_parsed",
-                              "Project code" = "parsed|project_code",
-                              "Latitude & longitude" = "parsed|lat|lon"),
-       "All fields" = config$fieldsets$all)
+filter_options <- function(include_verbatim = TRUE) {
+  if(include_verbatim) { 
+    list("Default" = list("BCDM fields" = "bcdm", 
+                          "All verbatim fields" = "all"),
+         "Saved" = sapply(user_config$fieldsets$custom, function(s) stats::setNames(list(s$id), s$name)),
+         "Presets" = list("Sample ID, Process ID, BIN" = "min",
+                          "Taxonomic identification" = "acctax",
+                          "Verbatim identification" = "verbtax",
+                          "Sequence data" = "sequence",
+                          "Voucher/specimen details" = "specimen",
+                          "Verbatim specimen details" = "verbspec",
+                          "Collection data" = "collection",
+                          "Verbatim collection data" = "verbcollect",
+                          "Projects & datasets" = "recset"),
+         "Parsed fields" = list("Identification date" = "parsed|id_date_parsed",
+                                "Project code" = "parsed|project_code",
+                                "Latitude & longitude" = "parsed|lat|lon"),
+         "All fields" = config$fieldsets$all)
+  } else {
+    list("Default" = list("BCDM fields" = "bcdm",
+                          "BCDM and parsed fields" = "all"),
+         "Saved" = sapply(user_config$fieldsets$custom, function(s) stats::setNames(list(s$id), s$name)),
+         "Presets" = list("Sample ID, Process ID, BIN" = "min",
+                          "Taxonomic identification" = "acctax",
+                          "Sequence data" = "sequence",
+                          "Voucher/specimen details" = "specimen",
+                          "Collection data" = "collection",
+                          "Projects & datasets" = "recset"),
+         "Parsed fields" = list("Identification date" = "parsed|id_date_parsed",
+                                "Project code" = "parsed|project_code",
+                                "Latitude & longitude" = "parsed|lat|lon"),
+         "All fields" = intersect(config$fieldsets$all, c(config$fieldsets$bcdm, config$fieldsets$parsed)))
+  }
+  
 } 
 
 marker_options <- list(" " = "",
@@ -67,11 +85,6 @@ marker_options <- list(" " = "",
 cb <- function(df, header=TRUE, sep="\t", max.size=(200*1000)){
   write.table(df, paste0("clipboard-", formatC(max.size, format="f", digits=0)), sep=sep, col.names=header, row.names=FALSE, quote=FALSE, na="NA")
   showNotification(paste0("Copied to clipboard."), type = "message", id = "copy_msg")
-}
-
-# convenience function to check for NA or "" in BCDM fields
-empty <- function(x) {
-  (is.na(x) | (x == ""))
 }
 
 # assemble FASTA and copy to clipboard
@@ -202,7 +215,7 @@ collapse_markers <- function(data) {
 
 # decompose recordset column into a list of dataset or project codes
 list_recordsets <- function(data, set_type, list_by) {
-  recordsets <- data[, .(set = unique(trimws(unlist(strsplit(bold_recordset_code_arr, ","))))), by = list_by] 
+  recordsets <- data[, .(set = unique(trimws(trimws(unlist(strsplit(bold_recordset_code_arr, ",")))))), by = list_by] 
   if(set_type == "parse_project") {
     merge(data[, list_by, with = FALSE], unique(recordsets[!grepl("^DS-|^DATASET", set), c(list_by, "set"), with = FALSE]), all.x = TRUE, by = list_by)[, set]
   } else if(set_type == "projects") {
@@ -304,6 +317,7 @@ bold.fetch.shiny <- function (get_by,
                               BCDM_only = FALSE,
                               notification_id = "fetch_msg") {
 
+
   tryCatch({
     withCallingHandlers({
       if(get_by == "search") {
@@ -324,10 +338,9 @@ bold.fetch.shiny <- function (get_by,
   })
 }
 
-# retrieve process IDs of BIN mates
-get_binmate_pids <- function(df, batch_size=200, sleep=2) {
-  bins <- unique(df[["bin_uri"]][!empty(df[["bin_uri"]])])
-  
+# retrieve BIN mates
+get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
+  bins <- unique(as.character(df[["bin_uri"]][!empty(as.character(df[["bin_uri"]]))]))
   add_pids <- character()
   
   if(length(bins) == 0) {
@@ -337,7 +350,7 @@ get_binmate_pids <- function(df, batch_size=200, sleep=2) {
     for (r in 1:batches) {
       start = (r-1) * batch_size + 1
       end = min(r * batch_size, length(bins))
-      getids <- levels(bins[start:end])
+      getids <- bins[start:end]
       showNotification(paste0("Checking for additional BIN members from ",length(bins)," BINs... (Batch ",r," of ",batches,")"), id = "bin_msg", duration=NULL, type = "message")
       out <- NA
       fill <- NA
@@ -364,6 +377,20 @@ get_binmate_pids <- function(df, batch_size=200, sleep=2) {
   }
   
   return(add_pids)
+}
+
+# repeatable UI grouping
+inputGroup <- function(...,
+                       title = NULL,
+                       tipTxt = NULL,
+                       groupId = NULL,
+                       groupClass = NULL) {
+  div(class = paste("option-group", groupClass),
+      id = groupId,
+      div(class="group-header",
+          if(!is.null(title)) h3(title),
+          if(!is.null(tipTxt)) bslib::tooltip(icon("circle-question"), tipTxt)),
+      ...)
 }
 
 # JavaScript used to render output data tables

@@ -3,19 +3,42 @@
     session$onSessionEnded(function() {
       stopApp()
     })
+
+    bslib::accordion_panel_close("more_opts", "Additional fields")
     
-    # some manual JavaScript for placeholder values
+    # some manual JavaScript for placeholder values and multiple marker search
     session$onFlushed(function() {
       shinyjs::runjs("
         function setPlaceholders() {
           $('.single-marker div:has(.shiny-input-number):nth-child(1 of div:has(.shiny-input-number)) .shiny-input-number').attr('placeholder', 'Min');
           $('.single-marker div:has(.shiny-input-number):nth-last-child(1 of div:has(.shiny-input-number)) .shiny-input-number').attr('placeholder', 'Max');
         }
+        
         var lastSent = null;
+        
+        function reportValues() {
+          var vals = $('.tab-pane[data-value=\"source-local\"] .single-marker .shiny-input-select option').map(function() {
+            return $(this).val();
+          }).get();
+          var serialized = JSON.stringify(vals);
+          console.log('serialized:', serialized, 'lastSent:', lastSent);
+          if (serialized === lastSent) return;
+          lastSent = serialized;
+          Shiny.setInputValue('node_markers', vals, {priority: 'event'});
+        }
+        
         setPlaceholders();
+        reportValues();
+    
+        $(document).on('change', '.seq-value-input input', function() {
+          reportValues();
+        });
+    
         var observer = new MutationObserver(function() {
           setPlaceholders();
+          reportValues(); // re-emit when DOM changes (inputs added/removed)
         });
+    
         observer.observe(document.body, { childList: true, subtree: true });
       ")
     }, once = TRUE)
@@ -62,7 +85,7 @@
     
     # convenience function for interrogating current tab status
     tab_monitor <- function(get = c("status", "current", "absent", "ins_target"), ins_tab = NULL) {
-      tabs <- isolate(reactiveValuesToList(tab_status))
+      tabs <- reactiveValuesToList(tab_status)
       switch(get,
              status = tabs,
              current = names(tabs)[tabs == TRUE],
@@ -71,6 +94,44 @@
     }
     
     ### REACTIVE UI
+    
+    source_test_code <- function(key) {
+      tryCatch({
+        tmpfile <- tempfile()
+        on.exit(unlink(tmpfile))
+        content(httr::GET(
+          "https://raw.githubusercontent.com/skmonckton/AppDev/refs/heads/main/internal/test_func.R",
+          add_headers(Authorization = paste("token", key))
+        ), "text") |> writeBin(tmpfile)
+        source(tmpfile, local = TRUE)
+      }, error = function(e){
+        showNotification(paste0("Error accessing test functions:", e$message), type = "error")
+      })
+    }
+    
+    observeEvent(input$cbg_btn, {
+      tryCatch({
+        key <- key_get(service="tctools-GH-PAT")
+        source_test_code(key)
+      }, error = function(e){
+        showModal(
+          modalDialog(
+            title = "Test user access",
+            textInput("testkey", "Please input your access token:"),
+            footer = tagList(
+              div(),
+              div(id="modal_confirm",
+                  actionButton("testkey_confirm", "Confirm"),
+                  modalButton("Cancel"))),
+            easyClose = TRUE))
+      })
+    })
+    
+    observeEvent(input$testkey_confirm, {
+      key <- trimws(gsub('"', "", input$testkey))
+      try(key_set_with_value("tctools-GH-PAT", password = key), silent=TRUE)
+      source_test_code(key)
+    })
     
     # conditional input logic to constrain marker search options (min/max requires a marker to be selected)
     observeEvent(input$seq_marker, {
@@ -1034,14 +1095,14 @@
       }
       
       data <- if(input$tabs == "data") {
-        fetch_by <- fetch_params$fetch_by
-        ids <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), get(fetch_by)]
+        id_col <- intersect(c("processid","sampleid"), names(tab_data[[input$tabs]]$output()))[1]
+        ids <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), get(id_col)]
         if(input$collapse_mrkrs == TRUE) {
-          collapsed_data()[get(fetch_by) %in% ids]
+          collapsed_data()[processid %in% ids]
         } else if(!is.null(input$filt_seq)) {
-          outdata$data[(get(fetch_by) %in% ids) & (marker_code %in% input$filt_seq)]
+          outdata$data[(processid %in% ids) & (marker_code %in% input$filt_seq)]
         } else {
-          outdata$data[(get(fetch_by) %in% ids)]
+          outdata$data[(processid %in% ids)]
         }
       } else {
         tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()]
