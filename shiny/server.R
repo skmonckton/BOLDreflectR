@@ -265,6 +265,26 @@
       updateSliderInput(session, "node_lat_range", value = lat_range_man())
     })
     
+    # # reactively assemble BOLD API search query
+    # search_query <- reactiveVal()
+    # 
+    # observe({
+    #   search_query <- list(
+    #     taxonomy = split_query(input$search_tax, list = TRUE),
+    #     geography = split_query(input$search_geo, list = TRUE),
+    #     marker = input$seq_marker[input$seq_marker != ""],
+    #     marker_min_length = input$seq_min[!is.na(input$seq_min)],
+    #     marker_max_length = input$seq_max[!is.na(input$seq_max)],
+    #     collection_start_date = input$search_dates[1],
+    #     collection_end_date = input$search_dates[2],
+    #     institutes = split_query(input$search_inst, list = TRUE))
+    #   for(q in names(search_query)) {
+    #     if(is.null(unlist(search_query[[q]])) || isTRUE(is.na(unlist(search_query[[q]])))) search_query[[q]] <- NULL
+    #   }
+    #   print(search_query)
+    #   search_query(search_query)
+    # })
+    
     # reactively assemble node search query
     node_query <- reactiveVal()
     
@@ -409,7 +429,10 @@
                                geography = split_query(input$search_geo, list = TRUE),
                                marker = input$seq_marker[input$seq_marker != ""],
                                marker_min_length = input$seq_min[!is.na(input$seq_min)],
-                               marker_max_length = input$seq_max[!is.na(input$seq_max)])
+                               marker_max_length = input$seq_max[!is.na(input$seq_max)],
+                               collection_start_date = if(is.na(input$search_dates[1])) NULL else input$search_dates[1],
+                               collection_end_date = if(is.na(input$search_dates[2])) NULL else input$search_dates[2],
+                               institutes = split_query(input$search_inst, list = TRUE))
           search_token <- do.call(bold.full.search.step1, search_query[sapply(search_query, length) > 0])
           if(is.null(search_token)) {
             showNotification("No records found matching search terms.", id="fetch_msg", type = "warning")
