@@ -57,7 +57,6 @@
       search_token = NULL,
       binmates_checked = FALSE,
       binmates_fetched = FALSE,
-      n_node_markers = 1,
       node_dtpkg = NULL,
       node_result = NULL
     )
@@ -388,12 +387,13 @@
       shinyjs::show("main_panel")
       tryCatch({
         if(input$data_source == "source-local") {
-          query_params <- node_query()
-          query_params[["input.parquet"]] <- input$datapackage_id
+          node_params <- node_query()
+          fetch_params$query <- node_params
+          node_params[["input.parquet"]] <- input$datapackage_id
           showNotification("Searching data package for matching records...", id = "fetch_msg", duration=NULL, type = "message")
           num_records <- 0
           withCallingHandlers({
-            result <- do.call(bold.data.search, query_params)
+            result <- do.call(bold.data.search, node_params)
           }, message = function(m) {
             notif_txt <- clean_ansi(conditionMessage(m))
             if(grepl("^The search has", notif_txt)) {
@@ -401,7 +401,6 @@
             }
             showNotification(notif_txt, id = "fetch_msg", duration = NULL, type = "message")
           })
-          print(num_records)
           fetch_params$node_dtpkg <- input$datapackage_id
           fetch_params$search_token <- list(num_of_accessible = num_records,
                                             num_of_records = num_records,
@@ -995,7 +994,7 @@
       req(nrow(outdata$data) > 0)
       gaps <- analyze_gaps(data = outdata$data, query = fetch_params$query)
       outdata$gaps <- gaps$gaps_dt
-      if(!tab_status$consensus_tab) {
+      if(!tab_status$gaps_tab) {
         bslib::nav_insert(
           "tabs", target = tab_monitor("ins_target","gaps_tab"), select = TRUE,
           bslib::nav_panel(
