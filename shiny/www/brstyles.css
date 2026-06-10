@@ -479,35 +479,35 @@ div.form-group:has(.has-items) #save_filter_set {
   z-index: 1;
 }
 
-.tab-pane[data-value="gaps_tab"] {
+.tab-pane[data-value="qhits_tab"] {
   height: 100%;
   max-height: calc(100vh - (1.5 * 0.95em) - 7.75rem - 4px);
   overflow-y: scroll
 }
 
-.tab-pane[data-value="gaps_tab"] .datatables {
+.tab-pane[data-value="qhits_tab"] .datatables {
   position: relative;
 }
 
-.tab-pane[data-value="gaps_tab"] .dataTables_wrapper {
+.tab-pane[data-value="qhits_tab"] .dataTables_wrapper {
   max-height: 50vh;
   overflow-y: scroll;
   margin-bottom: 1.5rem;
 }
 
-.tab-pane[data-value="gaps_tab"] .datatables .dataTables_filter label {
+.tab-pane[data-value="qhits_tab"] .datatables .dataTables_filter label {
   position: absolute;
   left: calc(32rem - 4rem - 78px);
   top: -2.5rem;
   font-size: 0.9rem;
 }
 
-.tab-pane[data-value="gaps_tab"] .datatables .dataTables_wrapper .table thead > tr th,
-.tab-pane[data-value="gaps_tab"] .datatables .dataTables_wrapper .table tbody > tr td {
+.tab-pane[data-value="qhits_tab"] .datatables .dataTables_wrapper .table thead > tr th,
+.tab-pane[data-value="qhits_tab"] .datatables .dataTables_wrapper .table tbody > tr td {
   border-right: none;
 }
 
-.gap_heading {
+.hit_rep_heading {
   font-size: 1.2rem;
   width: fit-content;
   border-bottom: 0.15rem solid black;
@@ -515,7 +515,7 @@ div.form-group:has(.has-items) #save_filter_set {
   padding: 0 0 0.25rem 0.2rem;
 }
 
-.gap_heading:after {
+.hit_rep_heading:after {
   content: "";
   display: inline-block;
   width: 1.2rem;

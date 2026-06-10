@@ -275,16 +275,16 @@ ui <- bslib::page_fillable(
                 actionButton(
                   "ana_btn",
                   "Summarize"))),
-          inputGroup(title = "Gap analysis",
-                     groupId = "gap-opts",
+          inputGroup(title = "Query hit report",
+                     groupId = "qhits-opts",
                      div(class="form-group",
-                         "Generate a report of query terms that were found:",
+                         "Generate a report of query terms that were found or not:",
                          bslib::tooltip(
                            icon("circle-question"),
                            HTML("This reflects the original query only, not additional BIN members."))),
                      div(actionButton(
-                       "gap_analysis_btn",
-                       "Generate"
+                       "query_hits_btn",
+                       "Generate report"
                      ))),
           inputGroup(title = "Distribution map",
                      groupId = "map-opts",

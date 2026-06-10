@@ -66,7 +66,7 @@
     
     init_outdata <- list(
       data = NULL,
-      gaps = NULL,
+      hits = NULL,
       binmates = NULL,
       select_fields = config$fieldsets$bcdm,
       id_field = "processid",
@@ -82,7 +82,7 @@
     # keep track of output tabs
     tab_status <- reactiveValues(
       data = FALSE,
-      gaps_tab = FALSE,
+      qhits_tab = FALSE,
       summary = FALSE,
       div_profile = FALSE,
       bin_reps = FALSE,
@@ -989,23 +989,23 @@
       }
     })
     
-    # compute gap analysis
-    observeEvent(input$gap_analysis_btn, {
+    # compute query coverage report
+    observeEvent(input$query_hits_btn, {
       req(nrow(outdata$data) > 0)
-      gaps <- analyze_gaps(data = outdata$data, query = fetch_params$query)
-      outdata$gaps <- gaps$gaps_dt
-      if(!tab_status$gaps_tab) {
+      hits <- get_query_hits(data = outdata$data, query = fetch_params$query)
+      outdata$hits <- hits$hits_dt
+      if(!tab_status$qhits_tab) {
         bslib::nav_insert(
-          "tabs", target = tab_monitor("ins_target","gaps_tab"), select = TRUE,
+          "tabs", target = tab_monitor("ins_target","qhits_tab"), select = TRUE,
           bslib::nav_panel(
-            id="gaps_tab",
-            value="gaps_tab",
-            "Gap analysis",
-            gaps$report)
+            id="qhits_tab",
+            value="qhits_tab",
+            "Query hits",
+            hits$report)
         )
-        tab_status$gaps_tab <- TRUE
+        tab_status$qhits_tab <- TRUE
       } else {
-        bslib::nav_select(id = "tabs", selected = "gaps_tab")
+        bslib::nav_select(id = "tabs", selected = "qhits_tab")
       }
     })
     
@@ -1317,10 +1317,10 @@
              current_rows = reactive(input$data_table_rows_all),
              copy_btns = list(copy_table = FALSE, copy_fasta = TRUE, copy_reps = FALSE),
              dl_btns = TRUE),
-      gaps_tab = 
-        list(basename = "gap_analysis_", 
-             output = reactive(outdata$gaps),
-             current_rows = reactive(outdata$gaps[, .I]),
+      qhits_tab = 
+        list(basename = "query_hits_", 
+             output = reactive(outdata$hits),
+             current_rows = reactive(outdata$hits[, .I]),
              copy_btns = list(copy_table = FALSE, copy_fasta = FALSE, copy_reps = FALSE),
              dl_btns = TRUE),
       summary = 
