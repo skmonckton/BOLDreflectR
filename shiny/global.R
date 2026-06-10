@@ -344,7 +344,7 @@ bold.fetch.shiny <- function (get_by,
 }
 
 # check for search terms in retrieved data
-analyze_gaps <- function(data = NULL, query) {
+get_query_hits <- function(data = NULL, query) {
   
   search_terms <- query[names(config$queryterms)[names(config$queryterms) %in% names(query)]]
 
@@ -380,7 +380,7 @@ analyze_gaps <- function(data = NULL, query) {
   }
   
   report <- do.call(tagList, lapply(qfields, function(qfield) {
-    tagList(div(class = "gap_heading", subheads[[qfield]]), 
+    tagList(div(class = "hit_rep_heading", subheads[[qfield]]), 
             DT::renderDataTable(DT::datatable({
               tables[[qfield]]
             },
@@ -400,7 +400,7 @@ analyze_gaps <- function(data = NULL, query) {
               )))
     }))
   
-  list(gaps_dt = query_dt,
+  list(hits_dt = query_dt,
        report = report)
 }
 
