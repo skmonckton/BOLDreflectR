@@ -712,7 +712,7 @@
       req(nrow(outdata$data) > 0)
       gaps <- analyze_gaps(data = outdata$data, query = fetch_params$query)
       outdata$gaps <- gaps$gaps_dt
-      if(!tab_status$consensus_tab) {
+      if(!tab_status$gaps_tab) {
         bslib::nav_insert(
           "tabs", target = tab_monitor("ins_target","gaps_tab"), select = TRUE,
           bslib::nav_panel(
