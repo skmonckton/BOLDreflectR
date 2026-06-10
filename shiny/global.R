@@ -279,8 +279,15 @@ summarize_table <- function(data, sum_type, list_by) {
   if (sum_type %in% c("projects","datasets")){
     list_recordsets(data, sum_type, list_by)
   } else if (sum_type == "tax_summary") { 
-    tax_count <- unique(setorderv(unique(data, by = list_by)[, .(identification, count = .N), by = ranks], ranks))
-    tax_count[, .SD, .SDcols = c("identification", ranks, "count")]
+    by_id <- unique(setorderv(unique(data, by = list_by)[, .(identification, .N), by = ranks], ranks))
+    tax_count <- rbindlist(lapply(seq_along(ranks), function(i) {
+      r <- ranks[i]
+      by_rank <- by_id[, .(count = sum(N)), by = eval(ranks[seq_len(i)])]
+      by_rank[get(r) %in% data$identification]
+    }), fill = TRUE)
+    tax_count[, (ranks) := lapply(.SD, as.character), .SDcols = ranks]
+    tax_count[, taxon := fcoalesce(.SD), .SDcols = rev(ranks)]
+    setorderv(tax_count, ranks)[, .SD, .SDcols = c("taxon", ranks, "count")]
   } else if (is.null(sum_type)) {
     data
   } else {
@@ -366,7 +373,6 @@ bold.fetch.shiny <- function (get_by,
                               BCDM_only = FALSE,
                               notification_id = "fetch_msg") {
 
-
   tryCatch({
     withCallingHandlers({
       if(get_by == "search") {
@@ -385,6 +391,67 @@ bold.fetch.shiny <- function (get_by,
     showNotification(paste("Error fetching data:", clean_ansi(conditionMessage(e))), id = notification_id, duration = NULL, type = "error")
     return(NULL)
   })
+}
+
+# check for search terms in retrieved data
+analyze_gaps <- function(data = NULL, query) {
+  
+  search_terms <- query[names(config$queryterms)[names(config$queryterms) %in% names(query)]]
+
+  query_dt <- rbindlist(lapply(names(search_terms), function(field) {
+    data.table(field = field, term = unlist(search_terms[[field]]), found = "NOT FOUND", count = 0)
+  }), fill = TRUE)
+  
+  qfields <- unique(query_dt$field)
+  subheads <- list()
+  tables <- list()
+  
+  for(qfield in qfields) {
+    search_cols <- config$queryterms[[qfield]]$fields
+    qterms <- query_dt[field == qfield, .(term)]
+    
+    matched_terms <- unique(unlist(lapply(search_cols, function(col) {
+      data[qterms, on = setNames("term", col), nomatch = NULL][[col]]
+    })))
+    
+    counts_long <- rbindlist(lapply(search_cols, function(col) {
+      count <- data[qterms, on = setNames("term", col), .N, by = .EACHI]
+      setnames(count, 1, "term") 
+      return(count)
+    }), fill = TRUE)
+    total_counts <- counts_long[, .(N = sum(N)), by = "term"]
+    total_counts [, field := qfield]
+    
+    query_dt[field == qfield, found := fifelse(term %in% matched_terms, "FOUND", "NOT FOUND")]
+    query_dt[total_counts, on = .(field, term), count := count + i.N]
+    
+    subheads[[qfield]] <- paste0(config$queryterms[[qfield]]$name, ":")
+    tables[[qfield]] <- query_dt[field == qfield, .(term, found, count)]
+  }
+  
+  report <- do.call(tagList, lapply(qfields, function(qfield) {
+    tagList(div(class = "gap_heading", subheads[[qfield]]), 
+            DT::renderDataTable(DT::datatable({
+              tables[[qfield]]
+            },
+            rownames = FALSE,
+            options = list(
+              dom = 'ft',
+              autoWidth = FALSE,
+              paging = FALSE,
+              columnDefs = list(
+                list(className = 'dt-left', width = '20rem', targets = 0), 
+                list(className = 'dt-center', width = '6rem', targets = c(1, 2)
+                )))) %>%
+              DT::formatStyle(
+                'found',
+                color = DT::styleEqual(c("FOUND", "NOT FOUND"), c('#33691e', '#c62828')),
+                fontWeight = "500"
+              )))
+    }))
+  
+  list(gaps_dt = query_dt,
+       report = report)
 }
 
 # retrieve BIN mates
@@ -484,9 +551,8 @@ column_js <- DT::JS("
                             : '<div>' + data + '</div>';
                         }
                         if (colName == 'processid') {
-                          var spid = mapByPID[data];
-                          return spid
-                            ? '<div><a href=\"https://bench.boldsystems.org/index.php/MAS_DataRetrieval_OpenSequence?selectedrecordid=' + spid + '\" target=\"_blank\">' + data + '</a></div>'
+                          return data
+                            ? '<div><a href=\"https://bench.boldsystems.org/index.php/MAS_DataRetrieval_OpenSequence?processid=' + data + '\" target=\"_blank\">' + data + '</a></div>'
                             : '<div>' + data + '</div>';
                         }
                         if (colName == 'bin_uri' || colName == 'nn_bin_uri') {
@@ -505,3 +571,20 @@ column_js <- DT::JS("
                       return data;
                     }
                   ")
+
+withInfProgress <- function(message, expr, env = parent.frame()) {
+  notif_id <- showNotification(
+    HTML(paste0(
+      "<div class='inf-progress-wrap'>",
+      "  <div class='inf-progress-bar'></div>",
+      "</div>",
+      "<div>", message, "</div>"
+    )),
+    duration = NULL,
+    type = "message"
+  )
+  tryCatch(
+    eval(substitute(expr), envir = env),
+    finally = removeNotification(notif_id)
+  )
+}
