@@ -49,6 +49,7 @@
     fetch_params <- reactiveValues()
     
     init_fetch_params <- list(
+      query = list(),
       fetch_ids = NULL,
       fetch_by = NULL,
       search_token = NULL,
@@ -61,6 +62,7 @@
     
     init_outdata <- list(
       data = NULL,
+      gaps = NULL,
       binmates = NULL,
       select_fields = config$fieldsets$bcdm,
       id_field = "processid",
@@ -70,16 +72,15 @@
       summary = NULL,
       bin_reps = NULL,
       bin_consensus = NULL,
-      bin_discordance = NULL,
       bin_portal_stats = NULL)
     
     # keep track of output tabs
     tab_status <- reactiveValues(
       data = FALSE,
+      gaps_tab = FALSE,
       summary = FALSE,
       bin_reps = FALSE,
       consensus_tab = FALSE,
-      discordance_tab = FALSE,
       map_tab = FALSE
     )
     
@@ -95,13 +96,13 @@
     
     ### REACTIVE UI
     
-    source_test_code <- function(key) {
+    source_test_code <- function() {
       tryCatch({
         tmpfile <- tempfile()
         on.exit(unlink(tmpfile))
         content(httr::GET(
-          "https://raw.githubusercontent.com/skmonckton/AppDev/refs/heads/main/internal/test_func.R",
-          add_headers(Authorization = paste("token", key))
+          "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
+          add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
         ), "text") |> writeBin(tmpfile)
         source(tmpfile, local = TRUE)
       }, error = function(e){
@@ -111,8 +112,8 @@
     
     observeEvent(input$cbg_btn, {
       tryCatch({
-        key <- key_get(service="tctools-GH-PAT")
-        source_test_code(key)
+        Sys.setenv(GITHUB_PAT = key_get(service="tctools-GH-PAT"))
+        source_test_code()
       }, error = function(e){
         showModal(
           modalDialog(
@@ -128,9 +129,12 @@
     })
     
     observeEvent(input$testkey_confirm, {
-      key <- trimws(gsub('"', "", input$testkey))
-      try(key_set_with_value("tctools-GH-PAT", password = key), silent=TRUE)
-      source_test_code(key)
+      Sys.setenv(GITHUB_PAT = trimws(gsub('"', "", input$testkey)))
+      
+      try({
+        key_set_with_value("tctools-GH-PAT", password = Sys.getenv("GITHUB_PAT"))
+        }, silent=TRUE)
+      source_test_code()
     })
     
     # conditional input logic to constrain marker search options (min/max requires a marker to be selected)
@@ -218,7 +222,7 @@
       bslib::update_switch("include_binmates", value = FALSE)
       bslib::update_switch("include_nts", value = FALSE)
       bslib::update_switch("collapse_mrkrs", value = FALSE)
-      updateCheckboxInput(inputId = "disc_portal", value = FALSE)
+      updateCheckboxInput(inputId = "bc_portal_stats", value = FALSE)
     }
     
     # execute reset function when button is pressed
@@ -255,7 +259,11 @@
                                geography = split_query(input$search_geo, list = TRUE),
                                marker = input$seq_marker[input$seq_marker != ""],
                                marker_min_length = input$seq_min[!is.na(input$seq_min)],
-                               marker_max_length = input$seq_max[!is.na(input$seq_max)])
+                               marker_max_length = input$seq_max[!is.na(input$seq_max)],
+                               collection_start_date = input$search_dates[1][!is.na(input$search_dates[1])],
+                               collection_end_date = input$search_dates[2][!is.na(input$search_dates[1])],
+                               institutes = split_query(input$search_inst, list = TRUE))
+          fetch_params$query <- search_query[sapply(search_query, length) > 0]
           search_token <- do.call(bold.full.search.step1, search_query[sapply(search_query, length) > 0])
           if(is.null(search_token)) {
             showNotification("No records found matching search terms.", id="fetch_msg", type = "warning")
@@ -271,8 +279,11 @@
             fetch_params$fetch_ids <- bold.full.search.step2(search_token)$processid
           }
         } else {
-          fetch_params$fetch_by <- input$fetch_by
-          fetch_params$fetch_ids <- split_query(input$fetch_id_list)
+          fetch_by <- input$fetch_by
+          fetch_ids <- split_query(input$fetch_id_list, list = TRUE)
+          fetch_params$query[[fetch_by]] <- fetch_ids
+          fetch_params$fetch_by <- fetch_by
+          fetch_params$fetch_ids <- unlist(fetch_ids)
         }
       }, error = function(e) {
         showNotification(paste0("Error processing record identifiers: ", e$message), id="fetch_msg", type = "error")
@@ -339,6 +350,7 @@
       }
       outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
       outdata$data <- data
+      
       shinyjs::show('table_buttons')
       bslib::accordion_panel_close(id="optpanels", values="fetchdata")
       bslib::accordion_panel_open(id="optpanels", values=c("customize","summarize","analyze"))
@@ -369,7 +381,7 @@
       req(outdata$data)
       binmate_pids <- outdata$binmates
       if (is.null(outdata$binmates)) {
-        binmate_pids <- get_binmate_pids(outdata$data[!is.na(bin_uri)])
+        binmate_pids <- get_binmates(outdata$data[!is.na(bin_uri)])
         outdata$binmates <- binmate_pids
       }
       if(length(binmate_pids) == 0) {
@@ -409,9 +421,9 @@
     }
     
     fetch_binmates <- function() {
-      as.data.table(bold.fetch.shiny(get_by = "processid",
-                                     query = outdata$binmates,
-                                     BCDM_only = FALSE))
+      binmate_data <- as.data.table(bold.fetch.shiny(get_by = "processid",
+                                                     query = outdata$binmates,
+                                                     BCDM_only = FALSE))
       add_binmates(binmate_data)
     }
     
@@ -674,9 +686,12 @@
     
     # compute summary counts and inject as a new tab
     observeEvent(input$ana_btn, {
-      req(outdata$data)
+      req(nrow(outdata$data) > 0)
       outdata$summary <- NULL
-      outdata$summary <- summarize_table(filtered_data(), input$ana_opt, outdata$id_field)
+      # outdata$summary <- summarize_table(filtered_data(), input$ana_opt, outdata$id_field)
+      withInfProgress(message = "Generating summary...", {
+        outdata$summary <- summarize_table(filtered_data()[input$data_table_rows_all, ], input$ana_opt, outdata$id_field)
+      })
       if(!tab_status$summary) {
         bslib::nav_insert(
           "tabs", target = tab_monitor("ins_target","summary"), position = "after", select = TRUE,
@@ -692,26 +707,47 @@
       }
     })
     
-    # insert BIN consensus details into BIN discordance table if/when available
-    update_discordance <- function(){
-      if(!is.null(outdata$bin_consensus) & !is.null(outdata$bin_discordance)) {
-        first_cols <- c("bin_uri", "record_count", "min_rank", "max_rank")
-        consensus_cols <- c("concordant_rank", "concordant_id", "discordant_rank", "discordant_ids")
-        rest_cols <- setdiff(names(outdata$bin_discordance), c(first_cols, consensus_cols))
-        updated_disc <- merge(outdata$bin_discordance, outdata$bin_consensus[, .SD, .SDcols = c("bin_uri", consensus_cols)], all.x = TRUE, by = "bin_uri")
-        outdata$bin_discordance <- updated_disc[, .SD, .SDcols = intersect(c(first_cols, consensus_cols, rest_cols), names(updated_disc))]
+    # compute gap analysis
+    observeEvent(input$gap_analysis_btn, {
+      req(nrow(outdata$data) > 0)
+      gaps <- analyze_gaps(data = outdata$data, query = fetch_params$query)
+      outdata$gaps <- gaps$gaps_dt
+      if(!tab_status$consensus_tab) {
+        bslib::nav_insert(
+          "tabs", target = tab_monitor("ins_target","gaps_tab"), select = TRUE,
+          bslib::nav_panel(
+            id="gaps_tab",
+            value="gaps_tab",
+            "Gap analysis",
+            gaps$report)
+        )
+        tab_status$gaps_tab <- TRUE
+      } else {
+        bslib::nav_select(id = "tabs", selected = "gaps_tab")
       }
-    }
+    })
     
     # compute BIN consensus and inject as a new tab
     observeEvent(input$bin_consensus_btn, {
-      req(outdata$data)
-      outdata$bin_consensus <- NULL
-      outdata$bin_consensus <- get_bin_consensus(filtered_data()[!empty(bin_uri)],
-                                               threshold = as.double(unlist(unname(input$bc_threshold))),
-                                               min_ids = unlist(unname(input$bc_minids)),
-                                               enforce_scientific = input$bc_enforcesci,
-                                               discord_format = "text")
+      req(nrow(outdata$data) > 0)
+      # outdata$bin_consensus <- NULL
+      data <- filtered_data()[input$data_table_rows_all, ][!empty(bin_uri)]
+      withInfProgress(message = "Computing consensus BIN taxonomy...", {
+        bin_consensus <- get_bin_consensus(df = data,
+                                           threshold = as.double(unlist(unname(input$bc_threshold))),
+                                           min_ids = unlist(unname(input$bc_minids)),
+                                           enforce_scientific = input$bc_enforcesci,
+                                           discord_format = "text")
+        col_order <- append(names(bin_consensus), c("min_rank", "max_rank"), after = 2)
+        bin_consensus <- merge(bin_consensus,
+                               data[, .(min_rank = as.factor(ranks[min(match(get("identification_rank"), ranks))]),
+                                        max_rank = as.factor(ranks[max(match(get("identification_rank"), ranks))])), by = "bin_uri"],
+                               by = "bin_uri",
+                               all.x = TRUE)
+        setcolorder(bin_consensus, col_order)
+      })
+      
+      outdata$bin_consensus <- bin_consensus
       
       if(!tab_status$consensus_tab) {
         bslib::nav_insert(
@@ -728,62 +764,34 @@
       } else {
         bslib::nav_select(id = "tabs", selected = "consensus_tab")
       }
-      
-      update_discordance()
     })
     
-    # compute BIN discordance and inject as a new tab
-    observeEvent(input$bin_disc_btn, {
-      req(outdata$data)
-      outdata$bin_discordance <- NULL
-      outdata$bin_discordance <- get_bin_discordance(filtered_data()[!empty(bin_uri)])
-      
-      if(!tab_status$discordance_tab) {
-        bslib::nav_insert(
-          "tabs", target = tab_monitor("ins_target","discordance_tab"), position = "after", select = TRUE,
-          bslib::nav_panel(
-            id="discordance_tab",
-            value="discordance_tab",
-            "BIN discordance",
-            div(id = 'disc_table_area',
-                DT::dataTableOutput("bindisc_table") |> withSpinner(color="#aaaaaa", type=5, size=0.6))
-          )
-        )
-        tab_status$discordance_tab <- TRUE
-      } else {
-        bslib::nav_select(id = "tabs", selected = "discordance_tab")
-      }
-      update_discordance()
-    })
-    
-    # portal stats can take a while to retrieve, so this is in a separate reactive expression to allow the UI to update with the initial BIN discordance table
-    # (gives you something to look at while you wait)
-    observeEvent(outdata$bin_discordance, {
-      req(outdata$bin_discordance)
+    observeEvent(outdata$bin_consensus, {
+      req(outdata$bin_consensus)
       delay(1000, {
-        if(input$disc_portal == TRUE && is.null(outdata$bin_portal_stats)) {
-          outdata$bin_portal_stats <- get_portal_bin_stats(as.character(isolate(outdata$bin_discordance$bin_uri)), shiny = TRUE)
-          outdata$bin_discordance <- merge(isolate(outdata$bin_discordance),
+        if(input$bc_portal_stats == TRUE && is.null(outdata$bin_portal_stats)) {
+          outdata$bin_portal_stats <- get_portal_bin_stats(as.character(isolate(outdata$bin_consensus$bin_uri)), shiny = TRUE)
+          outdata$bin_consensus <- merge(isolate(outdata$bin_consensus),
                                          isolate(outdata$bin_portal_stats),
                                          by = "bin_uri",
                                          all.x = TRUE)
-          bslib::nav_select(id="tabs", selected="discordance_tab")
+          bslib::nav_select(id="tabs", selected="consensus_tab")
         }
       })
     })
     
     # the portal API can be somewhat inconsistent; this will insert a warning message about any BINs for which the query timed out
     insert_portal_warning <- function(portal_stats) {
-      removeUI("#disc_portal_warning", immediate = TRUE)
+      removeUI("#bc_portal_warning", immediate = TRUE)
       failed <- nrow(portal_stats[empty(member_count)])
       if(failed > 0) {
         insertUI(
-          selector = "div.form-group:has(#disc_portal):not(:has(div.form-group:has(#disc_portal)))",
+          selector = "div.form-group:has(#bc_portal_stats):not(:has(div.form-group:has(#bc_portal_stats)))",
           where = "beforeEnd",
-          ui = div(id = "disc_portal_warning",
+          ui = div(id = "bc_portal_warning",
                    class="control-label warn-text",
                    HTML(paste0("Portal stats timed out for ", failed, " BINs. ")),
-                   actionLink("disc_portal_retry", "Click to retry."))
+                   actionLink("bc_portal_retry", "Click to retry."))
         )
       }
     }
@@ -799,27 +807,29 @@
     })
     
     # logic for retrying portal BIN query
-    observeEvent(input$disc_portal_retry, {
+    observeEvent(input$bc_portal_retry, {
       init_stats <- outdata$bin_portal_stats
       req(init_stats)
       retry_stats <- get_portal_bin_stats(as.character(init_stats[empty(member_count), bin_uri]), shiny = TRUE)
       init_stats[retry_stats, (names(init_stats)) := mget(paste0("i.", names(init_stats))), on = "bin_uri"]
-      disc <- isolate(outdata$bin_discordance)
-      outdata$bin_discordance <- merge(disc[, .SD, .SDcols = c("bin_uri",names(disc)[!names(disc) %in% names(init_stats)])],
+      cons <- isolate(outdata$bin_consensus)
+      outdata$bin_consensus <- merge(cons[, .SD, .SDcols = c("bin_uri",names(cons)[!names(cons) %in% names(init_stats)])],
                                      init_stats,
                                      by = "bin_uri",
                                      all.x = TRUE)
-      bslib::nav_select(id="tabs", selected="discordance_tab")
+      bslib::nav_select(id="tabs", selected="consensus_tab")
       outdata$bin_portal_stats <- init_stats
       insert_portal_warning(init_stats)
     })
     
     # select BIN reps and inject as a new tab
     observeEvent(input$bin_rep_btn, {
-      req(outdata$data)
+      req(nrow(outdata$data) > 0)
       outdata$bin_reps <- NULL
-      outdata$bin_reps <- get_bin_reps(filtered_data()[!empty(bin_uri)])
-      
+      # outdata$bin_reps <- get_bin_reps(filtered_data()[!empty(bin_uri)])
+      withInfProgress(message = "Selecting BIN representatives...", {
+        outdata$bin_reps <- get_bin_reps(filtered_data()[input$data_table_rows_all, ][!empty(bin_uri)])
+      })
       if(!tab_status$bin_reps) {
         bslib::nav_insert(
           "tabs", target = tab_monitor("ins_target","bin_reps"), position = "after", select = TRUE,
@@ -839,7 +849,7 @@
     
     # insert map tab when button is pressed (or jump to existing tab)
     observeEvent(input$map_btn, {
-      req(outdata$data)
+      req(nrow(outdata$data) > 0)
       if(!tab_status$map_tab) {
         bslib::nav_insert(
           "tabs", target = tab_monitor("ins_target","map_tab"), position = "after", select = TRUE,
@@ -869,6 +879,7 @@
     # function used to update the rendered markers on the occurrence point map
     update_map <- function() {
       req(input$data_table_rows_all)
+      # data <- filtered_data()[input$data_table_rows_all, ]
       data <- filtered_data()[input$data_table_rows_all, ]
       data <- unique(data[!empty(coord)], by = "processid")
       req(nrow(data) > 0)
@@ -954,7 +965,7 @@
     
     # main data table
     output$data_table <- DT::renderDataTable(DT::datatable({
-      out_table()
+      droplevels(out_table())
       },
       filter = 'top',
       rownames = FALSE,
@@ -966,7 +977,7 @@
     
     # summary analysis table
     output$summary_table <- DT::renderDataTable(DT::datatable({
-        outdata$summary
+      droplevels(outdata$summary)
       },
       rownames = FALSE,
       selection = 'none',
@@ -977,19 +988,7 @@
     
     # BIN consensus table
     output$bincons_table <- DT::renderDataTable(DT::datatable({
-      outdata$bin_consensus
-      },
-      filter = 'top', 
-      rownames = FALSE,
-      selection = 'none',
-      extensions = DT_extensions,
-      callback = callback_js, 
-      options = DT_options),
-      server = TRUE)
-    
-    # BIN discordance table
-    output$bindisc_table <- DT::renderDataTable(DT::datatable({
-      outdata$bin_discordance
+      droplevels(outdata$bin_consensus)
       },
       filter = 'top', 
       rownames = FALSE,
@@ -1001,7 +1000,7 @@
     
     # BIN reps table
     output$binrep_table <- DT::renderDataTable(DT::datatable({
-      rep_table()
+      droplevels(rep_table())
       },
       filter = 'top',
       rownames = FALSE,
@@ -1036,6 +1035,12 @@
              current_rows = reactive(input$data_table_rows_all),
              copy_btns = list(copy_table = FALSE, copy_fasta = TRUE, copy_reps = FALSE),
              dl_btns = TRUE),
+      gaps_tab = 
+        list(basename = "gap_analysis_", 
+             output = reactive(outdata$gaps),
+             current_rows = reactive(outdata$gaps[, .I]),
+             copy_btns = list(copy_table = FALSE, copy_fasta = FALSE, copy_reps = FALSE),
+             dl_btns = TRUE),
       summary = 
         list(basename = "summary_", 
              output = reactive(outdata$summary),
@@ -1046,12 +1051,6 @@
         list(basename = "bin_consensus_",
              output = reactive(outdata$bin_consensus),
              current_rows = reactive(input$bincons_table_rows_all),
-             copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, copy_reps = FALSE),
-             dl_btns = TRUE),
-      discordance_tab =
-        list(basename = "bin_discordance_",
-             output = reactive(outdata$bin_discordance),
-             current_rows = reactive(input$bindisc_table_rows_all),
              copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, copy_reps = FALSE),
              dl_btns = TRUE),
       bin_reps = 
@@ -1118,21 +1117,23 @@
     })
     
     # download (save) logic
-    download_output <- function(format) { downloadHandler(
-      filename = function() {
-        paste0(tab_data[[input$tabs]]$basename, as.character(format(Sys.Date(),"%Y%m%d")), ".", format)
-        },
-      content = function(file) {
-        switch(format,
-               tsv = fwrite(tab_data[[input$tabs]]$output(), file, sep="\t", na="", quote=FALSE, row.names = FALSE),
-               csv = fwrite(tab_data[[input$tabs]]$output(), file, na="", row.names = FALSE),
-               xlsx = write_xlsx(tab_data[[input$tabs]]$output(), file, format_headers=FALSE))
+    download_output <- function(format) { 
+      downloadHandler(
+        filename = function() {
+          paste0(tab_data[[input$tabs]]$basename, as.character(format(Sys.Date(),"%Y%m%d")), ".", format)
+          },
+        content = function(file) {
+          data <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()]
+          switch(format,
+                 tsv = fwrite(data, file, sep="\t", na="", quote=FALSE, row.names = FALSE),
+                 csv = fwrite(data, file, na="", row.names = FALSE),
+                 xlsx = write_xlsx(data, file, format_headers=FALSE))
         }
-    )}
+      )}
     
     # open logic
     observeEvent(input$open_xlsx, {
-      data <- tab_data[[input$tabs]]$output()
+      data <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()]
       filename <- paste0(tab_data[[input$tabs]]$basename, as.character(format(Sys.Date(),"%Y%m%d")), "_")
       temp <- tempfile(pattern = filename, fileext = ".xlsx")
       write_xlsx(data, temp, format_headers = FALSE)

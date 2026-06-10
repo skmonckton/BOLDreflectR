@@ -13,10 +13,8 @@ ui <- bslib::page_fillable(
         });
       Shiny.addCustomMessageHandler("initLookupMap", function(data) {
         window.mapBySID = {};
-        window.mapByPID = {};
         data.forEach(function(row) {
           window.mapBySID[row.sampleid] = row.processid;
-          window.mapByPID[row.processid] = row.specimenid;
         });
       });
     )"))
@@ -200,6 +198,17 @@ ui <- bslib::page_fillable(
                 actionButton(
                   "ana_btn",
                   "Summarize"))),
+          inputGroup(title = "Gap analysis",
+                     groupId = "gap-opts",
+                     div(class="form-group",
+                         "Generate a report of query terms that were found:",
+                         bslib::tooltip(
+                           icon("circle-question"),
+                           HTML("This reflects the original query only, not additional BIN members."))),
+                     div(actionButton(
+                       "gap_analysis_btn",
+                       "Generate"
+                     ))),
           inputGroup(title = "Distribution map",
                      groupId = "map-opts",
                      div(class="form-group",
@@ -235,15 +244,8 @@ ui <- bslib::page_fillable(
                        "Limit to scientific names",
                        value = TRUE
                      ),
-                     div(actionButton(
-                       "bin_consensus_btn",
-                       "Get BIN consensus"))),
-          inputGroup(title = "BIN discordance",
-                     groupId = "bin-disc-opts",
-                     div(class = "form-group",
-                         "Compute BIN discordance at all ranks. Returns counts and lists of unique taxa per rank, by BIN, from the available data."),
                      checkboxInput(
-                       "disc_portal",
+                       "bc_portal_stats",
                        div("Include BOLD Portal stats",
                            bslib::tooltip(
                              icon("circle-question"),
@@ -251,9 +253,8 @@ ui <- bslib::page_fillable(
                              id = "portaltip"
                            ))),
                      div(actionButton(
-                       "bin_disc_btn",
-                       "Get BIN discordance"
-                     ))),
+                       "bin_consensus_btn",
+                       "Get BIN consensus"))),
           inputGroup(title = "BIN representatives",
                      groupId = "bin-rep-opts",
                      div(class="form-group",

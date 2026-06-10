@@ -508,6 +508,78 @@ bcdmnames:
   Sovereignty: sovereign_inst
   Record created date: created_at
   Record updated date: updated_at
+queryterms:
+  processid:
+    name: Process IDs
+    fields: processid
+  sampleid:
+    name: Sample IDs
+    fields: sampleid
+  bin_uris:
+    name: BINs
+    fields: bin_uri
+  dataset_codes:
+    name: Datasets
+    fields: bold_recordset_code_arr
+  project_codes:
+    name: Projects
+    fields: bold_recordset_code_arr
+  ids:
+    name: Specimen IDs
+    fields:
+    - processid
+    - sampleid
+  bins:
+    name: BINs
+    fields: bin_uri
+  dataset.projects:
+    name: Project/dataset codes
+    fields: bold_recordset_code_arr
+  taxonomy:
+    name: Taxa
+    fields:
+    - kingdom
+    - phylum
+    - class
+    - order
+    - family
+    - subfamily
+    - tribe
+    - genus
+    - species
+    - subspecies
+  geography:
+    name: Geography
+    fields:
+    - country.ocean
+    - province.state
+    - region
+    - sector
+    - realm
+    - biome
+    - ecoregion
+  marker:
+    name: Markers
+    fields: marker_code
+  identified.by:
+    name: Identified by
+    fields: identified.by
+  biogeo.cat:
+    name: Geography
+    fields:
+    - country.ocean
+    - province.state
+    - region
+    - sector
+    - realm
+    - biome
+    - ecoregion
+  institutes:
+    name: Institutes
+    fields: inst
+  seq.source:
+    name: Sequence run sites
+    fields: sequence_run_site
 ranknumeric:
   phylum: 2
   class: 5
