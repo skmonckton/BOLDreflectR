@@ -69,20 +69,11 @@ jobs:
       - name: Build app
         if: steps.check.outputs.run == 'true'
         run: |
-          echo "--- forge config location ---"
-          cat app/forge.config.js | head -5
-          echo "--- package.json forge config ---"
-          cat app/package.json | grep -A5 forge
-          echo "--- which electron-forge ---"
-          npx electron-forge --version
-          echo "--- node_modules/.bin ---"
-          ls app/node_modules/.bin/ | grep forge
-          echo "--- maker-zip package.json ---"
-          cat app/node_modules/@electron-forge/maker-zip/package.json | grep '"version"'
-          echo "--- maker-squirrel package.json ---"
-          cat app/node_modules/@electron-forge/maker-squirrel/package.json | grep '"version"'
-          echo "--- core package.json ---"
+          echo "--- node_modules ---"
+          ls app/node_modules/@electron-forge/ 2>/dev/null || echo "no @electron-forge"
+          echo "--- versions ---"
           cat app/node_modules/@electron-forge/core/package.json | grep '"version"'
+          echo "--- running build ---"
           nhyris build app
       - name: Debug artifacts location
         if: steps.check.outputs.run == 'true'
