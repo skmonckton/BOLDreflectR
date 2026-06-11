@@ -15,6 +15,7 @@ module.exports = {
       /^\/shiny\/dev/,
       /^\/shiny\/bin\/.*$/,
       /^\/shiny\/data\/user_config\.yaml$/,
+      /^\/shiny\/user_data/,
       /\.Rproj\.user/,
       /\.Rproj$/,
       /\.RData$/,
@@ -95,33 +96,33 @@ module.exports = {
       };
 
       hoistDir(makeDir);
-    },
-   packageAfterCopy: async (config, buildPath, electronVersion, platform, arch) => {
-      // Map Forge's platform string to your folder names
-      const platformMap = {
-        darwin: "mac",
-        linux:  "linux",
-        win32:  "win"
-      };
+    }//,
+  //  packageAfterCopy: async (config, buildPath, electronVersion, platform, arch) => {
+  //     // Map Forge's platform string to your folder names
+  //     const platformMap = {
+  //       darwin: "mac",
+  //       linux:  "linux",
+  //       win32:  "win"
+  //     };
 
-      const osFolderName = platformMap[platform];
-      if (!osFolderName) throw new Error(`Unknown platform: ${platform}`);
+  //     const osFolderName = platformMap[platform];
+  //     if (!osFolderName) throw new Error(`Unknown platform: ${platform}`);
 
-      const srcDir  = path.join(__dirname, "bin", osFolderName);
-      const destDir = path.join(buildPath, "shiny", "bin");
+  //     const srcDir  = path.join(__dirname, "bin", osFolderName);
+  //     const destDir = path.join(buildPath, "shiny", "bin");
 
-      fs.mkdirSync(destDir, { recursive: true });
+  //     fs.mkdirSync(destDir, { recursive: true });
 
-      for (const file of fs.readdirSync(srcDir)) {
-        const srcFile  = path.join(srcDir, file);
-        const destFile = path.join(destDir, file);
-        fs.copyFileSync(srcFile, destFile);
+  //     for (const file of fs.readdirSync(srcDir)) {
+  //       const srcFile  = path.join(srcDir, file);
+  //       const destFile = path.join(destDir, file);
+  //       fs.copyFileSync(srcFile, destFile);
 
-        // Preserve executable permissions on mac/linux
-        if (platform !== "win32") {
-          fs.chmodSync(destFile, 0o755);
-        }
-      }
-    }
+  //       // Preserve executable permissions on mac/linux
+  //       if (platform !== "win32") {
+  //         fs.chmodSync(destFile, 0o755);
+  //       }
+  //     }
+  //   }
   }
 };
