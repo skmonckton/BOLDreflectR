@@ -82,9 +82,21 @@ marker_options <- list(" " = "",
                        Other = stats::setNames(config$markercodes$other, config$markercodes$other))
 
 # copy to clipboard with size limit
-cb <- function(df, header=TRUE, sep="\t", max.size=(200*1000)){
-  write.table(df, paste0("clipboard-", formatC(max.size, format="f", digits=0)), sep=sep, col.names=header, row.names=FALSE, quote=FALSE, na="NA")
-  showNotification(paste0("Copied to clipboard."), type = "message", id = "copy_msg")
+cb <- function(df, header=TRUE, sep="\t", na="", max.size=(200*1000)){
+  os <- Sys.info()["sysname"]
+  text <- capture.output(
+    write.table(df, stdout(), sep=sep, na=na, col.names=header, row.names=FALSE, quote=FALSE)
+  )
+  if (os == "Windows") {
+    con <- file(paste0("clipboard-", formatC(max.size, format="f", digits=0)), open="w")
+  } else if (os == "Darwin") {
+    con <- pipe("pbcopy", "w")
+  } else {
+    con <- pipe("xclip -selection clipboard", "w")
+  }
+  writeLines(text, con)
+  close(con)
+  showNotification("Copied to clipboard.", type="message", id="copy_msg")
 }
 
 # assemble FASTA and copy to clipboard

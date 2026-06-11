@@ -718,7 +718,7 @@
           bslib::nav_panel(
             id="qhits_tab",
             value="qhits_tab",
-            "Query hits",
+            "Hit report",
             hits$report)
         )
         tab_status$qhits_tab <- TRUE
@@ -1036,7 +1036,7 @@
              copy_btns = list(copy_table = FALSE, copy_fasta = TRUE, copy_reps = FALSE),
              dl_btns = TRUE),
       qhits_tab = 
-        list(basename = "query_hits_", 
+        list(basename = "query_hit_report_", 
              output = reactive(outdata$hits),
              current_rows = reactive(outdata$hits[, .I]),
              copy_btns = list(copy_table = FALSE, copy_fasta = FALSE, copy_reps = FALSE),
