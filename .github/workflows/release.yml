@@ -79,6 +79,8 @@ jobs:
           find . -name "make" -type d 2>/dev/null | head -10
           echo "--- searching for out/make ---"
           find . -path "*/out/make" -type d 2>/dev/null | head -10
+          echo "--- searching for out ---"
+          find . -path "*/out" -type d 2>/dev/null | head -10
           echo "--- workspace root contents ---"
           ls
       - name: Upload artifacts to GitHub Release (on tag push)
