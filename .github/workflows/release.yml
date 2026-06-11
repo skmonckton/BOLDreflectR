@@ -79,6 +79,13 @@ jobs:
           du -sh app/node_modules 2>/dev/null || echo "no node_modules"
           echo "--- total app size ---"
           du -sh app 2>/dev/null || echo "unknown"
+      - name: Cache electron
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/AppData/Local/electron/Cache
+          key: electron-${{ matrix.os }}-36.9.5
       - name: Build app
         if: steps.check.outputs.run == 'true'
         shell: bash
