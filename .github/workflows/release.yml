@@ -65,6 +65,20 @@ jobs:
       # - name: Build app
       #   if: steps.check.outputs.run == 'true'
       #   run: nhyris build app
+      - name: Check disk space and large files
+        if: steps.check.outputs.run == 'true'
+        shell: bash
+        run: |
+          echo "--- disk space ---"
+          df -h 2>/dev/null || wmic logicaldisk get size,freespace,caption
+          echo "--- large files in app (>10MB) ---"
+          find app -size +10M -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/r-nhyris/*" 2>/dev/null
+          echo "--- r-nhyris size ---"
+          du -sh app/r-nhyris 2>/dev/null || echo "no r-nhyris"
+          echo "--- node_modules size ---"
+          du -sh app/node_modules 2>/dev/null || echo "no node_modules"
+          echo "--- total app size ---"
+          du -sh app 2>/dev/null || echo "unknown"
       - name: Build app
         if: steps.check.outputs.run == 'true'
         shell: bash
