@@ -68,7 +68,19 @@ jobs:
         run: nhyris update app
       - name: Build app
         if: steps.check.outputs.run == 'true'
-        run: nhyris build app
+        name: Build app
+        if: steps.check.outputs.run == 'true'
+        run: |
+          echo "--- node version ---"
+          node --version
+          echo "--- npm version ---"
+          npm --version
+          echo "--- electron-forge version ---"
+          cd app && npx electron-forge --version
+          echo "--- makers installed ---"
+          ls app/node_modules | grep maker
+          echo "--- running build ---"
+          nhyris build app
       - name: Debug artifacts location
         if: steps.check.outputs.run == 'true'
         shell: bash
