@@ -68,8 +68,6 @@ jobs:
         run: nhyris update app
       - name: Build app
         if: steps.check.outputs.run == 'true'
-        name: Build app
-        if: steps.check.outputs.run == 'true'
         run: |
           echo "--- node version ---"
           node --version
