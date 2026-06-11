@@ -603,27 +603,27 @@
                                        query = outdata$binmates,
                                        BCDM_only = FALSE))
       } else {
-        showNotification("Collecting additional BIN members from data package...",
-                         id = "fetch_msg", duration=NULL, type = "message")
-        as.data.table(
-          bold.data.collect(
-            bold.data.search(dtpkg_parquet,ids = outdata$binmates)))
+        withInfProgress("Collecting additional BIN members from data package...", {
+          as.data.table(
+            bold.data.collect(
+              bold.data.search(dtpkg_parquet,ids = outdata$binmates)))
+        })
       }
       add_binmates(binmate_data)
     }
     
     add_binmates <- function(binmate_data) {
-      showNotification("Processing additional BIN member data...",
-                       id = "fetch_msg", duration=NULL, type = "message")
-      binmate_data <- binmate_data[, c("id_date_parsed", "project_code", "lat", "lon") :=
-                                     c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
-      cols_to_factor <- intersect(config$fieldsets$factorfields, names(binmate_data))
-      binmate_data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
-      data <- unique(rbindlist(list(outdata$data,
-                                    binmate_data),
-                               fill = TRUE))
+      withInfProgress("Processing additional BIN member data...", {
+        binmate_data <- binmate_data[, c("id_date_parsed", "project_code", "lat", "lon") :=
+                                       c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
+        cols_to_factor <- intersect(config$fieldsets$factorfields, names(binmate_data))
+        binmate_data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
+        data <- unique(rbindlist(list(outdata$data,
+                                      binmate_data),
+                                 fill = TRUE))
+      })
       showNotification("Additional BIN members retrieved.",
-                       id = "fetch_msg", duration=2, type = "message")
+                       id = "fetch_msg", type = "message")
       outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
       outdata$data <- data
       fetch_params$binmates_fetched <- TRUE
@@ -1000,7 +1000,7 @@
           bslib::nav_panel(
             id="qhits_tab",
             value="qhits_tab",
-            "Query hits",
+            "Hit report",
             hits$report)
         )
         tab_status$qhits_tab <- TRUE
@@ -1318,7 +1318,7 @@
              copy_btns = list(copy_table = FALSE, copy_fasta = TRUE, copy_reps = FALSE),
              dl_btns = TRUE),
       qhits_tab = 
-        list(basename = "query_hits_", 
+        list(basename = "query_hit_report_", 
              output = reactive(outdata$hits),
              current_rows = reactive(outdata$hits[, .I]),
              copy_btns = list(copy_table = FALSE, copy_fasta = FALSE, copy_reps = FALSE),

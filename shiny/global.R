@@ -485,17 +485,18 @@ get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
       Sys.sleep(sleep)
     }
   } else {
-    showNotification(paste0("Searching data package for additional BIN members from ", length(bins), " BINs..."), id = "bin_msg", duration=NULL, type = "message")
-    current_pids <- unique(df[["processid"]])
-    pkg_data <- BOLD.NODE:::import_parquet_data(parquet_path)
-    bins_tbl <- dbplyr::copy_inline(pkg_data$src$con, dplyr::tibble(bin_uri = bins))
-    pids_tbl <- dbplyr::copy_inline(pkg_data$src$con, dplyr::tibble(processid = current_pids))
-    add_pids <- pkg_data |>
-      dplyr::semi_join(bins_tbl, by = "bin_uri") |>
-      dplyr::anti_join(pids_tbl, by = "processid") |>
-      distinct(processid) |>
-      collect() |>
-      _$processid
+    withInfProgress(paste0("Searching data package for additional BIN members from ", length(bins), " BINs..."), {
+      current_pids <- unique(df[["processid"]])
+      pkg_data <- BOLD.NODE:::import_parquet_data(dtpkg_parquet)
+      bins_tbl <- dbplyr::copy_inline(pkg_data$src$con, dplyr::tibble(bin_uri = bins))
+      pids_tbl <- dbplyr::copy_inline(pkg_data$src$con, dplyr::tibble(processid = current_pids))
+      add_pids <- pkg_data |>
+        dplyr::semi_join(bins_tbl, by = "bin_uri") |>
+        dplyr::anti_join(pids_tbl, by = "processid") |>
+        dplyr::distinct(processid) |>
+        dplyr::collect() |>
+        _$processid
+    })
   }
     
   if(length(add_pids) == 0) {
