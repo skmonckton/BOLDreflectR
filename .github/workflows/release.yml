@@ -74,7 +74,7 @@ jobs:
           echo "--- package.json forge config ---"
           cat app/package.json | grep -A5 forge
           echo "--- which electron-forge ---"
-          cd app && npx electron-forge --version
+          npx electron-forge --version
           echo "--- node_modules/.bin ---"
           ls app/node_modules/.bin/ | grep forge
           echo "--- maker-zip package.json ---"
