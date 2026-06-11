@@ -79,6 +79,13 @@ jobs:
           du -sh app/node_modules 2>/dev/null || echo "no node_modules"
           echo "--- total app size ---"
           du -sh app 2>/dev/null || echo "unknown"
+      - name: Download electron
+        if: steps.check.outputs.run == 'true'
+        shell: bash
+        run: |
+          cd app
+          node -e "require('electron')" 2>&1
+          echo "electron path: $(node -e "console.log(require('electron'))")"
       - name: Cache electron
         uses: actions/cache@v4
         with:
