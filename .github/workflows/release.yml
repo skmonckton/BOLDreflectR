@@ -68,9 +68,12 @@ jobs:
         run: nhyris update app
       - name: Build app
         if: steps.check.outputs.run == 'true'
-        working-directory: app
-        shell: bash
-        run: npx electron-forge make --verbose 2>&1
+        run: |
+          echo "--- forge config location ---"
+          cat app/forge.config.js | head -5
+          echo "--- package.json forge config ---"
+          cat app/package.json | grep -A5 forge
+          nhyris build app
       - name: Debug artifacts location
         if: steps.check.outputs.run == 'true'
         shell: bash
