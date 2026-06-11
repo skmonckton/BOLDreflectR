@@ -372,12 +372,18 @@ get_query_hits <- function(data = NULL, query) {
     search_cols <- config$queryterms[[qfield]]$fields
     qterms <- unique(query_dt[field == qfield, .(term)])
     
+    lookup_dt <- if(search_cols == "bold_recordset_code_arr") {
+      data[, .(bold_recordset_code_arr = unique(trimws(trimws(unlist(strsplit(bold_recordset_code_arr, ",")))))), by = .I]  
+    } else {
+      data
+    }
+    
     matched_terms <- unique(unlist(lapply(search_cols, function(col) {
-      data[qterms, on = setNames("term", col), nomatch = NULL][[col]]
+      lookup_dt[qterms, on = setNames("term", col), nomatch = NULL][[col]]
     })))
     
     counts_long <- unique(rbindlist(lapply(search_cols, function(col) {
-      count <- data[qterms, on = setNames("term", col), .N, by = .EACHI]
+      count <- lookup_dt[qterms, on = setNames("term", col), .N, by = .EACHI]
       setnames(count, 1, "term") 
       return(count)
     }), fill = TRUE))
