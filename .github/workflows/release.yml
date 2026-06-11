@@ -76,7 +76,7 @@ jobs:
           echo "--- electron-forge version ---"
           cd app && npx electron-forge --version
           echo "--- makers installed ---"
-          ls app/node_modules | grep maker
+          ls node_modules | grep maker
           echo "--- running build ---"
           nhyris build app
       - name: Debug artifacts location
