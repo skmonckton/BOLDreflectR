@@ -76,10 +76,15 @@ jobs:
           npm --version
           echo "--- electron-forge version ---"
           npx --prefix app electron-forge --version
+          set +e
           echo "--- makers installed ---"
           ls app/node_modules | grep maker
+          echo "--- node_modules exists ---"
+          ls app/node_modules/@electron-forge/ 2>/dev/null || echo "no @electron-forge modules"
+          ls app/node_modules/@reforged/ 2>/dev/null || echo "no @reforged modules"
           echo "--- running build ---"
           nhyris build app
+          echo "--- build exit code: $? ---"
       - name: Debug artifacts location
         if: steps.check.outputs.run == 'true'
         shell: bash
