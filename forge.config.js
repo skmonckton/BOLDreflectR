@@ -5,6 +5,7 @@ const { name } = require("./package.json");
 module.exports = {
   packagerConfig: {
     icon: "assets/icon",
+    quiet: false,
     ignore: [
       /^\/dev/,
       /^\/bin/,

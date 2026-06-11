@@ -88,14 +88,13 @@ jobs:
         if: steps.check.outputs.run == 'true'
         shell: bash
         env:
-          DEBUG: 'electron-forge:*'
-          FORCE_COLOR: '0'
+          DEBUG: 'electron-packager,electron-forge:*'
+          ELECTRON_PACKAGER_DEBUG: '1'
         run: |
           cd app
           npx electron-forge package 2>&1 | tee /tmp/forge-output.log
-          echo "--- forge output ---"
+          echo "exit code: $?"
           cat /tmp/forge-output.log
-
       - name: Upload forge log
         if: always()
         uses: actions/upload-artifact@v4
