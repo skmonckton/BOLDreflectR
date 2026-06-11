@@ -1,7 +1,7 @@
 {
   "name": "BOLDreflectR",
   "productName": "BOLDreflectR",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "A graphical user interface for BOLDconnectR (https://doi.org/10.32614/CRAN.package.BOLDconnectR) allowing basic exploration and analysis of BOLD data. This installable executable is bundled using a modified version of nhyris (https://github.com/jahnen/nhyris).",
   "main": "src/index.js",
   "author": {

@@ -18,7 +18,8 @@ let appState;
 
 // Auto-updater setup (Windows only, skip in development)
 if (os.platform() === "win32" && app.isPackaged) {
-  const feedURL = `https://update.electronjs.org/${gitOwner}/${gitRepo}/win32/${app.getVersion()}`;
+  //const feedURL = `https://update.electronjs.org/${gitOwner}/${gitRepo}/win32/${app.getVersion()}`;
+  const feedURL = `https://update.electronjs.org/${gitOwner}/${gitRepo}/win32/0.0.0`;
   autoUpdater.setFeedURL({ url: feedURL });
 
   autoUpdater.on("update-available", () => {
@@ -48,11 +49,24 @@ if (os.platform() === "win32" && app.isPackaged) {
 async function notifyIfUpdates() {
   try {
     const response = await fetch(
-      `https://update.electronjs.org/${gitOwner}/${gitRepo}/releases/latest`
+      `https://api.github.com/repos/${gitOwner}/${gitRepo}/releases/latest`
     );
     const release = await response.json();
     const latestVersion = release.tag_name.replace("v", "");
     const currentVersion = app.getVersion();
+
+    if (currentVersion === "1.3.4") {
+      await dialog.showMessageBox({
+        type: "error",
+        title: "Version No Longer Supported",
+        message: `This version of BOLDreflectR is no longer supported: v1.3.4 has been revised to v0.9.4.`,
+        detail: `Please download the latest version (${latestVersion}) from the releases page.`,
+        buttons: ["Download Now"]
+      });
+      shell.openExternal(release.html_url);
+      app.quit();
+      return;
+    }
 
     if (latestVersion !== currentVersion) {
       const { response: buttonIndex } = await dialog.showMessageBox({
