@@ -69,8 +69,6 @@ jobs:
       - name: Build app
         if: steps.check.outputs.run == 'true'
         run: |
-          echo "--- node_modules ---"
-          ls app/node_modules/@electron-forge/ 2>/dev/null || echo "no @electron-forge"
           echo "--- versions ---"
           cat app/node_modules/@electron-forge/core/package.json | grep '"version"'
           echo "--- running build ---"
