@@ -19,6 +19,8 @@ on:
         default: true
 jobs:
   build:
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
