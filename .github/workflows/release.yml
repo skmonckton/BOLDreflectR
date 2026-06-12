@@ -43,6 +43,16 @@ jobs:
       - name: Build app
         run: nhyris build app
 
+      - name: Diagnostics
+        shell: bash
+        run: |
+          echo "--- electron-forge binary ---"
+          ls app/node_modules/.bin/electron-forge 2>/dev/null || echo "electron-forge binary missing"
+          echo "--- npx resolution ---"
+          cd app && npx electron-forge --version 2>&1 || echo "npx electron-forge failed"
+          echo "--- node_modules/@electron-forge ---"
+          ls app/node_modules/@electron-forge/ 2>/dev/null || echo "@electron-forge missing"
+
       - name: Check output
         if: always()
         shell: bash
