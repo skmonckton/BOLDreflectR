@@ -47,7 +47,12 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/out/make/**/*
+          files: |
+            app/out/make/*.exe
+            app/out/make/*.nupkg
+            app/out/make/RELEASES
+            app/out/make/**/*.dmg
+            app/out/make/**/*.AppImage
           generate_release_notes: true
           body: |
             <img height="60" alt="BOLDreflectR" src="https://github.com/skmonckton/BOLDreflectR/raw/main/shiny/www/reflectR-name.png" />
@@ -73,5 +78,5 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.name }}-artifacts
-          path:  app/out/make/**/!(*.zip)
+          path:  app/out/make/**/*
           retention-days: 3
