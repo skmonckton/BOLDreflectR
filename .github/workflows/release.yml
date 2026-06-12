@@ -48,7 +48,7 @@ jobs:
         shell: bash
         run: cd app && node forge.config.js 2>&1 || echo "forge config failed"
       
-        - name: Test forge make verbose
+      - name: Test forge make verbose
         shell: bash
         run: |
           cd app && DEBUG="*" npx electron-forge make 2>&1 || echo "exit code: $?"
