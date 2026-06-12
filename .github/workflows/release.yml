@@ -40,6 +40,14 @@ jobs:
       - name: Install/update app dependencies
         run: nhyris update app
 
+      - name: Check module type
+        shell: bash
+        run: cat app/package.json | grep '"type"'
+
+      - name: Test forge config
+        shell: bash
+        run: cd app && node forge.config.js 2>&1 || echo "forge config failed"
+
       - name: Build app
         run: nhyris build app
 
