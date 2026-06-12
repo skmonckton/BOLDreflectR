@@ -73,5 +73,5 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.name }}-artifacts
-          path: app/out/make/**/*
+          path:  app/out/make/**/!(*.zip)
           retention-days: 3
