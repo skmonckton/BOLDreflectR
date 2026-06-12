@@ -103,12 +103,22 @@
         content(httr::GET(
           "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
           add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
-        ), "text") |> writeBin(tmpfile)
+        ), "raw") |> writeBin(tmpfile)
         source(tmpfile, local = TRUE)
       }, error = function(e){
         showNotification(paste0("Error accessing test functions:", e$message), type = "error")
       })
     }
+    
+    
+    temp_dir <- tempdir()
+    httr::GET(
+      "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/tctools.zip",
+      add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT"))),
+      write_disk(file.path(temp_dir, "tctools.zip"), overwrite = TRUE))
+    install.packages(file.path(temp_dir, "tctools.zip"), repos = NULL, type = "binary", lib = .libPaths()[1])
+    
+    
     
     observeEvent(input$cbg_btn, {
       tryCatch({
