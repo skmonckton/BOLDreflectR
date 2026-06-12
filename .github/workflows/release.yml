@@ -47,9 +47,14 @@ jobs:
       - name: Test forge config
         shell: bash
         run: cd app && node forge.config.js 2>&1 || echo "forge config failed"
+      
+        - name: Test forge make verbose
+        shell: bash
+        run: |
+          cd app && DEBUG="*" npx electron-forge make 2>&1 || echo "exit code: $?"
 
-      - name: Build app
-        run: nhyris build app
+      # - name: Build app
+        # run: nhyris build app
 
       - name: Diagnostics
         shell: bash
