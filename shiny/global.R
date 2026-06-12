@@ -44,6 +44,11 @@ map_colours <- colorRampPalette(c("#9e0142","#d53e4f","#f46d43","#fdae61",
                                   "#fee08b","#ffffbf","#e6f598","#abdda4",
                                   "#66c2a5","#3288bd","#5e4fa2"), alpha = TRUE)(11)
 
+# function to save user options
+save_user_config <- function() {
+  write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+}
+
 # this is used to re-compute selectize input options when custom filter sets are created or removed
 filter_options <- function(include_verbatim = TRUE) {
   if(include_verbatim) { 
@@ -99,9 +104,21 @@ update_datapackages <- function() {
 datapkgs <- update_datapackages()
 
 # copy to clipboard with size limit
-cb <- function(df, header=TRUE, sep="\t", max.size=(200*1000)){
-  write.table(df, paste0("clipboard-", formatC(max.size, format="f", digits=0)), sep=sep, col.names=header, row.names=FALSE, quote=FALSE, na="NA")
-  showNotification(paste0("Copied to clipboard."), type = "message", id = "copy_msg")
+cb <- function(df, header=TRUE, sep="\t", na="", max.size=(200*1000)){
+  os <- Sys.info()["sysname"]
+  text <- capture.output(
+    write.table(df, stdout(), sep=sep, na=na, col.names=header, row.names=FALSE, quote=FALSE)
+  )
+  if (os == "Windows") {
+    con <- file(paste0("clipboard-", formatC(max.size, format="f", digits=0)), open="w")
+  } else if (os == "Darwin") {
+    con <- pipe("pbcopy", "w")
+  } else {
+    con <- pipe("xclip -selection clipboard", "w")
+  }
+  writeLines(text, con)
+  close(con)
+  showNotification("Copied to clipboard.", type="message", id="copy_msg")
 }
 
 # assemble FASTA and copy to clipboard
@@ -235,7 +252,7 @@ modify_custom_fieldset <- function(set_name, set_fields = NULL, operation = "sav
     new_select <- sprintf("userset%03d", idx)
   }
   # update config file
-  write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+  save_user_config()
   # return value 
   return(new_select)
 }
@@ -410,12 +427,18 @@ get_query_hits <- function(data = NULL, query) {
     search_cols <- config$queryterms[[qfield]]$fields
     qterms <- unique(query_dt[field == qfield, .(term)])
     
+    lookup_dt <- if(search_cols == "bold_recordset_code_arr") {
+      data[, .(bold_recordset_code_arr = unique(trimws(trimws(unlist(strsplit(bold_recordset_code_arr, ",")))))), by = .I]  
+    } else {
+      data
+    }
+    
     matched_terms <- unique(unlist(lapply(search_cols, function(col) {
-      data[qterms, on = setNames("term", col), nomatch = NULL][[col]]
+      lookup_dt[qterms, on = setNames("term", col), nomatch = NULL][[col]]
     })))
     
     counts_long <- unique(rbindlist(lapply(search_cols, function(col) {
-      count <- data[qterms, on = setNames("term", col), .N, by = .EACHI]
+      count <- lookup_dt[qterms, on = setNames("term", col), .N, by = .EACHI]
       setnames(count, 1, "term") 
       return(count)
     }), fill = TRUE))

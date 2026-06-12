@@ -48,7 +48,7 @@ if (os.platform() === "win32" && app.isPackaged) {
 async function notifyIfUpdates() {
   try {
     const response = await fetch(
-      `https://update.electronjs.org/${gitOwner}/${gitRepo}/releases/latest`
+      `https://api.github.com/repos/${gitOwner}/${gitRepo}/releases/latest`
     );
     const release = await response.json();
     const latestVersion = release.tag_name.replace("v", "");
