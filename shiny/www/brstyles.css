@@ -380,7 +380,9 @@ div.form-group:has(.has-items) #save_filter_set {
 }
 
 #bin-cons-opts > .form-group.shiny-input-container,
-#img-gal-opt > .flex-div .form-group.shiny-input-container {
+#img-gal-opt > .flex-div .form-group.shiny-input-container,
+.flex-div .form-group.form-group.shiny-input-container:has(input[type="number"]) {
+  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -390,7 +392,8 @@ div.form-group:has(.has-items) #save_filter_set {
   margin-bottom: 0;
 }
 
-#bin-cons-opts .shiny-input-number {
+#bin-cons-opts .shiny-input-number,
+.flex-div input[type="number"] {
   width: 4.5rem;
   padding: 4px 8px;
 }

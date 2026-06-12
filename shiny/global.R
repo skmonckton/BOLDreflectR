@@ -40,6 +40,11 @@ map_colours <- colorRampPalette(c("#9e0142","#d53e4f","#f46d43","#fdae61",
                                   "#fee08b","#ffffbf","#e6f598","#abdda4",
                                   "#66c2a5","#3288bd","#5e4fa2"), alpha = TRUE)(11)
 
+# function to save user options
+save_user_config <- function() {
+  write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+}
+
 # this is used to re-compute selectize input options when custom filter sets are created or removed
 filter_options <- function(include_verbatim = TRUE) {
   if(include_verbatim) { 
@@ -198,7 +203,7 @@ modify_custom_fieldset <- function(set_name, set_fields = NULL, operation = "sav
     new_select <- sprintf("userset%03d", idx)
   }
   # update config file
-  write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+  save_user_config()
   # return value 
   return(new_select)
 }

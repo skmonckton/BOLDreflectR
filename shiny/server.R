@@ -98,22 +98,18 @@
     
     source_test_code <- function() {
       tryCatch({
-        tmpfile <- tempfile()
-        on.exit(unlink(tmpfile))
-        content(httr::GET(
-          "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
-          add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
-        ), "raw") |> writeBin(tmpfile)
-        source(tmpfile, local = TRUE)
-      }, error = function(e){
-        showNotification(paste0("Error accessing test functions:", e$message), type = "error")
-      })
-    }
-    
-    observeEvent(input$cbg_btn, {
-      tryCatch({
         Sys.setenv(GITHUB_PAT = key_get(service="tctools-GH-PAT"))
-        source_test_code()
+        tryCatch({
+          tmpfile <- tempfile()
+          on.exit(unlink(tmpfile))
+          content(httr::GET(
+            "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
+            add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
+          ), "raw") |> writeBin(tmpfile)
+          source(tmpfile, local = TRUE)
+        }, error = function(e){
+          showNotification(paste0("Error accessing test functions:", e$message), type = "error")
+        })
       }, error = function(e){
         showModal(
           modalDialog(
@@ -126,8 +122,14 @@
                   modalButton("Cancel"))),
             easyClose = TRUE))
       })
-    })
+    }
     
+    test_mode <- reactiveVal()
+    session$onFlushed(function() {
+      test_mode(user_config$settings$test_mode)
+    }, once = TRUE)
+    observeEvent(input$cbg_btn, source_test_code()) 
+    observeEvent(test_mode(), if(isTRUE(test_mode())) source_test_code(), once = TRUE)
     observeEvent(input$testkey_confirm, {
       Sys.setenv(GITHUB_PAT = trimws(gsub('"', "", input$testkey)))
       
@@ -1081,8 +1083,8 @@
     })
     
     # copy button logic
-    observeEvent(input$copy_table, { cb(as.data.frame(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()])) })
-    observeEvent(input$copy_reps, { cb(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()][["processid"]], header = FALSE) })
+    observeEvent(input$copy_table, { cb(as.data.frame(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ])) })
+    observeEvent(input$copy_reps, { cb(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ][["processid"]], header = FALSE) })
     observeEvent(input$copy_fasta, { 
       collapse_mrkrs <- if(input$collapse_mrkrs == TRUE) { 
         coll_fields <- coll_mrkr_fields()[grepl(paste0("^",paste(input$filt_seq, collapse="|")), coll_mrkr_fields())]
@@ -1102,7 +1104,7 @@
           outdata$data[(processid %in% ids)]
         }
       } else {
-        tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()]
+        tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ]
       }
       clip_fasta(data, collapse_mrkrs = collapse_mrkrs)
       })
@@ -1111,7 +1113,7 @@
     # column copy logic
     observeEvent(input$col_copy_clicked, {
       col_index <- input$col_copy_clicked$col  # JS uses 0-based index
-      vals <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()][[col_index + 1]]
+      vals <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ][[col_index + 1]]
       vals[vals == "NA"] <- ""
       cb(vals, header = FALSE)
     })
@@ -1123,7 +1125,7 @@
           paste0(tab_data[[input$tabs]]$basename, as.character(format(Sys.Date(),"%Y%m%d")), ".", format)
           },
         content = function(file) {
-          data <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()]
+          data <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ]
           switch(format,
                  tsv = fwrite(data, file, sep="\t", na="", quote=FALSE, row.names = FALSE),
                  csv = fwrite(data, file, na="", row.names = FALSE),
@@ -1133,7 +1135,7 @@
     
     # open logic
     observeEvent(input$open_xlsx, {
-      data <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows()]
+      data <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ]
       filename <- paste0(tab_data[[input$tabs]]$basename, as.character(format(Sys.Date(),"%Y%m%d")), "_")
       temp <- tempfile(pattern = filename, fileext = ".xlsx")
       write_xlsx(data, temp, format_headers = FALSE)
