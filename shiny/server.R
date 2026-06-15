@@ -287,6 +287,8 @@
           fetch_params$fetch_by <- fetch_by
           fetch_params$fetch_ids <- unlist(fetch_ids)
         }
+      }, warning = function(w) {
+        showNotification("No results found using provided search terms.", id="fetch_msg", type = "warning")
       }, error = function(e) {
         showNotification(paste0("Error processing record identifiers: ", e$message), id="fetch_msg", type = "error")
       })
