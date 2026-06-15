@@ -201,7 +201,8 @@ bold.full.search.step1 <- function(taxonomy=NULL,
     result
     
   }, error = function(e) {
-    stop(paste("Search failed.\nDetails:",e$message))
+    warning("No results found using provided search terms.")
+    return(NULL)
   })
   
   # Data API token is generated

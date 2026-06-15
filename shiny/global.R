@@ -427,7 +427,7 @@ get_query_hits <- function(data = NULL, query) {
     search_cols <- config$queryterms[[qfield]]$fields
     qterms <- unique(query_dt[field == qfield, .(term)])
     
-    lookup_dt <- if(search_cols == "bold_recordset_code_arr") {
+    lookup_dt <- if(all(search_cols == "bold_recordset_code_arr")) {
       data[, .(bold_recordset_code_arr = unique(trimws(trimws(unlist(strsplit(bold_recordset_code_arr, ",")))))), by = .I]  
     } else {
       data
