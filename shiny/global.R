@@ -9,6 +9,7 @@ library(shiny)
 library(shinycssloaders)
 library(shinyjs)
 library(shinyWidgets)
+library(sortable)
 library(writexl)
 library(yaml)
 
@@ -493,11 +494,11 @@ header_js <- DT::JS("
       Shiny.setInputValue('col_copy_clicked', { col: i }, { priority: 'event' });
     }
     $(thead).find('th').each(function(i) {
+      if ($(this).find('.col-copy-btn').length > 0) return;
       var colName = $(this).text();
-      $(this).html(
-        '<span class=\"header-label\">' + colName +
-        '</span><button class=\"col-copy-btn\" onclick=\"event.stopPropagation(); window.copyCol(' + i + ');\"><i class=\"far fa-copy\" role=\"presentation\" aria-label=\"copy icon\"></i></button>'
-      );
+      $(this).empty()
+      .append('<span class=\"header-label\">' + colName + '</span>')
+      .append('<button class=\"col-copy-btn\" onclick=\"event.stopPropagation(); window.copyCol(' + i + ');\"><i class=\"far fa-copy\"></i></button>');
     });
   }
 ")
@@ -517,10 +518,13 @@ column_js <- DT::JS("
                             : '<div>' + data + '</div>';
                         }
                         if (colName == 'bin_uri' || colName == 'nn_bin_uri') {
-                          return '<div><a href=\"https://bench.boldsystems.org/index.php/Public_BarcodeCluster?clusteruri=' + data + '\" target=\"_blank\">' + data + '</a></div>';
+                          return data
+                          ? '<div><a href=\"https://bench.boldsystems.org/index.php/Public_BarcodeCluster?clusteruri=' + data + '\" target=\"_blank\">' + data + '</a></div>'
+                          : '<div>' + data + '</div>';
                         }
                         if (colName == 'avg_dist' || colName == 'max_dist' || colName == 'nn_dist') {
-                          return '<div>' + parseFloat(data).toFixed(3) + '</div>';
+                          var n = parseFloat(data);
+                          return '<div>' + (isNaN(n) ? data : n.toFixed(3)) + '</div>';
                         }
                       }
                       if (type === 'display' && data === ' ') {

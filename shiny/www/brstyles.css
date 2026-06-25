@@ -369,7 +369,6 @@ div.form-group:has(.has-items) #save_filter_set {
   color: #007bc2
 }
 
-
 .bi.bi-caret-down-square-fill {
   height: 1rem;
   width: 1rem;
@@ -379,7 +378,135 @@ div.form-group:has(.has-items) #save_filter_set {
   color: #404040;
 }
 
+#bin_rep_criteria_wrapper {
+  position: relative;
+}
+
+#bin-rep-tooltip {
+  position: absolute;
+  left: 15.5rem;
+}
+
+#bin-rep-opts .bucket-list-header {
+  margin-bottom: 0.5rem;
+}
+
+#bin-rep-opts .bucket-list label {
+  font-size: 0.9rem;
+  margin: 0;
+  padding: 0;
+}
+
+#bin_rep_criteria .shiny-input-container > div,
+#bin_rep_criteria .shiny-input-container > div > .shiny-input-select,
+#bin_rep_criteria .shiny-input-container > div > .shiny-input-select > .selectize-input {
+  height: 1.5rem !important;
+  min-height: 1.5rem !important;
+  font-size: 0.9rem !important;
+  line-height: 0.9rem !important;
+}
+
+#bin_rep_criteria .shiny-input-container > div > .shiny-input-select > .selectize-input > .item,
+#bin_rep_criteria .shiny-input-container > div > .shiny-input-select > .selectize-input > input,
+#bin_rep_criteria .selectize-dropdown-content,
+#bin_rep_criteria .selectize-dropdown .option {
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 0.9rem !important;
+  line-height: 0.9rem !important;
+}
+#bin_rep_criteria .shiny-input-container > div > .shiny-input-select > .selectize-input,
+#bin_rep_criteria .selectize-dropdown .option {
+  padding: 0.3rem !important;
+}
+
+#bin_rep_criteria .shiny-input-container > div > .shiny-input-select > .selectize-input > input {
+  height: 0.9rem !important;
+}
+
+#bin_rep_criteria .rank-list-item[data-rank-id="bin_rep_seq"] {
+  display:flex;
+  align-items: flex-end;
+  justify-content: space-between; 
+}
+
+#bin_rep_criteria .rank-list-item[data-rank-id=bin_rep_seq] .form-group:first-child {
+  flex-grow: 1;
+}
+
+#bin_rep_criteria .rank-list-item[data-rank-id="bin_rep_seq"] {
+  display:flex;
+  align-items: flex-end;
+  justify-content: space-between; 
+}
+
+#bin_rep_seq_len-label {
+  display: none;
+}
+
+#bin_rep_seq_len {
+  height: 1.5rem;
+  width: 3.5rem !important;
+  font-size: 0.9rem;
+  margin-left: 0.25rem;
+}
+
+#bin-rep-opts .bucket-list-container {
+  margin: 0;
+  padding: 0;
+}
+
+#bin-rep-opts .bucket-list div,
+#bin-rep-opts .rank-list-item .form-group {
+  margin: 0;
+}
+
+#bin-rep-opts .bucket-list .rank-list-container {
+  padding: 0.25rem 0.5rem 0.5rem 0.5rem;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+
+#bin-rep-opts .rank-list-container p {
+  margin-bottom: 0.25rem;
+}
+
+#bin-rep-opts .rank-list-item {
+  padding: 0.25rem 0.5rem 0.5rem 0.5rem;
+}
+
+#bin_rep_unused .rank-list-item {
+  padding: 0.25rem 0.5rem;
+}
+
+#bin-rep-opts .rank-list-item {
+  overflow: visible;
+}
+
+#bin_rep_criteria label:after {
+  content: ":"  
+}
+
+#bin_rep_unused .rank-list-item {
+  position: relative;
+  opacity: 0.5;
+  padding: 0.25rem 0.5rem;
+}
+
+#bin_rep_unused .rank-list-item:after {
+  content: '';
+  position:absolute;
+  inset: 0 0 0 0;
+  background-color: #eee;
+  z-index: -1;
+}
+
+#bin_rep_unused .selectize-input {
+  display: none;
+}
+
 #bin-cons-opts > .form-group.shiny-input-container,
+#bin-rep-opts > .form-group.shiny-input-container,
 #img-gal-opt > .flex-div .form-group.shiny-input-container,
 .flex-div .form-group.form-group.shiny-input-container:has(input[type="number"]) {
   width: 100%;
@@ -393,6 +520,7 @@ div.form-group:has(.has-items) #save_filter_set {
 }
 
 #bin-cons-opts .shiny-input-number,
+#bin-rep-opts .shiny-input-number,
 .flex-div input[type="number"] {
   width: 4.5rem;
   padding: 4px 8px;
@@ -572,7 +700,6 @@ td {
   right: 0.75rem;
   top: calc(1.5rem - 16px);
   background-color: white;
-  z-index: 3;
 }
 
 td:empty:before {

@@ -106,7 +106,8 @@
             "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
             add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
           ), "raw") |> writeBin(tmpfile)
-          source(tmpfile, local = TRUE)
+          # source(tmpfile, local = TRUE)
+          source("C:/Users/Spencer Monckton/Desktop/Scripts/CBG-taxonomy/Code/bfr_test_func.R", local = TRUE)
         }, error = function(e){
           showNotification(paste0("Error accessing test functions:", e$message), type = "error")
         })
@@ -191,6 +192,24 @@
         shinyjs::hide('include_nts')
       }
     })
+    
+    # reactively show/hide BIN rep selection criteria
+    observeEvent(input$bin_rep_default, {
+      if ((isolate(input$bin_rep_default) == TRUE)) {
+        shinyjs::hide("bin_rep_criteria_wrapper")
+      } else {
+        shinyjs::show("bin_rep_criteria_wrapper")
+      }
+    })
+    
+    # reactively show/hide BIN rep sequence length input
+    observeEvent(input$bin_rep_seq_opt, {
+      if(input$bin_rep_seq_opt == "custom") {
+        shinyjs::show("bin_rep_seq_len")
+      } else {
+        shinyjs::hide("bin_rep_seq_len")
+      }
+    }, ignoreInit = TRUE, ignoreNULL = FALSE)
     
     ### SERVER HELPERS
     
@@ -743,9 +762,12 @@
                                            enforce_scientific = input$bc_enforcesci,
                                            discord_format = "text")
         col_order <- append(names(bin_consensus), c("min_rank", "max_rank"), after = 2)
+        include <- ifelse(input$bc_enforcesci,
+                          which(!grepl(re_int, data[, identification], perl = TRUE)),
+                          seq_along(data[, identification]))
         bin_consensus <- merge(bin_consensus,
-                               data[, .(min_rank = as.factor(ranks[min(match(get("identification_rank"), ranks))]),
-                                        max_rank = as.factor(ranks[max(match(get("identification_rank"), ranks))])), by = "bin_uri"],
+                               data[, .(min_rank = as.factor(ranks[min(match(data[include, identification_rank], ranks))]),
+                                        max_rank = as.factor(ranks[max(match(data[include, identification_rank], ranks))])), by = "bin_uri"],
                                by = "bin_uri",
                                all.x = TRUE)
         setcolorder(bin_consensus, col_order)
@@ -945,7 +967,8 @@
     })
     
     # define options once, then add them to each table individually
-    DT_extensions <- c("FixedHeader", "FixedColumns")
+    # DT_extensions <- c("FixedHeader", "FixedColumns")
+    DT_extensions <- c("FixedColumns")
     DT_options <- list(headerCallback = header_js,
                    columnDefs = list(
                      list(
@@ -953,9 +976,9 @@
                        render = column_js)),
                    scrollCollapse = TRUE,
                    lengthMenu = list(c(100, 500, 1000, 2000), c('100', '500', '1000', '2000')),
-                   fixedHeader = TRUE,
+                   # fixedHeader = TRUE,
                    fixedColumns = list(leftColumns = 1),
-                   stateSave = FALSE,
+                   stateSave = TRUE,
                    searchDelay = 500,
                    initComplete = DT::JS("function(settings, json) {
                                             var dt = this.api();

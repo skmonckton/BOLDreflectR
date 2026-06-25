@@ -257,13 +257,55 @@ ui <- bslib::page_fillable(
                        "Get BIN consensus"))),
           inputGroup(title = "BIN representatives",
                      groupId = "bin-rep-opts",
-                     div(class="form-group",
-                         "Select one record for each unique BIN-taxon combination:",
-                         bslib::tooltip(
-                           icon("circle-question"),
-                           "BIN reps are chosen per the following criteria in order of priority: (1) sequence length modal and/or closest to 658 bp; (2) identification by morphology or image; (3) voucher deposited at the CBG; (4) recent collection date.",
-                           id = "bintip"
-                         )),
+                     numericInput(
+                       "bin_rep_num",
+                       "Number of representatives per BIN:",
+                       value = 1,
+                       min = 1, step = 1
+                     ),
+                     checkboxInput(
+                       "bin_rep_tax",
+                       "Add representatives per distinct taxon",
+                       value = TRUE
+                     ),
+                     bslib::input_switch(
+                       "bin_rep_default",
+                       "Use default selection criteria",
+                       value = TRUE
+                     ),
+                     hidden(div(id = "bin_rep_criteria_wrapper",
+                       div(id = "bin-rep-tooltip",
+                           bslib::tooltip(icon("circle-question"),
+                                          "Drag and drop to order by priority, or move unwanted criteria to 'ignored' box.")),
+                       bucket_list(
+                         header = "Select representative records by:",
+                         group_name = "bucket_list_group",
+                         orientation = "vertical",
+                         add_rank_list(
+                           input_id = "bin_rep_criteria",
+                           text = "Selected criteria:",
+                           labels = list(
+                             "bin_rep_seq" = tagList(selectInput("bin_rep_seq_opt",
+                                                         "COI sequence length",
+                                                         choices = list("nearest to 658bp" = "standard",
+                                                                        "nearest to ____bp (specify)" = "custom",
+                                                                        "nearest to mode for BIN" = "mode",
+                                                                        "nearest to mode, or 658bp if present" = "combo",
+                                                                        "longest",
+                                                                        "shortest")),
+                                                     hidden(numericInput("bin_rep_seq_len", "", value = 658))),
+                             "bin_rep_id" = selectizeInput("bin_rep_id_opt", "Preferred ID method(s)", choices = list()),
+                             "bin_rep_inst" = selectizeInput("bin_rep_inst_opt", "Preferred institution(s)", choices = list()),
+                             "bin_rep_date" = selectInput("bin_rep_date_opt", "Collection date", choices = list("newest", "oldest")),
+                             "bin_rep_up" = selectInput("bin_rep_up_opt", "Sequence upload date", choices = list("newest", "oldest"))
+                           )
+                         ),
+                         add_rank_list(
+                           input_id = "bin_rep_unused",
+                           text = "Ignored criteria:",
+                           labels = NULL
+                         )
+                       ))),
                      div(actionButton(
                        "bin_rep_btn",
                        "Get BIN reps"
