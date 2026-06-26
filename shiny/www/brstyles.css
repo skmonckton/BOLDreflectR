@@ -15,14 +15,6 @@ h3 {
   baseline-shift: 2px;
 }
 
-#side-title:hover::after {
-  content: attr(data-ver);
-  font-size: 0.9rem;
-  color: #999;
-  margin-left: 0.3rem;
-  margin-top: auto;
-  margin-bottom: 1.1rem;
-}
 .modal-header {
   padding-bottom: 1rem;
 }
@@ -67,16 +59,35 @@ a#del_filter_btn {
   max-height:25vh;
 }
 
-#side-title {
-  display:flex;
-  flex-direction:row;
-  justify-content:flex-start;
+#side-top {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  margin: -0.5rem 0 0.5rem 0.25rem;
+  height: 4.16rem;
+  margin: -0.5rem 0.25rem 0.5rem 0.25rem;
 }
 
 #side-title img {
   height: 2.5rem;
+}
+
+#side-title:hover::after {
+  content: attr(data-ver);
+  font-size: 0.9rem;
+  color: #999;
+  margin-left: 0.3rem;
+  margin-top: auto;
+  margin-bottom: 1.1rem;
+}
+
+#settings {
+  font-size: 1.25rem;
+  color: #999;
+  margin-right: 0.25rem;
+}
+
+#settings:hover {
+  color: #404040;
 }
 
 .accordion-item[data-value="fetchdata"] .accordion-body {

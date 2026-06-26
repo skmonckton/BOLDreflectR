@@ -1149,4 +1149,9 @@
     output$save_csv <- download_output("csv")
     output$save_xlsx <- download_output("xlsx")
 
+    
+    observeEvent(input$settings, {
+      source("settings.R", local = TRUE)
+    })
+    
   }
