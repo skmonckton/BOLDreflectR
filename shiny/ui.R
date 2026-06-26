@@ -294,8 +294,16 @@ ui <- bslib::page_fillable(
                                                                         "longest",
                                                                         "shortest")),
                                                      hidden(numericInput("bin_rep_seq_len", "", value = 658))),
-                             "bin_rep_id" = selectizeInput("bin_rep_id_opt", "Preferred ID method(s)", choices = list()),
-                             "bin_rep_inst" = selectizeInput("bin_rep_inst_opt", "Preferred institution(s)", choices = list()),
+                             "bin_rep_id" = selectizeInput("bin_rep_id_opt", "Preferred ID method(s)",
+                                                           choices = list("BIN based", "BOLD ID Engine", "Tree based", "Morphology",
+                                                                          "Morphology and sequence based", "Image based",
+                                                                          "Image and sequence based", "Other sequence based approach", "Other"),
+                                                           selected = "Morphology",
+                                                           multiple = TRUE),
+                             "bin_rep_inst" = selectizeInput("bin_rep_inst_opt", "Preferred institution(s)",
+                                                             choices = list("Centre for Biodiversity Genomics"),
+                                                             selected = "Centre for Biodiversity Genomics",
+                                                             multiple = TRUE),
                              "bin_rep_date" = selectInput("bin_rep_date_opt", "Collection date", choices = list("newest", "oldest")),
                              "bin_rep_up" = selectInput("bin_rep_up_opt", "Sequence upload date", choices = list("newest", "oldest"))
                            )

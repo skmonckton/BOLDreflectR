@@ -642,6 +642,17 @@
       updateSelectizeInput(session, "filt_seq", choices = outdata$markers, selected = NULL)
     })
     
+    # keep BIN rep options updated based on available data
+    observeEvent(outdata$data, {
+      req(outdata$data)
+      insts <- unique(as.character(outdata$data[["inst"]]))
+      updateSelectizeInput(session, "bin_rep_inst_opt",
+                           choices = as.list(insts),
+                           selected = ifelse("Centre for Biodiversity Genomics" %in% insts,
+                                             "Centre for Biodiversity Genomics",
+                                             insts[1]))
+    })
+    
     # function to compute a row index based on user-selected markers
     # this is needed for the flexibility to work either with the full table or collapsed-marker table  
     seq_filter <- function(data, filt_seq) {
