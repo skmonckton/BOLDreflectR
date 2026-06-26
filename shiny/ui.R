@@ -22,7 +22,11 @@ ui <- bslib::page_fillable(
   useShinyjs(),
   sidebarLayout(
     sidebarPanel(
-      div(id="side-title", span(img(src = "reflectR-name.png", alt = "BOLDreflectR", style = "height: 3rem;")), actionLink("cbg_btn", label = " "), `data-ver` = paste0("v", ver), style = "height: 4.16rem;"),
+      div(id="side-title",
+          span(img(src = "reflectR-name.png", alt = "BOLDreflectR", style = "height: 3rem;")),
+          `data-ver` = paste0("v", ver),
+          style = "height: 4.16rem;"),
+      actionLink("cbg_btn", label = " "),
       bslib::accordion(
         id="optpanels",
         bslib::accordion_panel(

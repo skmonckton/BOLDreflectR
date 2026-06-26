@@ -320,7 +320,7 @@ input[type=number] {
 #save_filter_set {
   visibility: hidden;
   position: relative;
-  top: 2.4rem;
+  top: 2rem;
   right: 0.75rem;
   z-index: 4;
   color: #404040;
@@ -572,7 +572,6 @@ td {
   right: 0.75rem;
   top: calc(1.5rem - 16px);
   background-color: white;
-  z-index: 3;
 }
 
 td:empty:before {

@@ -945,19 +945,19 @@
     })
     
     # define options once, then add them to each table individually
-    DT_extensions <- c("FixedHeader", "FixedColumns")
+    DT_extensions <- c("FixedColumns")
     DT_options <- list(headerCallback = header_js,
-                   columnDefs = list(
-                     list(
-                       targets = "_all",
-                       render = column_js)),
-                   scrollCollapse = TRUE,
-                   lengthMenu = list(c(100, 500, 1000, 2000), c('100', '500', '1000', '2000')),
-                   fixedHeader = TRUE,
-                   fixedColumns = list(leftColumns = 1),
-                   stateSave = FALSE,
-                   searchDelay = 500,
-                   initComplete = DT::JS("function(settings, json) {
+                       columnDefs = list(
+                         list(
+                           targets = "_all",
+                           render = column_js)),
+                       scrollCollapse = TRUE,
+                       lengthMenu = list(c(100, 500, 1000, 2000), c('100', '500', '1000', '2000')),
+                       # fixedHeader = TRUE,
+                       fixedColumns = list(leftColumns = 1),
+                       stateSave = TRUE,
+                       searchDelay = 500,
+                       initComplete = DT::JS("function(settings, json) {
                                             var dt = this.api();
                                             $(document).off('shown.bs.tab.dt').on('shown.bs.tab.dt', function() {
                                               dt.columns.adjust();
