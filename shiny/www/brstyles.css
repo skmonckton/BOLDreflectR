@@ -187,6 +187,19 @@ input[type=number] {
   margin-bottom: 2rem;
 }
 
+.option-group:not(:first-child) .group-header:before {
+  border-top: solid #f7f7f7 4px;
+  width: 105%;
+  display: block;
+  content: "";
+  position: relative;
+  bottom: 0.75rem;
+  margin: 0 -2.5%;
+}
+.accordion-item {
+  border-color: #ccc;
+}
+
 [data-value="Additional fields"] .accordion-button {
   padding: 0;
   margin-bottom: .8rem;
@@ -425,7 +438,7 @@ div.form-group:has(.has-items) #save_filter_set {
   max-width: calc(100vw - 400px - 2.2rem);
 }
 
-.nav-link {
+#tabs .nav-link {
   padding-top: 3px;
   padding-bottom: 3px;
   margin-bottom: 1rem;
@@ -466,6 +479,31 @@ div.form-group:has(.has-items) #save_filter_set {
 .tab-pane[data-value="qhits_tab"] .datatables .dataTables_wrapper .table thead > tr th,
 .tab-pane[data-value="qhits_tab"] .datatables .dataTables_wrapper .table tbody > tr td {
   border-right: none;
+}
+
+.tab-pane[data-value="div_profile"] .nav-link {
+  margin: 3px 0;
+  padding: 5px 10px;
+}
+
+.tab-pane[data-value="div_profile"] .card-body {
+  height: calc(100vh - 8.75rem - 4px);
+/*   padding-left: 3rem; */
+/*   padding-right: 3rem; */
+}
+
+.tab-pane[data-value=div_profile] .card-body .shiny-spinner-output-container {
+  height: calc(100vh - 10.75rem - 4px) !important;
+
+}
+.tab-pane[data-value="div_profile"] .card-body .datatables,
+.tab-pane[data-value="div_profile"] .card-body .row.dt-row {
+  height: calc(100% - 2.5rem - 3px) !important;
+}
+
+.tab-pane[data-value="div_profile"] .card-body .datatables,
+.tab-pane[data-value=div_profile] .card-body .dataTables_wrapper {
+  padding-right: 0;
 }
 
 .hit_rep_heading {

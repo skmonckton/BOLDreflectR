@@ -11,6 +11,8 @@ library(shinyjs)
 library(shinyWidgets)
 library(writexl)
 library(yaml)
+library(plotly)
+library(vegan)
 
 source("R/tctools.R")
 source("R/bold.full.search.two.step.R")

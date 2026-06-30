@@ -71,6 +71,7 @@
       filt_seq_idx = NULL,
       summary = NULL,
       bin_reps = NULL,
+      div_profile = NULL,
       bin_consensus = NULL,
       bin_portal_stats = NULL)
     
@@ -80,6 +81,7 @@
       qhits_tab = FALSE,
       summary = FALSE,
       bin_reps = FALSE,
+      div_profile = FALSE,
       consensus_tab = FALSE,
       map_tab = FALSE
     )
@@ -189,6 +191,53 @@
         shinyjs::show('include_nts')
       } else {
         shinyjs::hide('include_nts')
+      }
+    })
+    
+    # reactively adjust available diversity analysis options
+    observeEvent(input$div_site_type, {
+      if(input$div_site_type == "locations") {
+        shinyjs::show('div_location_type')
+        shinyjs::hide('div_grid_size')
+      } else if(input$div_site_type == "grids") {
+        shinyjs::show('div_grid_size')
+        shinyjs::hide('div_location_type')
+      } else {
+        shinyjs::hide('div_location_type')
+        shinyjs::hide('div_grid_size')
+      }
+    })
+    
+    observe({
+      req(filtered_data())
+      data <- filtered_data()[input$data_table_rows_all, ]
+      req(nrow(data) > 0)
+      site_types <- list("Site" = "site",
+                         "Sector" = "sector",
+                         "Region" = "region",
+                         "Province/State" = "province.state",
+                         "Country/Ocean" = "country.ocean")
+      taxon_ranks <- c("Species if known, BIN if not" = "bin_fallback",
+                       "BIN" = "bin_uri",
+                       rev(config$bcdmnames)[rev(config$bcdmnames) %in% ranks])
+      allow_cols <- names(which(unlist(data[, lapply(.SD, function(x) uniqueN(!empty(x)) >= 2),
+                                            .SDcols = unlist(unname(c(site_types, taxon_ranks[taxon_ranks != "bin_fallback"])))])))
+      if(any(c("bin_uri","species") %in% allow_cols)) allow_cols <- c(allow_cols, "bin_fallback")
+      
+      allow_sites <- site_types[site_types %in% allow_cols]
+      updateSelectizeInput(session, "div_location_type",
+                           choices = allow_sites,
+                           selected = allow_sites[[1]])
+      
+      allow_ranks <- taxon_ranks[taxon_ranks %in% allow_cols]
+      updateSelectInput(session, "div_rank", choices = allow_ranks, selected = allow_ranks[1])
+    })
+    
+    observeEvent(input$div_profile, {
+      if("beta" %in% input$div_profile) {
+        shinyjs::enable('div_beta_type')
+      } else {
+        shinyjs::disable('div_beta_type')
       }
     })
     
@@ -731,6 +780,99 @@
       }
     })
     
+    # compute diversity profile
+    observeEvent(input$div_compute_btn, {
+      req(outdata$data)
+      
+      data <- filtered_data()[input$data_table_rows_all, ]
+      
+      data <- filtered_data()
+
+      if(any(c("beta", "all") %in% input$div_profile)) {
+        site_type <- input$div_location_type
+        if(length(unique(data[!empty(get(site_type))][[site_type]])) <= 1) {
+          showNotification("Must have at least two sites for beta diversity analysis.", type = "error")
+          validate(need(FALSE, ""))
+        }
+      }
+      
+      div_opts <- list(
+        bold_df = NULL,
+        taxon_rank = input$div_rank,
+        taxon_name = NULL,
+        site_type = input$div_site_type,
+        location_type = NULL,
+        gridsize = NULL,
+        presence_absence = input$div_presence,
+        diversity_profile = "preston",
+        beta_index = input$div_beta_type
+      )
+      
+      if(div_opts$taxon_rank == "bin_fallback") {
+        withInfProgress(message = "Assigning fallback BIN-based names...", {
+          unid_bins <- unique(data[, if(all(empty(species))) .SD, by = bin_uri]$bin_uri)
+          unid_bin_tax <- get_bin_consensus(data[bin_uri %in% unid_bins], min_ids = 1)
+          
+          data[, bin_fallback := fifelse(bin_uri %in% unid_bins,
+                                         unid_bin_tax[.SD, on = .(bin_uri), 
+                                                      paste(concordant_id, bin_uri, sep="_sp_")],
+                                         as.character(species))]
+        })
+      }
+      
+      if(input$div_site_type == "locations") {
+        div_opts[["location_type"]] <- input$div_location_type
+        data <- data[!empty(get(div_opts$location_type))]
+      } else {
+        div_opts[["gridsize"]] <- input$div_grid_size
+        data <- data[!empty(coord)]
+      }
+      
+      div_opts[["bold_df"]] <- data[!empty(get(div_opts$taxon_rank))]
+      
+      withInfProgress(message = "Computing diversity profile...", {
+        div_profile <- do.call(bold.analyze.diversity, div_opts)
+        if("beta" %in% input$div_profile) {
+          beta_div_results <- BOLDconnectR:::beta_div_profile(div_profile$comm.matrix,
+                                                              input$div_beta_type,
+                                                              input$div_presence)
+          div_profile$total.beta <- beta_div_results$total.beta
+          div_profile$replace <- beta_div_results$replace
+          div_profile$richnessd <- beta_div_results$richnessd
+        }
+        if("shannon" %in% input$div_profile) {
+          div_profile$shannon_div <- round(BOLDconnectR:::shannon_div_profile(df = div_profile$comm.matrix), 2)
+        }
+        outdata$div_profile <- div_profile
+      })
+      
+      if(!tab_status$div_profile) {
+        bslib::nav_insert(
+          "tabs", target = tab_monitor("ins_target","div_profile"), position = "after", select = TRUE,
+          bslib::nav_panel(
+            id="div_profile",
+            value="div_profile",
+            "Diversity profile",
+            bslib::navset_card_pill( 
+              # bslib::nav_panel("Richness metrics",
+                        # DT::dataTableOutput("richness_table") |> withSpinner(color="#aaaaaa", type=5, size=0.6)),
+              
+              bslib::nav_panel("Accumulation curve", 
+                        plotlyOutput("plot_accum")), 
+              bslib::nav_panel("Preston plot", 
+                        plotlyOutput("plot_preston")),
+              bslib::nav_panel("Community matrix",
+                        DT::dataTableOutput("comm_matrix") |> withSpinner(color="#aaaaaa", type=5, size=0.6)),
+              bslib::nav_panel("Beta diversity ordination plot", 
+                        plotlyOutput("plot_beta")))
+          )
+        )
+        tab_status$div_profile <- TRUE
+      } else {
+        bslib::nav_select(id = "tabs", selected = "div_profile")
+      }
+    })
+    
     # compute BIN consensus and inject as a new tab
     observeEvent(input$bin_consensus_btn, {
       req(nrow(outdata$data) > 0)
@@ -990,6 +1132,284 @@
       options = DT_options),
       server = TRUE)
     
+    # diversity analysis table
+    # output$richness_table <- DT::renderDataTable(DT::datatable({
+    #   outdata$div_profile$richness
+    #   },
+    #   filter = 'none', 
+    #   rownames = FALSE,
+    #   selection = 'none',
+    #   extensions = DT_extensions,
+    #   callback = callback_js, 
+    #   options = DT_options),
+    #   server = TRUE)
+    
+    # community matrix
+    output$comm_matrix <- DT::renderDataTable(DT::datatable({
+      mat <- outdata$div_profile$comm.matrix
+      mat_df <- data.frame(Site = rownames(mat), mat)
+      names(mat_df)[1] <- tools::toTitleCase(isolate(input$div_location_type))
+      mat_df
+      },
+      filter = 'none', 
+      rownames = FALSE,
+      selection = 'none',
+      extensions = DT_extensions,
+      callback = callback_js, 
+      options = DT_options),
+      server = TRUE)
+    
+    # species accumulation plot
+    output$plot_accum <- renderPlotly({
+      mat <- outdata$div_profile$comm.matrix
+      validate(need(nrow(mat) > 1, "Need at least 2 sites for an accumulation curve."))
+      
+      sac <- vegan::specaccum(mat, method = "random")
+      
+      by <- max(1L, floor(length(sac$sites) / 50))
+      idx <- c(seq(1, length(sac$sites), by = by), length(sac$sites))
+      
+      df_sac <- data.frame(sites = sac$sites[idx], richness = sac$richness[idx], sd = sac$sd[idx])
+      
+      df_sac$tooltip <- paste0(
+        "Sites: ", df_sac$sites,
+        "<br>Richness: ", round(df_sac$richness, 1),
+        "<br>Range: ", round(df_sac$richness - df_sac$sd, 1),
+        "–", round(df_sac$richness + df_sac$sd, 1)
+      )
+      
+      y_label <- paste0(switch(isolate(input$div_rank),
+                                bin_uri = "BIN",
+                                bin_fallback = "Species",
+                                tools::toTitleCase(isolate(input$div_rank))),
+                         " richness")
+      ggplotly(
+        ggplot(df_sac, aes(x = sites, y = richness)) +
+          geom_ribbon(aes(ymin = richness - sd, ymax = richness + sd), 
+                      fill = "#F78E1E", alpha = 0.2) +
+          geom_line(color = "#F78E1E", linewidth = 1) +
+          geom_point(aes(text = tooltip), color = "#DB6822", size = 2) +
+          labs(x = "Number of sites",
+               y = y_label) +
+          theme_minimal(), tooltip = "text") |>
+        layout(
+          xaxis = list(autorange = TRUE),
+          yaxis = list(autorange = TRUE)
+        )
+    })
+    
+    # Preston plot
+    output$plot_preston <- renderPlotly({
+      pr <- outdata$div_profile$preston.plot
+      validate(need(!is.null(pr), "Preston results not available."))
+      
+      y_label <- switch(isolate(input$div_rank),
+                        bin_uri = "Number of BINs",
+                        bin_fallback =, "Number of species",
+                        subspecies =, species = paste0("Number of ", isolate(input$div_rank)),
+                        genus = "Number of genera",
+                        subfamily = "Number of subfamilies",
+                        family = "Number of families",
+                        class = "Number of classes",
+                        tribe =, order = paste0("Number of ", isolate(input$div_rank), "s"))
+      
+      pr$layers$geom_bar$aes_params$fill <- "#80AAC4"
+      pr$layers$geom_bar$aes_params$width <- 0.9
+      pr$layers$geom_bar$aes_params$linewidth <- 0
+      pr$layers$geom_point$aes_params$fill <- "#CC4945"
+      pr$layers$geom_line$aes_params$linewidth <- 0.5
+      
+      pr_plot <- ggplotly(pr + 
+                            theme_minimal() + 
+                            ggtitle("") + 
+                            ylab(y_label) + 
+                            xlab("Abundance class"), 
+                          tooltip = "none") |>
+        layout(
+          xaxis = list(autorange = TRUE),
+          yaxis = list(autorange = TRUE)
+        )
+      
+      pr_plot$x$data[[1]]$hovertemplate <- paste0("Observed: %{y:~g}", "<extra></extra>")
+      pr_plot$x$data[[2]]$hovertemplate <- paste0("Fitted: %{y:~g}", "<extra></extra>")
+      
+      pr_plot
+      
+    })
+    
+    # beta diversity stats
+    # output$beta_stats <- renderUI({
+    #   res <- results()
+    #   mat <- res$comm.matrix
+    #   n_sites   <- nrow(mat)
+    #   n_taxa    <- ncol(mat)
+    #   shannon_h <- if (!is.null(res$shannon_div)) round(mean(as.numeric(unlist(res$shannon_div)), na.rm = TRUE), 2) else "—"
+    #   total_b   <- if (!is.null(res$total.beta)) round(mean(res$total.beta,  na.rm = TRUE), 3) else "—"
+    #   
+    #   chip <- function(val, lbl) {
+    #     div(class = "stat-chip",
+    #         span(class = "chip-val", val),
+    #         span(class = "chip-lbl", lbl)
+    #     )
+    #   }
+    #   div(class = "summary-strip",
+    #       chip(n_sites,   "sites"),
+    #       chip(n_taxa,    input$taxon_rank),
+    #       chip(shannon_h, "mean H′"),
+    #       chip(total_b,   "mean β")
+    #   )
+    # })
+    
+    # beta diversity ordination
+    output$plot_beta <- renderPlotly({
+      res <- outdata$div_profile
+      validate(need(!is.null(res$total.beta), "Beta diversity results not available."))
+      
+      beta_mat <- res$total.beta
+
+      validate(need(attr(beta_mat, "Size") >= 3,
+                    "Need at least 3 sites to run ordination."))
+      
+      ord_type <- "nmds"
+      
+      if(ord_type == "nmds") {
+      
+        set.seed(42)
+        nmds_res <- vegan::monoMDS(beta_mat, k = 2, maxit = 500)
+        
+        df_nmds <- data.frame(
+          site  = rownames(res$comm.matrix),
+          NMDS1 = nmds_res$points[, 1],
+          NMDS2 = nmds_res$points[, 2]
+        )
+        
+        beta_full <- as.matrix(beta_mat)
+        diag(beta_full) <- NA
+        df_nmds$mean_beta <- rowMeans(beta_full, na.rm = TRUE)
+        
+        df_nmds$tooltip <- paste0(
+          "<b>", df_nmds$site, "</b><br>",
+          "NMDS1: ", round(df_nmds$NMDS1, 3), "<br>",
+          "NMDS2: ", round(df_nmds$NMDS2, 3), "<br>",
+          "Mean \u03b2: ", round(df_nmds$mean_beta, 3)
+        )
+        
+        plot_colours <- colorRampPalette(map_colours)(nrow(df_nmds))
+        
+        # Identify outliers and scale axes
+        is_outlier <- (df_nmds$NMDS1 %in% boxplot.stats(df_nmds$NMDS1)$out) | (df_nmds$NMDS2 %in% boxplot.stats(df_nmds$NMDS2)$out)
+        xlim_zoom  <- extendrange(range(df_nmds$NMDS1[!is_outlier]), f = c(0.1, 0.3))
+        ylim_zoom  <- extendrange(range(df_nmds$NMDS2[!is_outlier]), f = c(0.1, 0.3))
+
+        # Main plot — zoomed into dense cluster
+        plot_beta <- ggplot(df_nmds, aes(x = NMDS1, y = NMDS2, label = site, colour = mean_beta)) +
+          geom_point(aes(text = tooltip), size = 3.5, alpha = 0.85) +
+          scale_colour_gradientn(name = "Mean \u03b2",
+                                 colors = plot_colours) +
+          coord_cartesian(xlim = xlim_zoom, ylim = ylim_zoom) +
+          labs(x = "NMDS1", y = "NMDS2") +
+          theme_minimal() +
+          theme(legend.position = "right")
+        
+        beta_fig <- ggplotly(plot_beta, tooltip = "text")
+        main_x_style <- beta_fig$x$layout$xaxis
+        main_y_style <- beta_fig$x$layout$yaxis
+        
+        beta_fig <- beta_fig |>
+          add_markers(
+            data = df_nmds,
+            x = df_nmds$NMDS1,
+            y = df_nmds$NMDS2,
+            text = df_nmds$tooltip,
+            hoverinfo = "text",
+            name = "",
+            xaxis = 'x2', yaxis = 'y2',
+            marker = list(
+              color = df_nmds$mean_beta,
+              colorscale = lapply(seq_along(plot_colours), function(i) {
+                c((i - 1) / (length(plot_colours) - 1),
+                  plot_colours[i])
+                }),
+              cmin = min(df_nmds$mean_beta), cmax = max(df_nmds$mean_beta),
+              showscale = FALSE
+            ),
+            showlegend = FALSE
+          ) |>
+          layout(
+            xaxis = list(tickmode = "auto"),
+            yaxis = list(tickmode = "auto"),
+            # Position the secondary X-axis (fractional canvas coordinates)
+            xaxis2 = list(
+              domain = c(0.7, 0.95),
+              anchor = "y2",
+              fixedrange = TRUE,
+              title = NA,
+              tickfont = main_x_style$tickfont,
+              linecolor = main_x_style$linecolor,
+              gridcolor = main_x_style$gridcolor
+            ),
+            # Position the secondary Y-axis
+            yaxis2 = list(
+              domain = c(0.7, 0.95),
+              anchor = "x2",
+              fixedrange = TRUE,
+              title = NA,
+              tickfont = main_y_style$tickfont,
+              linecolor = main_y_style$linecolor,
+              gridcolor = main_y_style$gridcolor
+            )
+          )
+        
+        beta_fig
+        
+      } else {
+        
+        # PCoA via cmdscale
+        pcoa_res <- tryCatch(
+          vegan::wcmdscale(beta_mat, k = 2, eig = TRUE, add = "cailliez"),
+          error = function(e) stop("PCoA failed: ", e$message)
+        )
+        
+        eig     <- pcoa_res$eig
+        eig_pos <- pmax(eig, 0)
+        pct     <- round(eig_pos[1:2] / sum(eig_pos) * 100, 1)
+        
+        df_pcoa <- data.frame(
+          site = rownames(res$comm.matrix),
+          PC1  = pcoa_res$points[, 1],
+          PC2  = pcoa_res$points[, 2]
+        )
+        
+        beta_full       <- as.matrix(beta_mat)
+        diag(beta_full) <- NA
+        df_pcoa$mean_beta <- rowMeans(beta_full, na.rm = TRUE)
+        
+        df_pcoa$tooltip <- paste0(
+          "Site: ", df_pcoa$site,
+          "<br>Mean β: ", round(df_pcoa$mean_beta, 3)
+        )
+        
+        plot_beta <- ggplot(df_pcoa, aes(label = site, colour = mean_beta, x = PC1, y = PC2)) +
+          geom_hline(yintercept = 0, colour = "#B6CED2", linewidth = 0.4) +
+          geom_vline(xintercept = 0, colour = "#B6CED2", linewidth = 0.4) +
+          geom_point(aes(text = tooltip), size = 3.5, alpha = 0.85) +
+          scale_colour_gradientn(name = "Mean β", colors = colorRampPalette(map_colours)(nrow(df_pcoa))) +
+          labs(
+            x = paste0("PC1 (", pct[1], "% variance)"),
+            y = paste0("PC2 (", pct[2], "% variance)")
+          ) +
+          theme_minimal() +
+          theme(legend.position = "right")
+        
+        ggplotly(plot_beta, tooltip = "text") |>
+          layout(
+            xaxis = list(autorange = TRUE),
+            yaxis = list(autorange = TRUE)
+          )
+      }
+      
+    })
+    
     # BIN consensus table
     output$bincons_table <- DT::renderDataTable(DT::datatable({
       droplevels(outdata$bin_consensus)
@@ -1051,6 +1471,12 @@
              current_rows = reactive(input$summary_table_rows_all),
              copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, copy_reps = FALSE),
              dl_btns = TRUE),
+      div_profile = 
+        list(basename = "diversity_profile_",
+             output = reactive(outdata$div_profile),
+             current_rows = reactive(outdata$sdiv_profil[, .I]),
+             copy_btns = list(copy_table = FALSE, copy_fasta = FALSE, copy_reps = FALSE),
+             dl_btns = FALSE),
       consensus_tab =
         list(basename = "bin_consensus_",
              output = reactive(outdata$bin_consensus),
