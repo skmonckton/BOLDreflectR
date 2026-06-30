@@ -314,10 +314,13 @@ get_bin_reps <- function(bold_df,
   {
   
   if(!missing(criteria)) {
-    if(length(criteria$seq_length) > 1) stop("'seq_length' criterion must be a single value.")
-    if(!any((criteria$seq_length %in% c("COI_auto", "longest", "shortest")),
-            is.numeric(criteria$seq_length))) {
-      stop("'seq_length' criterion must be one of 'COI_auto', 'longest', 'shortest', or a numeric value.")
+    if(length(criteria$seq_length) > 1) {
+      stop("'seq_length' criterion must be a single value.")
+    } else if(length(criteria$seq_length) == 1) {
+      if(!any((criteria$seq_length %in% c("COI_auto", "longest", "shortest")),
+              is.numeric(criteria$seq_length))) {
+        stop("'seq_length' criterion must be one of 'COI_auto', 'longest', 'shortest', or a numeric value.")
+      }
     }
     if(any(!criteria$id_method %in% c("Morphology", "Morphology and sequence based",
                                       "Image based", "Image and sequence based",
@@ -340,7 +343,7 @@ get_bin_reps <- function(bold_df,
   }
   
   if("marker_code" %in% names(bold_df)) {
-    data <- bold_df[!empty(bin_uri) & (marker_code == "COI-5P")]
+    data <- bold_df[!empty(bin_uri) & (as.character(marker_code) == "COI-5P")]
     bp_col <- "nuc_basecount"
   } else {
     data <- bold_df[!empty(bin_uri)]
@@ -350,14 +353,14 @@ get_bin_reps <- function(bold_df,
   if(by_taxon) {
     select_by <- c("bin_uri", "identification")
     if(non_redundant_taxa) {
-      data <- data[, data[, ({
+      data <- data[data[, ({
         bin_taxa <- unique(.SD[, .SD, .SDcols = c("identification", "identification_rank", ranks)])
         if(enforce_scientific) {
-          bin_taxa <- bin_taxa[!grepl(re_int, bin_taxa[["identification"]], perl = TRUE)]
+          bin_taxa <- bin_taxa[!grepl(re_int, as.character(bin_taxa[["identification"]]), perl = TRUE)]
         }
-        bin_taxa[, id_count := mapply(function(ranks, id) bin_taxa[get(rank) == id, .N], get("identification_rank"), get("identification"))]
-        unique_lineages <- bin_taxa[bin_taxa[["id_count"]] == 1][["identification"]]
-        identification %in% unique_lineages
+        bin_taxa[, id_count := mapply(function(rank, id) bin_taxa[bin_taxa[[rank]] == id, .N], as.character(identification_rank), as.character(identification))]
+        unique_lineages <- as.character(bin_taxa[bin_taxa[["id_count"]] == 1][["identification"]])
+        as.character(identification) %in% unique_lineages
       }), by = "bin_uri"]$V1]
     }
   } else {
@@ -396,11 +399,11 @@ get_bin_reps <- function(bold_df,
       
     } else if(step == "id_method") {
       
-      factor(data$identification_method, levels = criteria$id_method)
+      factor(as.character(data$identification_method), levels = criteria$id_method)
       
     } else if(step == "inst") {
       
-      factor(data$inst, levels = criteria$inst)
+      factor(as.character(data$inst), levels = criteria$inst)
       
     } else if(step == "coll_date") {
       
