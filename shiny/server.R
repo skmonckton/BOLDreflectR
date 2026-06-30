@@ -193,6 +193,15 @@
       }
     })
     
+    # reactively show/hide BIN rep taxon options
+    observeEvent(input$bin_rep_tax, {
+      if ((isolate(input$bin_rep_tax) == TRUE)) {
+        shinyjs::show("bin_rep_tax_opts")
+      } else {
+        shinyjs::hide("bin_rep_tax_opts")
+      }
+    })
+    
     # reactively show/hide BIN rep selection criteria
     observeEvent(input$bin_rep_default, {
       if ((isolate(input$bin_rep_default) == TRUE)) {
@@ -915,7 +924,6 @@
                                          by_taxon = input$bin_rep_tax,
                                          non_redundant_taxa = input$bin_rep_non_redundant,
                                          enforce_scientific = input$bin_rep_scientific,
-                                         prefer_vouchered = input$bin_rep_vouchered,
                                          criteria = criteria)$record_id
       })
       if(!tab_status$bin_reps) {

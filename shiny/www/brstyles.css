@@ -378,6 +378,16 @@ div.form-group:has(.has-items) #save_filter_set {
   color: #404040;
 }
 
+#bin_rep_tax_opts .shiny-input-container {
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+#bin_rep_tax_opts {
+  padding: 0 1.25rem 0.5rem 1.25rem;
+  margin-top: -0.5rem;
+}
+
 #bin_rep_criteria_wrapper {
   position: relative;
 }

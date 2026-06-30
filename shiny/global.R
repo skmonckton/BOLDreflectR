@@ -350,12 +350,12 @@ get_bin_reps <- function(bold_df,
   if(by_taxon) {
     select_by <- c("bin_uri", "identification")
     if(non_redundant_taxa) {
-      data <- data[data[, ({
+      data <- data[, data[, ({
         bin_taxa <- unique(.SD[, .SD, .SDcols = c("identification", "identification_rank", ranks)])
         if(enforce_scientific) {
           bin_taxa <- bin_taxa[!grepl(re_int, bin_taxa[["identification"]], perl = TRUE)]
         }
-        bin_taxa[, id_count := mapply(function(rank, id) bin_taxa[get(rank) == id, .N], get("identification_rank"), get("identification"))]
+        bin_taxa[, id_count := mapply(function(ranks, id) bin_taxa[get(rank) == id, .N], get("identification_rank"), get("identification"))]
         unique_lineages <- bin_taxa[bin_taxa[["id_count"]] == 1][["identification"]]
         identification %in% unique_lineages
       }), by = "bin_uri"]$V1]

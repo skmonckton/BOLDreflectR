@@ -266,18 +266,19 @@ ui <- bslib::page_fillable(
                      checkboxInput(
                        "bin_rep_tax",
                        "Add representatives per distinct taxon",
-                       value = TRUE
+                       value = FALSE
                      ),
-                     checkboxInput(
-                       "bin_rep_non_redundant",
-                       "Lowest non-redundant taxa only",
-                       value = TRUE
-                     ),
-                     checkboxInput(
-                       "bin_rep_scientific",
-                       "Limit to scientific names",
-                       value = TRUE
-                     ),
+                     hidden(div(id = "bin_rep_tax_opts",
+                         checkboxInput(
+                           "bin_rep_non_redundant",
+                           "Lowest non-redundant taxa only",
+                           value = TRUE
+                         ),
+                         checkboxInput(
+                           "bin_rep_scientific",
+                           "Limit to scientific names",
+                           value = TRUE
+                         ))),
                      bslib::input_switch(
                        "bin_rep_default",
                        "Use default selection criteria",
