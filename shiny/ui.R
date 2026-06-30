@@ -268,6 +268,16 @@ ui <- bslib::page_fillable(
                        "Add representatives per distinct taxon",
                        value = TRUE
                      ),
+                     checkboxInput(
+                       "bin_rep_non_redundant",
+                       "Lowest non-redundant taxa only",
+                       value = TRUE
+                     ),
+                     checkboxInput(
+                       "bin_rep_scientific",
+                       "Limit to scientific names",
+                       value = TRUE
+                     ),
                      bslib::input_switch(
                        "bin_rep_default",
                        "Use default selection criteria",
@@ -276,6 +286,7 @@ ui <- bslib::page_fillable(
                      hidden(div(id = "bin_rep_criteria_wrapper",
                        div(id = "bin-rep-tooltip",
                            bslib::tooltip(icon("circle-question"),
+                                          options = list(customClass = "grey_tooltip"),
                                           "Drag and drop to order by priority, or move unwanted criteria to 'ignored' box.")),
                        bucket_list(
                          header = "Select representative records by:",
@@ -285,14 +296,18 @@ ui <- bslib::page_fillable(
                            input_id = "bin_rep_criteria",
                            text = "Selected criteria:",
                            labels = list(
+                             "bin_rep_vouchered" = div("Sequence is vouchered",
+                                                       bslib::tooltip(icon("circle-question"),
+                                                                      options = list(customClass = "grey_tooltip"),
+                                                                      "Prioritize records with known voucher repositories over those mined from databases like GenBank.")),
                              "bin_rep_seq" = tagList(selectInput("bin_rep_seq_opt",
                                                          "COI sequence length",
-                                                         choices = list("nearest to 658bp" = "standard",
+                                                         choices = list("nearest to 658bp" = 658,
                                                                         "nearest to ____bp (specify)" = "custom",
-                                                                        "nearest to mode for BIN" = "mode",
-                                                                        "nearest to mode, or 658bp if present" = "combo",
+                                                                        "nearest to mode for BIN" = "COI_auto",
                                                                         "longest",
-                                                                        "shortest")),
+                                                                        "shortest"),
+                                                         selected = "COI_auto"),
                                                      hidden(numericInput("bin_rep_seq_len", "", value = 658))),
                              "bin_rep_id" = selectizeInput("bin_rep_id_opt", "Preferred ID method(s)",
                                                            choices = list("BIN based", "BOLD ID Engine", "Tree based", "Morphology",
@@ -304,8 +319,8 @@ ui <- bslib::page_fillable(
                                                              choices = list("Centre for Biodiversity Genomics"),
                                                              selected = "Centre for Biodiversity Genomics",
                                                              multiple = TRUE),
-                             "bin_rep_date" = selectInput("bin_rep_date_opt", "Collection date", choices = list("newest", "oldest")),
-                             "bin_rep_up" = selectInput("bin_rep_up_opt", "Sequence upload date", choices = list("newest", "oldest"))
+                             "bin_rep_date" = selectInput("bin_rep_date_opt", "Collection date", choices = list("latest", "oldest")),
+                             "bin_rep_up" = selectInput("bin_rep_up_opt", "Sequence upload date", choices = list("latest", "oldest"))
                            )
                          ),
                          add_rank_list(

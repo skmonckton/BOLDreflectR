@@ -859,13 +859,64 @@
       insert_portal_warning(init_stats)
     })
     
+    observe({
+      criteria <- if(!input$bin_rep_default) {
+        list(vouchered = TRUE,
+             seq_length = ifelse(input$bin_rep_seq_opt == "custom",
+                                 input$bin_rep_seq_len,
+                                 input$bin_rep_seq_opt),
+             id_method = input$bin_rep_id_opt,
+             inst = input$bin_rep_inst_opt,
+             coll_date = input$bin_rep_date_opt,
+             seq_date = input$bin_rep_up_opt)[match(input$bin_rep_criteria,
+                                                    c("bin_rep_vouchered", "bin_rep_seq", "bin_rep_id", "bin_rep_inst", "bin_rep_date", "bin_rep_up"))]
+      } else {
+        list(vouchered = TRUE,
+             seq_length = "COI_auto",
+             id_method = c("Morphology", "Morphology and sequence based",
+                           "Image based", "Image and sequence based"),
+             inst = "Centre for Biodiversity Genomics",
+             coll_date = "latest",
+             seq_date = "latest")
+      }
+      print(criteria)  
+    })
+    
+    
+    
     # select BIN reps and inject as a new tab
     observeEvent(input$bin_rep_btn, {
       req(nrow(outdata$data) > 0)
       outdata$bin_reps <- NULL
-      # outdata$bin_reps <- get_bin_reps(filtered_data()[!empty(bin_uri)])
       withInfProgress(message = "Selecting BIN representatives...", {
-        outdata$bin_reps <- get_bin_reps(filtered_data()[input$data_table_rows_all, ][!empty(bin_uri)])
+
+        criteria <- if(!input$bin_rep_default) {
+          list(vouchered = TRUE,
+               seq_length = ifelse(input$bin_rep_seq_opt == "custom",
+                                   input$bin_rep_seq_len,
+                                   input$bin_rep_seq_opt),
+               id_method = input$bin_rep_id_opt,
+               inst = input$bin_rep_inst_opt,
+               coll_date = input$bin_rep_date_opt,
+               seq_date = input$bin_rep_up_opt)[match(input$bin_rep_criteria,
+                                                      c("bin_rep_vouchered", "bin_rep_seq", "bin_rep_id", "bin_rep_inst", "bin_rep_date", "bin_rep_up"))]
+        } else {
+          list(vouchered = TRUE,
+               seq_length = "COI_auto",
+               id_method = c("Morphology", "Morphology and sequence based",
+                             "Image based", "Image and sequence based"),
+               inst = "Centre for Biodiversity Genomics",
+               coll_date = "latest",
+               seq_date = "latest")
+        }
+        
+        outdata$bin_reps <- get_bin_reps(filtered_data()[input$data_table_rows_all, ],
+                                         n_reps = input$bin_rep_num,
+                                         by_taxon = input$bin_rep_tax,
+                                         non_redundant_taxa = input$bin_rep_non_redundant,
+                                         enforce_scientific = input$bin_rep_scientific,
+                                         prefer_vouchered = input$bin_rep_vouchered,
+                                         criteria = criteria)$record_id
       })
       if(!tab_status$bin_reps) {
         bslib::nav_insert(

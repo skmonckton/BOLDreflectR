@@ -391,10 +391,16 @@ div.form-group:has(.has-items) #save_filter_set {
   margin-bottom: 0.5rem;
 }
 
-#bin-rep-opts .bucket-list label {
+#bin-rep-opts .bucket-list label,
+div[data-rank-id = "bin_rep_vouchered"] div {
   font-size: 0.9rem;
   margin: 0;
   padding: 0;
+}
+
+div[data-rank-id = "bin_rep_vouchered"] div .fa-circle-question {
+  color: #888;
+  margin-left: 0.2rem;
 }
 
 #bin_rep_criteria .shiny-input-container > div,

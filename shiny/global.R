@@ -296,39 +296,125 @@ parse_lat_lon <- function(coord) {
   }
 }
 
-# rounds to a multiple, with optional offset (e.g. to account for reading frame)
-round_to <- function(x, mult = 1, offset = 0) {
-  (round((x+offset)/mult) * mult) - offset
-}
+# select BIN representatives
+get_bin_reps <- function(bold_df,
+                         n_reps = 1,
+                         by_taxon = TRUE,
+                         non_redundant_taxa = TRUE,
+                         enforce_scientific = TRUE,
+                         criteria = list(vouchered = TRUE,
+                                         seq_length = c("COI_auto", "longest", "shortest", 658),
+                                         id_method = c("Morphology", "Morphology and sequence based",
+                                                       "Image based", "Image and sequence based",
+                                                       "Tree based", "BIN based", "BOLD ID Engine",
+                                                       "Other sequence based approach", "Other"),
+                                         inst = "Centre for Biodiversity Genomics",
+                                         coll_date = c("latest", "oldest"),
+                                         seq_date = c("latest", "oldest"))) 
+  {
+  
+  if(!missing(criteria)) {
+    if(length(criteria$seq_length) > 1) stop("'seq_length' criterion must be a single value.")
+    if(!any((criteria$seq_length %in% c("COI_auto", "longest", "shortest")),
+            is.numeric(criteria$seq_length))) {
+      stop("'seq_length' criterion must be one of 'COI_auto', 'longest', 'shortest', or a numeric value.")
+    }
+    if(any(!criteria$id_method %in% c("Morphology", "Morphology and sequence based",
+                                      "Image based", "Image and sequence based",
+                                      "Tree based", "BIN based", "BOLD ID Engine",
+                                      "Other sequence based approach", "Other"))) {
+      warning("'id_method' criterion included unrecognized terms that were ignored.")
+    }
+    if(length(criteria$coll_date) > 1) stop("'coll_date' criterion must be one of 'latest' or 'oldest'.")
+    if(length(criteria$seq_date) > 1) stop("'seq_date' criterion must be one of 'latest' or 'oldest'.")
+  } else {
+    criteria = list(vouchered = TRUE,
+                    seq_length = "COI_auto",
+                    id_method = c("Morphology", "Morphology and sequence based",
+                                  "Image based", "Image and sequence based",
+                                  "Tree based", "BIN based", "BOLD ID Engine",
+                                  "Other sequence based approach", "Other"),
+                    inst = "Centre for Biodiversity Genomics",
+                    coll_date = "latest",
+                    seq_date = "latest")
+  }
+  
+  if("marker_code" %in% names(bold_df)) {
+    data <- bold_df[!empty(bin_uri) & (marker_code == "COI-5P")]
+    bp_col <- "nuc_basecount"
+  } else {
+    data <- bold_df[!empty(bin_uri)]
+    bp_col <- "COI-5P_nuc_basecount"
+  }
 
-# deduces modal sequence length; in case of multiple modes, the value closest to 658 is selected
-deduce_len_in_frame <- function(x) {
-  t <- table(sapply(x, round_to, mult = 3, offset = -1))
-  modal <- names(t)[t == max(t)]
-  as.numeric(unname(modal)[which.min(sapply(modal, function (x) abs(as.numeric(x) - 658)))])
-}
+  if(by_taxon) {
+    select_by <- c("bin_uri", "identification")
+    if(non_redundant_taxa) {
+      data <- data[data[, ({
+        bin_taxa <- unique(.SD[, .SD, .SDcols = c("identification", "identification_rank", ranks)])
+        if(enforce_scientific) {
+          bin_taxa <- bin_taxa[!grepl(re_int, bin_taxa[["identification"]], perl = TRUE)]
+        }
+        bin_taxa[, id_count := mapply(function(rank, id) bin_taxa[get(rank) == id, .N], get("identification_rank"), get("identification"))]
+        unique_lineages <- bin_taxa[bin_taxa[["id_count"]] == 1][["identification"]]
+        identification %in% unique_lineages
+      }), by = "bin_uri"]$V1]
+    }
+  } else {
+    select_by <- "bin_uri"
+  }
 
-# selected BIN representatives
-get_bin_reps <- function(df) {
+  sort_sequence <- lapply(names(criteria), function(step) {
+    if(step == "vouchered") {
+      
+      (grepl("(?i)GenBank", data$inst, perl=T) == criteria$vouchered)
+      
+    } else if(step == "seq_length") {
+      
+      seq_sort <- if(criteria$seq_length == "COI_auto") {
+        # find the modal sequence length for each BIN
+        mode_by_bin <- data[, .(mode = {
+          t <- table(sapply(get(bp_col), function(bp) (round((bp - 1) / 3) * 3) + 1))
+          modal <- names(t)[t == max(t)]
+          
+          # in case of multiple modes, select the one nearest to 658bp
+          as.numeric(unname(modal)[which.min(sapply(modal, function (m) abs(as.numeric(m) - 658)))])
+        }), by = "bin_uri"]
+        
+        # output absolute difference between sequence length and modal length for BIN
+        data[, .SD, .SDcols = c("bin_uri", bp_col)][mode_by_bin, on = "bin_uri"][, ({
+          abs(get(bp_col) - mode)
+        })]
+        
+      } else if(criteria$seq_length == "longest") {
+        data[[bp_col]] * -1
+      } else if(criteria$seq_length == "shortest") {
+        data[[bp_col]]
+      } else {
+        abs(data[[bp_col]] - round(criteria$seq_length, 0))
+      }
+      
+    } else if(step == "id_method") {
+      
+      factor(data$identification_method, levels = criteria$id_method)
+      
+    } else if(step == "inst") {
+      
+      factor(data$inst, levels = criteria$inst)
+      
+    } else if(step == "coll_date") {
+      
+      data$collection_date_start
+      
+    } else if(step == "seq_date") {
+      
+      data$sequence_upload_date
+      
+    }
+  }) 
   
-  data <- df[!empty(bin_uri)]
-  bp_col <- head(c("nuc_basecount", "COI-5P_nuc_basecount")[c("nuc_basecount", "COI-5P_nuc_basecount") %in% names(df)], 1)
+  data[data[do.call("order", sort_sequence), .I[head(n_reps)], by = select_by]$V1, ]
 
-  # get series of distances between sequence length and in-frame modal barcode length for BIN
-  diff_mode <- merge(data,
-                     data[, .(mode = deduce_len_in_frame(get(bp_col))), by = "bin_uri"],
-                     by = "bin_uri",
-                     all.x = TRUE)[, abs(get(bp_col) - mode)]
-  
-  # get Boolean indexers for other features
-  inst_pref <- grepl("Centre for Biodiversity Genomics", data$inst)
-  cbg_pref <- grepl("BIOUG|CBG", data$sampleid)
-  id_pref <- grepl("(?i)morphology|(?i)image", data$identification_method, perl=T)
-  gb_avoid <- grepl("(?i)GenBank", data$inst, perl=T)
-  
-  # sort data and select first row for each unique BIN/taxon combination
-  data[data[order(gb_avoid, diff_mode, -id_pref, -inst_pref, -cbg_pref, -collection_date_start), .I[head(1)], by = c("bin_uri", "identification")]$V1, paste0(processid, ".COI-5P")]
-  
 }
 
 clean_ansi <- function(x) {
