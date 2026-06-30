@@ -106,7 +106,8 @@
             "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
             add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
           ), "raw") |> writeBin(tmpfile)
-          source(tmpfile, local = TRUE)
+          # source(tmpfile, local = TRUE)
+          source("C:/Users/Spencer Monckton/Desktop/Scripts/CBG-taxonomy/Code/bfr_test_func.R", local = TRUE)
         }, error = function(e){
           showNotification(paste0("Error accessing test functions:", e$message), type = "error")
         })
@@ -191,6 +192,33 @@
         shinyjs::hide('include_nts')
       }
     })
+    
+    # reactively show/hide BIN rep taxon options
+    observeEvent(input$bin_rep_tax, {
+      if ((isolate(input$bin_rep_tax) == TRUE)) {
+        shinyjs::show("bin_rep_tax_opts")
+      } else {
+        shinyjs::hide("bin_rep_tax_opts")
+      }
+    })
+    
+    # reactively show/hide BIN rep selection criteria
+    observeEvent(input$bin_rep_default, {
+      if ((isolate(input$bin_rep_default) == TRUE)) {
+        shinyjs::hide("bin_rep_criteria_wrapper")
+      } else {
+        shinyjs::show("bin_rep_criteria_wrapper")
+      }
+    })
+    
+    # reactively show/hide BIN rep sequence length input
+    observeEvent(input$bin_rep_seq_opt, {
+      if(input$bin_rep_seq_opt == "custom") {
+        shinyjs::show("bin_rep_seq_len")
+      } else {
+        shinyjs::hide("bin_rep_seq_len")
+      }
+    }, ignoreInit = TRUE, ignoreNULL = FALSE)
     
     ### SERVER HELPERS
     
@@ -623,6 +651,17 @@
       updateSelectizeInput(session, "filt_seq", choices = outdata$markers, selected = NULL)
     })
     
+    # keep BIN rep options updated based on available data
+    observeEvent(outdata$data, {
+      req(outdata$data)
+      insts <- unique(as.character(outdata$data[["inst"]]))
+      updateSelectizeInput(session, "bin_rep_inst_opt",
+                           choices = as.list(insts),
+                           selected = ifelse("Centre for Biodiversity Genomics" %in% insts,
+                                             "Centre for Biodiversity Genomics",
+                                             insts[1]))
+    })
+    
     # function to compute a row index based on user-selected markers
     # this is needed for the flexibility to work either with the full table or collapsed-marker table  
     seq_filter <- function(data, filt_seq) {
@@ -743,9 +782,12 @@
                                            enforce_scientific = input$bc_enforcesci,
                                            discord_format = "text")
         col_order <- append(names(bin_consensus), c("min_rank", "max_rank"), after = 2)
+        include <- ifelse(input$bc_enforcesci,
+                          which(!grepl(re_int, data[, identification], perl = TRUE)),
+                          seq_along(data[, identification]))
         bin_consensus <- merge(bin_consensus,
-                               data[, .(min_rank = as.factor(ranks[min(match(get("identification_rank"), ranks))]),
-                                        max_rank = as.factor(ranks[max(match(get("identification_rank"), ranks))])), by = "bin_uri"],
+                               data[, .(min_rank = as.factor(ranks[min(match(data[include, identification_rank], ranks))]),
+                                        max_rank = as.factor(ranks[max(match(data[include, identification_rank], ranks))])), by = "bin_uri"],
                                by = "bin_uri",
                                all.x = TRUE)
         setcolorder(bin_consensus, col_order)
@@ -826,13 +868,63 @@
       insert_portal_warning(init_stats)
     })
     
+    observe({
+      criteria <- if(!input$bin_rep_default) {
+        list(vouchered = TRUE,
+             seq_length = ifelse(input$bin_rep_seq_opt == "custom",
+                                 input$bin_rep_seq_len,
+                                 input$bin_rep_seq_opt),
+             id_method = input$bin_rep_id_opt,
+             inst = input$bin_rep_inst_opt,
+             coll_date = input$bin_rep_date_opt,
+             seq_date = input$bin_rep_up_opt)[match(input$bin_rep_criteria,
+                                                    c("bin_rep_vouchered", "bin_rep_seq", "bin_rep_id", "bin_rep_inst", "bin_rep_date", "bin_rep_up"))]
+      } else {
+        list(vouchered = TRUE,
+             seq_length = "COI_auto",
+             id_method = c("Morphology", "Morphology and sequence based",
+                           "Image based", "Image and sequence based"),
+             inst = "Centre for Biodiversity Genomics",
+             coll_date = "latest",
+             seq_date = "latest")
+      }
+      print(criteria)  
+    })
+    
+    
+    
     # select BIN reps and inject as a new tab
     observeEvent(input$bin_rep_btn, {
       req(nrow(outdata$data) > 0)
       outdata$bin_reps <- NULL
-      # outdata$bin_reps <- get_bin_reps(filtered_data()[!empty(bin_uri)])
       withInfProgress(message = "Selecting BIN representatives...", {
-        outdata$bin_reps <- get_bin_reps(filtered_data()[input$data_table_rows_all, ][!empty(bin_uri)])
+
+        criteria <- if(!input$bin_rep_default) {
+          list(vouchered = TRUE,
+               seq_length = ifelse(input$bin_rep_seq_opt == "custom",
+                                   input$bin_rep_seq_len,
+                                   input$bin_rep_seq_opt),
+               id_method = input$bin_rep_id_opt,
+               inst = input$bin_rep_inst_opt,
+               coll_date = input$bin_rep_date_opt,
+               seq_date = input$bin_rep_up_opt)[match(input$bin_rep_criteria,
+                                                      c("bin_rep_vouchered", "bin_rep_seq", "bin_rep_id", "bin_rep_inst", "bin_rep_date", "bin_rep_up"))]
+        } else {
+          list(vouchered = TRUE,
+               seq_length = "COI_auto",
+               id_method = c("Morphology", "Morphology and sequence based",
+                             "Image based", "Image and sequence based"),
+               inst = "Centre for Biodiversity Genomics",
+               coll_date = "latest",
+               seq_date = "latest")
+        }
+        
+        outdata$bin_reps <- get_bin_reps(filtered_data()[input$data_table_rows_all, ],
+                                         n_reps = input$bin_rep_num,
+                                         by_taxon = input$bin_rep_tax,
+                                         non_redundant_taxa = input$bin_rep_non_redundant,
+                                         enforce_scientific = input$bin_rep_scientific,
+                                         criteria = criteria)$record_id
       })
       if(!tab_status$bin_reps) {
         bslib::nav_insert(
