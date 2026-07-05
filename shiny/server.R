@@ -1,5 +1,7 @@
   server <- function(input, output, session) {
     
+    ### Initialization ----
+    
     session$onSessionEnded(function() {
       stopApp()
     })
@@ -42,8 +44,6 @@
         observer.observe(document.body, { childList: true, subtree: true });
       ")
     }, once = TRUE)
-    
-    ### SETUP
     
     # initialize object to store search parameters
     fetch_params <- reactiveValues()
@@ -94,7 +94,7 @@
              ins_target = names(tabs)[max(which(tabs[1:match(ins_tab, names(tabs))] == TRUE))])
     }
     
-    ### REACTIVE UI
+    ### Reactive UI ----
     
     source_test_code <- function() {
       tryCatch({
@@ -220,7 +220,7 @@
       }
     }, ignoreInit = TRUE, ignoreNULL = FALSE)
     
-    ### SERVER HELPERS
+    ### Server helpers ----
     
     # function to reset filter options
     reset_filter <- function(include_verbatim = TRUE) {
@@ -260,7 +260,7 @@
       reset_filter()
     })
     
-    ### DATA FETCHING
+    ### Data fetching ----
     
     # set API key and generate fetch_ids
     observeEvent(input$fetch_btn | input$fetch_ctrl_enter, {
@@ -371,8 +371,7 @@
     # populate data
     populate_data <- function(data) {
       data[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
-      cols_to_factor <- intersect(config$fieldsets$factorfields, names(data))
-      data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
+      convert_factor_char(data)
       if(fetch_params$fetch_by == "bin_uris") {
         shinyjs::hide("include_binmates")
         shinyjs::hide("view_binmates")
@@ -464,8 +463,7 @@
                        id = "fetch_msg", duration=NULL, type = "message")
       binmate_data <- binmate_data[, c("id_date_parsed", "project_code", "lat", "lon") :=
                                      c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
-      cols_to_factor <- intersect(config$fieldsets$factorfields, names(binmate_data))
-      binmate_data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
+      convert_factor_char(binmate_data)
       data <- unique(rbindlist(list(outdata$data,
                                     binmate_data),
                                fill = TRUE))
@@ -493,7 +491,7 @@
       }
     })
     
-    ### REACTIVE COMPUTATIONS AND OBSERVERS
+    ### Reactive computations & observers ----
     
     # keep summary analysis options updated according to available fields
     observeEvent(outdata$data, {
@@ -888,7 +886,6 @@
              coll_date = "latest",
              seq_date = "latest")
       }
-      print(criteria)  
     })
     
     
@@ -919,12 +916,18 @@
                seq_date = "latest")
         }
         
-        outdata$bin_reps <- get_bin_reps(filtered_data()[input$data_table_rows_all, ],
-                                         n_reps = input$bin_rep_num,
-                                         by_taxon = input$bin_rep_tax,
-                                         non_redundant_taxa = input$bin_rep_non_redundant,
-                                         enforce_scientific = input$bin_rep_scientific,
-                                         criteria = criteria)$record_id
+        tryCatch({
+          outdata$bin_reps <- get_bin_reps(convert_factor_char(outdata$data[processid %in% filtered_data()[input$data_table_rows_all, processid]],
+                                                               to_factor = FALSE, copy = TRUE),
+                                           Nreps = input$bin_rep_num,
+                                           by.taxon = input$bin_rep_tax,
+                                           non.redundant.taxa = input$bin_rep_non_redundant,
+                                           enforce.scientific = input$bin_rep_scientific,
+                                           criteria = criteria)$record_id
+        }, error = function(e){
+          showNotification(paste0("Error selecting BIN representatives:", e$message), type = "error")
+        })
+        
       })
       if(!tab_status$bin_reps) {
         bslib::nav_insert(
@@ -1026,7 +1029,7 @@
                  .SDcols = intersect(outdata$select_fields, names(outdata$data))]
     })
     
-    ### OUTPUT RENDERING
+    ### Output rendering ----
   
     # build a reactive JSON lookup map and send it to the window
     # (enables hyperlinking of sample IDs and process IDs even when dependent columns are excluded)
@@ -1123,6 +1126,8 @@
                          options = layersControlOptions(collapsed = FALSE))
     })
 
+    ### Tab UI handling ----
+    
     # convenience list object to handle download/copy from current tab 
     tab_data <- list(
       data = 
@@ -1175,6 +1180,8 @@
         shinyjs::show('table_buttons')
       }
     })
+    
+    ### Data export logic ----
     
     # copy button logic
     observeEvent(input$copy_table, { cb(as.data.frame(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ])) })

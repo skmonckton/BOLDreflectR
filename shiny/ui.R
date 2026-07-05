@@ -273,16 +273,24 @@ ui <- bslib::page_fillable(
                        value = FALSE
                      ),
                      hidden(div(id = "bin_rep_tax_opts",
-                         checkboxInput(
-                           "bin_rep_non_redundant",
-                           "Lowest non-redundant taxa only",
-                           value = TRUE
-                         ),
-                         checkboxInput(
-                           "bin_rep_scientific",
-                           "Limit to scientific names",
-                           value = TRUE
-                         ))),
+                                checkboxInput(
+                                  "bin_rep_scientific",
+                                  div("Enforce scientific names",
+                                      bslib::tooltip(
+                                        icon("circle-question"),
+                                        HTML("Ignore interim / provisional names for the purposes of determining distinct taxa.")
+                                      )),
+                                  value = TRUE
+                                ),
+                                checkboxInput(
+                                  "bin_rep_non_redundant",
+                                  div("Lowest non-redundant taxa",
+                                      bslib::tooltip(
+                                        icon("circle-question"),
+                                        HTML("Select representatives at the lowest available rank from each distinct taxonomic lineage. For example, in a BIN with the identifications Apidae, <em>Bombus</em>, and <em>Bombus terrestris</em>, records assigned to <em>Bombus terrestris</em> will be selected first."),
+                                      )),
+                                  value = TRUE
+                                ))),
                      bslib::input_switch(
                        "bin_rep_default",
                        "Use default selection criteria",
