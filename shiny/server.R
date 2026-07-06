@@ -1,5 +1,7 @@
   server <- function(input, output, session) {
     
+    ### Initialization ----
+    
     session$onSessionEnded(function() {
       stopApp()
     })
@@ -42,8 +44,6 @@
         observer.observe(document.body, { childList: true, subtree: true });
       ")
     }, once = TRUE)
-    
-    ### SETUP
     
     # initialize object to store search parameters
     fetch_params <- reactiveValues()
@@ -96,7 +96,7 @@
              ins_target = names(tabs)[max(which(tabs[1:match(ins_tab, names(tabs))] == TRUE))])
     }
     
-    ### REACTIVE UI
+    ### Reactive UI ----
     
     source_test_code <- function() {
       tryCatch({
@@ -108,7 +108,8 @@
             "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
             add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
           ), "raw") |> writeBin(tmpfile)
-          source(tmpfile, local = TRUE)
+          # source(tmpfile, local = TRUE)
+          source("C:/Users/Spencer Monckton/Desktop/Scripts/CBG-taxonomy/Code/bfr_test_func.R", local = TRUE)
         }, error = function(e){
           showNotification(paste0("Error accessing test functions:", e$message), type = "error")
         })
@@ -241,7 +242,81 @@
       }
     })
     
-    ### SERVER HELPERS
+    # reactively adjust available diversity analysis options
+    observeEvent(input$div_site_type, {
+      if(input$div_site_type == "locations") {
+        shinyjs::show('div_location_type')
+        shinyjs::hide('div_grid_size')
+      } else if(input$div_site_type == "grids") {
+        shinyjs::show('div_grid_size')
+        shinyjs::hide('div_location_type')
+      } else {
+        shinyjs::hide('div_location_type')
+        shinyjs::hide('div_grid_size')
+      }
+    })
+    
+    observe({
+      req(filtered_data())
+      data <- filtered_data()[input$data_table_rows_all, ]
+      req(nrow(data) > 0)
+      site_types <- list("Site" = "site",
+                         "Sector" = "sector",
+                         "Region" = "region",
+                         "Province/State" = "province.state",
+                         "Country/Ocean" = "country.ocean")
+      taxon_ranks <- c("Species if known, BIN if not" = "bin_fallback",
+                       "BIN" = "bin_uri",
+                       rev(config$bcdmnames)[rev(config$bcdmnames) %in% ranks])
+      allow_cols <- names(which(unlist(data[, lapply(.SD, function(x) uniqueN(!empty(x)) >= 2),
+                                            .SDcols = unlist(unname(c(site_types, taxon_ranks[taxon_ranks != "bin_fallback"])))])))
+      if(any(c("bin_uri","species") %in% allow_cols)) allow_cols <- c(allow_cols, "bin_fallback")
+      
+      allow_sites <- site_types[site_types %in% allow_cols]
+      updateSelectizeInput(session, "div_location_type",
+                           choices = allow_sites,
+                           selected = allow_sites[[1]])
+      
+      allow_ranks <- taxon_ranks[taxon_ranks %in% allow_cols]
+      updateSelectInput(session, "div_rank", choices = allow_ranks, selected = allow_ranks[1])
+    })
+    
+    observeEvent(input$div_profile, {
+      if("beta" %in% input$div_profile) {
+        shinyjs::enable('div_beta_type')
+      } else {
+        shinyjs::disable('div_beta_type')
+      }
+    })
+    
+    # reactively show/hide BIN rep taxon options
+    observeEvent(input$bin_rep_tax, {
+      if ((isolate(input$bin_rep_tax) == TRUE)) {
+        shinyjs::show("bin_rep_tax_opts")
+      } else {
+        shinyjs::hide("bin_rep_tax_opts")
+      }
+    })
+    
+    # reactively show/hide BIN rep selection criteria
+    observeEvent(input$bin_rep_default, {
+      if ((isolate(input$bin_rep_default) == TRUE)) {
+        shinyjs::hide("bin_rep_criteria_wrapper")
+      } else {
+        shinyjs::show("bin_rep_criteria_wrapper")
+      }
+    })
+    
+    # reactively show/hide BIN rep sequence length input
+    observeEvent(input$bin_rep_seq_opt, {
+      if(input$bin_rep_seq_opt == "custom") {
+        shinyjs::show("bin_rep_seq_len")
+      } else {
+        shinyjs::hide("bin_rep_seq_len")
+      }
+    }, ignoreInit = TRUE, ignoreNULL = FALSE)
+    
+    ### Server helpers ----
     
     # function to reset filter options
     reset_filter <- function(include_verbatim = TRUE) {
@@ -281,7 +356,7 @@
       reset_filter()
     })
     
-    ### DATA FETCHING
+    ### Data fetching ----
     
     # set API key and generate fetch_ids
     observeEvent(input$fetch_btn | input$fetch_ctrl_enter, {
@@ -392,8 +467,7 @@
     # populate data
     populate_data <- function(data) {
       data[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
-      cols_to_factor <- intersect(config$fieldsets$factorfields, names(data))
-      data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
+      convert_factor_char(data)
       if(fetch_params$fetch_by == "bin_uris") {
         shinyjs::hide("include_binmates")
         shinyjs::hide("view_binmates")
@@ -485,8 +559,7 @@
                        id = "fetch_msg", duration=NULL, type = "message")
       binmate_data <- binmate_data[, c("id_date_parsed", "project_code", "lat", "lon") :=
                                      c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
-      cols_to_factor <- intersect(config$fieldsets$factorfields, names(binmate_data))
-      binmate_data[, (cols_to_factor) := lapply(.SD, as.factor), .SDcols = cols_to_factor]
+      convert_factor_char(binmate_data)
       data <- unique(rbindlist(list(outdata$data,
                                     binmate_data),
                                fill = TRUE))
@@ -514,7 +587,7 @@
       }
     })
     
-    ### REACTIVE COMPUTATIONS AND OBSERVERS
+    ### Reactive computations & observers ----
     
     # keep summary analysis options updated according to available fields
     observeEvent(outdata$data, {
@@ -670,6 +743,17 @@
     # keep marker filters updated based on available data
     observeEvent(outdata$markers, {
       updateSelectizeInput(session, "filt_seq", choices = outdata$markers, selected = NULL)
+    })
+    
+    # keep BIN rep options updated based on available data
+    observeEvent(outdata$data, {
+      req(outdata$data)
+      insts <- unique(as.character(outdata$data[["inst"]]))
+      updateSelectizeInput(session, "bin_rep_inst_opt",
+                           choices = as.list(insts),
+                           selected = ifelse("Centre for Biodiversity Genomics" %in% insts,
+                                             "Centre for Biodiversity Genomics",
+                                             insts[1]))
     })
     
     # function to compute a row index based on user-selected markers
@@ -885,9 +969,12 @@
                                            enforce_scientific = input$bc_enforcesci,
                                            discord_format = "text")
         col_order <- append(names(bin_consensus), c("min_rank", "max_rank"), after = 2)
+        include <- ifelse(input$bc_enforcesci,
+                          which(!grepl(re_int, data[, identification], perl = TRUE)),
+                          seq_along(data[, identification]))
         bin_consensus <- merge(bin_consensus,
-                               data[, .(min_rank = as.factor(ranks[min(match(get("identification_rank"), ranks))]),
-                                        max_rank = as.factor(ranks[max(match(get("identification_rank"), ranks))])), by = "bin_uri"],
+                               data[, .(min_rank = as.factor(ranks[min(match(data[include, identification_rank], ranks))]),
+                                        max_rank = as.factor(ranks[max(match(data[include, identification_rank], ranks))])), by = "bin_uri"],
                                by = "bin_uri",
                                all.x = TRUE)
         setcolorder(bin_consensus, col_order)
@@ -968,13 +1055,68 @@
       insert_portal_warning(init_stats)
     })
     
+    observe({
+      criteria <- if(!input$bin_rep_default) {
+        list(vouchered = TRUE,
+             seq_length = ifelse(input$bin_rep_seq_opt == "custom",
+                                 input$bin_rep_seq_len,
+                                 input$bin_rep_seq_opt),
+             id_method = input$bin_rep_id_opt,
+             inst = input$bin_rep_inst_opt,
+             coll_date = input$bin_rep_date_opt,
+             seq_date = input$bin_rep_up_opt)[match(input$bin_rep_criteria,
+                                                    c("bin_rep_vouchered", "bin_rep_seq", "bin_rep_id", "bin_rep_inst", "bin_rep_date", "bin_rep_up"))]
+      } else {
+        list(vouchered = TRUE,
+             seq_length = "COI_auto",
+             id_method = c("Morphology", "Morphology and sequence based",
+                           "Image based", "Image and sequence based"),
+             inst = "Centre for Biodiversity Genomics",
+             coll_date = "latest",
+             seq_date = "latest")
+      }
+    })
+    
+    
+    
     # select BIN reps and inject as a new tab
     observeEvent(input$bin_rep_btn, {
       req(nrow(outdata$data) > 0)
       outdata$bin_reps <- NULL
-      # outdata$bin_reps <- get_bin_reps(filtered_data()[!empty(bin_uri)])
       withInfProgress(message = "Selecting BIN representatives...", {
-        outdata$bin_reps <- get_bin_reps(filtered_data()[input$data_table_rows_all, ][!empty(bin_uri)])
+
+        criteria <- if(!input$bin_rep_default) {
+          list(vouchered = TRUE,
+               seq_length = ifelse(input$bin_rep_seq_opt == "custom",
+                                   input$bin_rep_seq_len,
+                                   input$bin_rep_seq_opt),
+               id_method = input$bin_rep_id_opt,
+               inst = input$bin_rep_inst_opt,
+               coll_date = input$bin_rep_date_opt,
+               seq_date = input$bin_rep_up_opt)[match(input$bin_rep_criteria,
+                                                      c("bin_rep_vouchered", "bin_rep_seq", "bin_rep_id", "bin_rep_inst", "bin_rep_date", "bin_rep_up"))]
+        } else {
+          list(vouchered = TRUE,
+               seq_length = "COI_auto",
+               id_method = c("Morphology", "Morphology and sequence based",
+                             "Image based", "Image and sequence based"),
+               inst = "Centre for Biodiversity Genomics",
+               coll_date = "latest",
+               seq_date = "latest")
+        }
+        
+        tryCatch({
+          outdata$bin_reps <- get_bin_reps(convert_factor_char(outdata$data[processid %in% filtered_data()[input$data_table_rows_all, processid]],
+                                                               to_factor = FALSE, copy = TRUE),
+                                           Nreps = input$bin_rep_num,
+                                           by.taxon = input$bin_rep_tax,
+                                           non.redundant.taxa = input$bin_rep_non_redundant,
+                                           enforce.scientific = input$bin_rep_scientific,
+                                           criteria = criteria)$record_id
+        }, error = function(e){
+          showNotification(paste0("Error selecting BIN representatives:", e$message), type = "error")
+        })
+        
       })
       if(!tab_status$bin_reps) {
         bslib::nav_insert(
@@ -1076,7 +1218,7 @@
                  .SDcols = intersect(outdata$select_fields, names(outdata$data))]
     })
     
-    ### OUTPUT RENDERING
+    ### Output rendering ----
   
     # build a reactive JSON lookup map and send it to the window
     # (enables hyperlinking of sample IDs and process IDs even when dependent columns are excluded)
@@ -1451,6 +1593,8 @@
                          options = layersControlOptions(collapsed = FALSE))
     })
 
+    ### Tab UI handling ----
+    
     # convenience list object to handle download/copy from current tab 
     tab_data <- list(
       data = 
@@ -1509,6 +1653,8 @@
         shinyjs::show('table_buttons')
       }
     })
+    
+    ### Data export logic ----
     
     # copy button logic
     observeEvent(input$copy_table, { cb(as.data.frame(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ])) })
