@@ -183,25 +183,26 @@ ui <- bslib::page_fillable(
           value="summarize",
           "Summarize",
           icon = bsicons::bs_icon("bar-chart"),
-          inputGroup(
-            selectInput("ana_opt",
-                        "Summarize by:",
-                        list(
-                          "Taxonomy" = list(
-                            "Taxonomic summary" = "tax_summary"),
-                          "Unique values - selected fields" = list(
-                            "Taxon" = "identification",
-                            "BIN" = "bin_uri",
-                            "Identification dates (parsed)" = "id_date_parsed",
-                            "Projects" = "projects",
-                            "Datasets" = "datasets",
-                            "Country" = "country.ocean"),
-                          "Unique values - all fields" = as.list(config$fieldsets$bcdm[!config$fieldsets$bcdm %in% c("identification","bin_uri","country.ocean","id_date_parsed","project_code")])
-                          ), multiple = FALSE),
-            div(class="form-group shiny-input-container",
-                actionButton(
-                  "ana_btn",
-                  "Summarize"))),
+          inputGroup(title = "Value counts",
+                     groupId = "sum-opts",
+                     selectInput("ana_opt",
+                                 "Summarize by:",
+                                 list(
+                                   "Taxonomy" = list(
+                                     "Taxonomic summary" = "tax_summary"),
+                                   "Unique values - selected fields" = list(
+                                     "Taxon" = "identification",
+                                     "BIN" = "bin_uri",
+                                     "Identification dates (parsed)" = "id_date_parsed",
+                                     "Projects" = "projects",
+                                     "Datasets" = "datasets",
+                                     "Country" = "country.ocean"),
+                                   "Unique values - all fields" = as.list(config$fieldsets$bcdm[!config$fieldsets$bcdm %in% c("identification","bin_uri","country.ocean","id_date_parsed","project_code")])
+                                 ), multiple = FALSE),
+                     div(class="form-group shiny-input-container",
+                         actionButton(
+                           "ana_btn",
+                           "Generate"))),
           inputGroup(title = "Query hit report",
                      groupId = "qhits-opts",
                      div(class="form-group",
@@ -211,7 +212,7 @@ ui <- bslib::page_fillable(
                            HTML("This reflects the original query only, not additional BIN members."))),
                      div(actionButton(
                        "query_hits_btn",
-                       "Generate report"
+                       "Generate"
                      ))),
           inputGroup(title = "Distribution map",
                      groupId = "map-opts",
@@ -222,43 +223,53 @@ ui <- bslib::page_fillable(
                            HTML("Only rows matching current filters that have valid coordinates will be included on the map."))),
                      div(actionButton(
                        "map_btn",
-                       "Generate map"
+                       "Generate"
                      )))),
         bslib::accordion_panel(
           value="analyze",
           "Analyze",
           icon = bsicons::bs_icon("graph-up"),
-          inputGroup(title = "Diversity profile",
+          inputGroup(title = tagList("Diversity profile", actionLink("div_profile_info", icon("info"))),
                      groupId = "div-analysis",
                      selectInput("div_rank", "Analyze by:", 
                                  c("Species if known, BIN if not" = "bin_fallback",
                                    "BIN" = "bin_uri",
-                                   rev(config$bcdmnames)[rev(config$bcdmnames) %in% ranks])),
+                                   "Species" = "species")),
+                                   # rev(config$bcdmnames)[rev(config$bcdmnames) %in% ranks])),
                      # selectInput("div_taxon", "Restrict to taxon:", c()),
                      selectInput("div_site_type", "Site type:",
                                  list("Locations" = "locations",
                                       "Grid squares" = "grids")),
-                     hidden(selectInput("div_location_type", "Location type:", 
-                                        list("Site" = "site",
-                                             "Sector" = "sector",
-                                             "Region" = "region",
-                                             "Province/State" = "province.state",
-                                             "Country/Ocean" = "country.ocean"))),
-                     hidden(numericInput("div_grid_size", "Grid size (km):",
-                                         value = 1, min = 0.001, max = 9227, step = 1)),
+                     hidden(selectInput("div_location_type", "Use as sites:", 
+                                        list("Sites" = "site",
+                                             "Sectors" = "sector",
+                                             "Regions" = "region",
+                                             "Provinces/States" = "province.state",
+                                             "Countries/Oceans" = "country.ocean",
+                                             "Ecoregions" = "ecoregion",
+                                             "Biomes" = "biome",
+                                             "Realms" = "realm"))),
+                     hidden(numericInput("div_grid_size", "Grid unit size (km):",
+                                         value = 500, min = 0.001, max = 9227, step = 1)),
                      checkboxInput("div_presence", "Compute as presence-absence matrix"),
-                     selectizeInput("div_profile", "Profile type:", 
-                                    list("Richness" = "richness",
+                     selectizeInput("div_profile", "Profile:", 
+                                    list("Rarefaction & extrapolation" = "rarefy",
                                          "Shannon diversity index" = "shannon",
                                          "Preston plot" = "preston",
                                          "Beta diversity index" = "beta"),
-                                    selected = c("richness", "shannon", "preston", "beta"),
+                                    selected = c("rarefy", "shannon", "preston", "beta"),
                                     multiple = TRUE),
+                     checkboxInput("div_rare_by_site", 
+                                   div("Perform rarefaction for all sites",
+                                       bslib::tooltip(
+                                         icon("circle-question"),
+                                         paste0("Sites with fewer than 10 observations or 2 species will be dropped for this analysis."))),
+                                   value = FALSE),
                      selectInput("div_beta_type", "Beta diversity type:",
                                  list("Jaccard index" = "jaccard",
                                       "Sorensen index" = "sorensen"),
                                  selected = "jaccard"),
-                     actionButton("div_compute_btn", "Compute diversity profile")),
+                     actionButton("div_compute_btn", "Run")),
           inputGroup(title = "Consensus BIN taxonomy",
                      groupId = "bin-cons-opts",
                      numericInput(
@@ -289,7 +300,7 @@ ui <- bslib::page_fillable(
                            ))),
                      div(actionButton(
                        "bin_consensus_btn",
-                       "Get BIN consensus"))),
+                       "Run"))),
           inputGroup(title = "BIN representatives",
                      groupId = "bin-rep-opts",
                      numericInput(
@@ -375,7 +386,7 @@ ui <- bslib::page_fillable(
                        ))),
                      div(actionButton(
                        "bin_rep_btn",
-                       "Get BIN reps"
+                       "Run"
                      ))))
       ), width = 3
     ),

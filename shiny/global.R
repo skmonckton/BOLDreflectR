@@ -307,6 +307,35 @@ parse_lat_lon <- function(coord) {
   }
 }
 
+# generates formatted labels for diveristy analysis output
+get_div_label <- function(type, capitalize = FALSE, plural = FALSE) {
+  label <- switch(type,
+                  bin_uri = c("BIN", "BINs"),
+                  subspecies = c("subspecies", "subspecies"),
+                  bin_fallback =, species = c("species", "species"),
+                  genus = c("genus" , "genera"),
+                  tribe = c("tribe", "tribes"),
+                  subfamily = c("subfamily", "subfamilies"),
+                  family = c("family", "families"),
+                  class = c("class", "classes"),
+                  order = c("order", "orders"),
+                  grids = c("grid cell", "grid cells"),
+                  site = c("site", "sites"),
+                  sector = c("sector", "sectors"),
+                  region = c("region", "regions"),
+                  province.state = c("province/state", "provinces/states"),
+                  country.ocean = c("country", "countries"),
+                  ecoregion = c("ecoregion", "ecoregions"),
+                  biome = c("biome", "biomes"),
+                  realm = c("realm", "realms"))
+  label <- ifelse(plural, label[2], label[1])
+  if(capitalize) {
+    paste(tools::toTitleCase(unlist(strsplit(label, "/"))), collapse = "/")  
+  } else {
+    label
+  }
+}
+
 # select BIN representatives
 get_bin_reps <- function(
     bold.search.res,
@@ -400,7 +429,6 @@ get_bin_reps <- function(
     }
     if(enforce.scientific) {
       # Substitute cleaned identification for later rep selection
-      
       data[, "id_clean" := id_lookup$identification]
       select_by <- c("bin_uri", "id_clean")
     }
@@ -447,8 +475,8 @@ get_bin_reps <- function(
   # Apply sort keys in sequence to select and return representatives
   rep_idx <- data[do.call("order", sort_sequence), .I[seq_len(min(Nreps, .N))], by = select_by]$V1
   data <- data[rep_idx, ]
-  if(enforce.scientific || non.redundant.taxa) id_lookup <- id_lookup[rep_idx, ]
   if(by.taxon) {
+    if(enforce.scientific || non.redundant.taxa) id_lookup <- id_lookup[rep_idx, ]
     if(non.redundant.taxa) {
       id_lookup_by_bin <- split(id_lookup, id_lookup$bin_uri)
       # Find and apply the indices of records with the lowest non-redundant identification in each BIN

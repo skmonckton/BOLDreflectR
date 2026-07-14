@@ -1,0 +1,18 @@
+
+<p>Diversity statistics are computed using the following methods:</p>
+<div class="shiny-html-output shiny-table-output shiny-bound-output" aria-live="polite">
+  <table id="div_details_table" class="table shiny-table table-striped spacing-s" style="width:100%; font-size:0.9rem;">
+    <thead>
+      <tr><th style="text-align: left; width:1px; white-space:nowrap;">Analysis</th><th style="text-align: left; width:1px; white-space:nowrap;">R package</th><th style="text-align: left; width:1px; white-space:nowrap;">Function</th><th style="text-align: left;">Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td style="width:1px; white-space:nowrap;">Community matrix</td><td>BOLDconnectR</td><td><pre>bold.analyze.diversity()</pre></td><td></td></tr>
+      <tr><td style="width:1px; white-space:nowrap;">Preston abundance distribution</td><td>vegan</td><td><pre>prestondistr()</pre></td><td>Called via BOLDconnectR.</td></tr>
+      <tr><td style="width:1px; white-space:nowrap;">Shannon index</td><td>vegan</td><td><pre>diversity()</pre></td><td>Called via BOLDconnectR.</td></tr>
+      <tr><td style="width:1px; white-space:nowrap;">Rarefaction &amp; extrapolation</td><td>iNEXT</td><td><pre>iNEXT()</pre></td><td><span style="font-weight:600;">Input parameters:</span> <pre>endpoint = N * 2, nboot = 100</pre>.<br><span style="font-weight:600;">For individual-based rarefaction:</span> <pre>datatype = "abundance"</pre>, and input data are abundance counts of taxa.<br><span style="font-weight:600;">For incidence-based rarefaction (i.e. presence-absence):</span> <pre>datatype = "incidence_freq"</pre>, and input data are incidence frequencies generated from the community matrix using <pre>iNEXT::as.incfreq()</pre></td></tr>
+      <tr><td style="width:1px; white-space:nowrap;">Beta diversity index</td><td>BAT</td><td><pre>beta()</pre></td><td>Called via BOLDconnectR.</td></tr>
+      <tr><td style="width:1px; white-space:nowrap;">Beta diversity ordination (NMDS)</td><td>vegan</td><td><pre>monoMDS()</pre></td><td><span style="font-weight:600;">Input parameters:</span> <pre>k = 2, maxit = 600</pre>.</td></tr>
+    </tbody>
+  </table>
+</div>
+<p>All analyses are computed using available data from the <span style="font-weight:600;">Data</span> tab with current filters applied. Input data are further filtered to exclude records lacking a species/BIN or site/coordinates, except in the case of individual-based rarefaction of overall data, which includes records without site/coordinates.</p>
