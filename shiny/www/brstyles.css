@@ -1,4 +1,4 @@
-:not(:has(#binmate_pids)) pre {
+:has(#div_details_table) pre {
   padding: 2px 6px;
   display: inline;
   background-color: #fbfbfb;
@@ -215,7 +215,7 @@ input[type=number] {
   margin-bottom: 2rem;
 }
 
-.option-group:not(:first-child) .group-header:before {
+:not(.modal-body) > .option-group:not(:first-child) .group-header:before {
   border-top: solid #f7f7f7 4px;
   width: 105%;
   display: block;
