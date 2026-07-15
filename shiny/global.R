@@ -86,6 +86,26 @@ marker_options <- list(" " = "",
                        Primary = stats::setNames(config$markercodes$major, config$markercodes$major),
                        Other = stats::setNames(config$markercodes$other, config$markercodes$other))
 
+validate_apikey <- function(key) {
+  stored <- Sys.getenv("api_key")
+  try(stored <- key_get("BOLD.apikey"), silent=TRUE)
+  if ((stored != key) | (all(stored == "", key == ""))) {
+    if(key != "") {
+      tryCatch({
+        bold.apikey(key)
+        shinyjs::hide("api_key")
+      }, error = function(e) {
+        showNotification(e$message, id="error", id="fetch_msg", type = "error")
+      })
+    } else {
+      Sys.setenv(api_key = "")
+      shinyjs::show("api_key")
+      shinyjs::reset("api_key")
+    }
+    try(key_set_with_value("BOLD.apikey", password = key), silent = TRUE)
+  }
+}
+
 # copy to clipboard with size limit
 cb <- function(df, header=TRUE, sep="\t", na="", max.size=(200*1000)){
   os <- Sys.info()["sysname"]
@@ -105,9 +125,23 @@ cb <- function(df, header=TRUE, sep="\t", na="", max.size=(200*1000)){
 }
 
 # assemble FASTA and copy to clipboard
-clip_fasta <- function(bold_df, cols_for_fas_names = NULL, collapse_mrkrs = NULL) {
+clip_fasta <- function(bold_df,
+                       cols_for_fas_names = NULL,
+                       collapse_mrkrs = NULL,
+                       to_cb = TRUE) {
   
-  if (is.null(cols_for_fas_names)) cols_for_fas_names <- c("processid", "marker_code")
+  cols_for_fas_names <- if (!is.null(cols_for_fas_names)) {
+    cols_for_fas_names
+  } else if (!is.null(user_config$settings$fasta_head)) {
+    user_config$settings$fasta_head
+  } else {
+    c("processid", "marker_code")
+  }
+  
+  if (any(duplicated(bold_df$processid)) && !any(c("marker_code", "record_id") %in% cols_for_fas_names)) {
+    showNotification("Some records have multiple markers. Output FASTA will include marker in headers.", duration = 6, type = "warning")
+    cols_for_fas_names <- c(cols_for_fas_names, "marker_code")
+  }
   
   clip_fas <- if((!"nuc" %in% names(bold_df)) || (nrow(bold_df[!empty(nuc)]) == 0)) {
     if(!is.null(collapse_mrkrs)) {
@@ -126,6 +160,7 @@ clip_fasta <- function(bold_df, cols_for_fas_names = NULL, collapse_mrkrs = NULL
       NULL
     }
   } else {
+    
     showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
     paste0(">",
            bold_df[!empty(nuc), do.call(paste, c(.SD, sep = "|")), .SDcols = c(cols_for_fas_names)],
@@ -133,15 +168,19 @@ clip_fasta <- function(bold_df, cols_for_fas_names = NULL, collapse_mrkrs = NULL
            bold_df[!empty(nuc), nuc])
   }
   
+  
+  
   if(is.null(clip_fas)) {
     showNotification(paste0("No sequences to copy."), id="copy_msg", type = "error")  
-  } else {
+  } else if (to_cb) {
     tryCatch(
       cb(unlist(strsplit(clip_fas,"\n")), header = FALSE, sep = ""),
       error = function(e) {
         showNotification(paste0("FASTA output too large. Please try again with fewer sequences."), id="copy_msg", type = "error")
       }
     )
+  } else {
+    return(clip_fas)
   }
 }
 

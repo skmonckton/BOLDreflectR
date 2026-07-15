@@ -4,6 +4,12 @@
       stopApp()
     })
 
+    observeEvent(TRUE, {
+      key <- ""
+      try(key <- key_get("BOLD.apikey"), silent=TRUE)
+      validate_apikey(key)
+    }, ignoreInit = FALSE, once = TRUE)
+    
     bslib::accordion_panel_close("more_opts", "Additional fields")
     
     # some manual JavaScript for placeholder values and multiple marker search
@@ -99,6 +105,7 @@
     source_test_code <- function() {
       tryCatch({
         Sys.setenv(GITHUB_PAT = key_get(service="tctools-GH-PAT"))
+        print("got gh pat")
         tryCatch({
           tmpfile <- tempfile()
           on.exit(unlink(tmpfile))
@@ -106,7 +113,9 @@
             "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
             add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
           ), "raw") |> writeBin(tmpfile)
-          source(tmpfile, local = TRUE)
+          print("test worked")
+          # source(tmpfile, local = TRUE)
+          source("C:/Users/Spencer Monckton/Desktop/Scripts/CBG-taxonomy/Code/bfr_test_func.R", local = TRUE)
         }, error = function(e){
           showNotification(paste0("Error accessing test functions:", e$message), type = "error")
         })
@@ -237,16 +246,8 @@
     # set API key and generate fetch_ids
     observeEvent(input$fetch_btn | input$fetch_ctrl_enter, {
       shinyjs::hide("main_panel")
-      req(input$api_key)
-      tryCatch({
-        key <- trimws(gsub('"', "", input$api_key))
-        if (Sys.getenv("api_key") != key) {
-          bold.apikey(key)
-          try(key_set_with_value("BOLD.apikey", password = key), silent=TRUE)
-        }
-      }, error = function(e) {
-        showNotification(e$message, id="fetch_msg", type = "error")
-      })
+      key <- if(isTruthy(input$api_key)) input$api_key else Sys.getenv("api_key")
+      validate_apikey(key)
       req(((isTruthy(input$fetch_id_list) || isTruthy(input$search_tax) || isTruthy(input$search_geo) || 
             isTruthy(input$seq_marker)) && isTruthy(Sys.getenv("api_key"))))
       shinyjs::show('table_area')
@@ -1037,36 +1038,36 @@
         list(basename = "BOLD_fetch_", 
              output = out_table,
              current_rows = reactive(input$data_table_rows_all),
-             copy_btns = list(copy_table = FALSE, copy_fasta = TRUE, copy_reps = FALSE),
+             copy_btns = list(copy_table = FALSE, copy_fasta = TRUE, save_fasta = TRUE),
              dl_btns = TRUE),
       qhits_tab = 
         list(basename = "query_hit_report_", 
              output = reactive(outdata$hits),
              current_rows = reactive(outdata$hits[, .I]),
-             copy_btns = list(copy_table = FALSE, copy_fasta = FALSE, copy_reps = FALSE),
+             copy_btns = list(copy_table = FALSE, copy_fasta = FALSE, save_fasta = FALSE),
              dl_btns = TRUE),
       summary = 
         list(basename = "summary_", 
              output = reactive(outdata$summary),
              current_rows = reactive(input$summary_table_rows_all),
-             copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, copy_reps = FALSE),
+             copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, save_fasta = FALSE),
              dl_btns = TRUE),
       consensus_tab =
         list(basename = "bin_consensus_",
              output = reactive(outdata$bin_consensus),
              current_rows = reactive(input$bincons_table_rows_all),
-             copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, copy_reps = FALSE),
+             copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, save_fasta = FALSE),
              dl_btns = TRUE),
       bin_reps = 
-        list(basename = "BIN-tax_reps_",
+        list(basename = "BIN_reps_",
              output = rep_table,
              current_rows = reactive(input$binrep_table_rows_all),
-             copy_btns = list(copy_table = FALSE, copy_fasta = TRUE, copy_reps = TRUE),
+             copy_btns = list(copy_table = FALSE, copy_fasta = TRUE, save_fasta = TRUE),
              dl_btns = TRUE),
       map_tab = 
         list(basename = NULL,
              output = NULL,
-             copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, copy_reps = FALSE),
+             copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, save_fasta = FALSE),
              dl_btns = FALSE)
     )
     
@@ -1084,32 +1085,34 @@
       }
     })
     
-    # copy button logic
-    observeEvent(input$copy_table, { cb(as.data.frame(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ])) })
-    observeEvent(input$copy_reps, { cb(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ][["processid"]], header = FALSE) })
-    observeEvent(input$copy_fasta, { 
+    # obtain FASTA-formatted sequences for current data
+    get_fasta <- function(copy = TRUE) {
       collapse_mrkrs <- if(input$collapse_mrkrs == TRUE) { 
         coll_fields <- coll_mrkr_fields()[grepl(paste0("^",paste(input$filt_seq, collapse="|")), coll_mrkr_fields())]
         coll_fields[grepl("_nuc$", coll_fields)]
       } else {
         NULL
       }
-      
       data <- if(input$tabs == "data") {
         id_col <- intersect(c("processid","sampleid"), names(tab_data[[input$tabs]]$output()))[1]
         ids <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), get(id_col)]
         if(input$collapse_mrkrs == TRUE) {
-          collapsed_data()[processid %in% ids]
+          collapsed_data()[get(id_col) %in% ids, ]
         } else if(!is.null(input$filt_seq)) {
-          outdata$data[(processid %in% ids) & (marker_code %in% input$filt_seq)]
+          outdata$data[(get(id_col) %in% ids) & (marker_code %in% input$filt_seq), ]
         } else {
-          outdata$data[(processid %in% ids)]
+          outdata$data[get(id_col) %in% ids, ]
         }
       } else {
         tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ]
       }
-      clip_fasta(data, collapse_mrkrs = collapse_mrkrs)
-      })
+      clip_fasta(data, collapse_mrkrs = collapse_mrkrs, to_cb = copy)
+    }
+    
+    # copy button logic
+    observeEvent(input$copy_table, { cb(as.data.frame(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ])) })
+    observeEvent(input$copy_reps, { cb(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ][["processid"]], header = FALSE) })
+    observeEvent(input$copy_fasta, { get_fasta(copy = TRUE) })
     observeEvent(input$copy_binmates, { cb(outdata$binmates, header = FALSE) })
     
     # column copy logic
@@ -1131,7 +1134,8 @@
           switch(format,
                  tsv = fwrite(data, file, sep="\t", na="", quote=FALSE, row.names = FALSE),
                  csv = fwrite(data, file, na="", row.names = FALSE),
-                 xlsx = write_xlsx(data, file, format_headers=FALSE))
+                 xlsx = write_xlsx(data, file, format_headers=FALSE),
+                 fasta = writeLines(get_fasta(copy = FALSE), file))
         }
       )}
     
@@ -1148,10 +1152,69 @@
     output$save_tsv <- download_output("tsv")
     output$save_csv <- download_output("csv")
     output$save_xlsx <- download_output("xlsx")
+    output$save_fasta <- download_output("fasta")
 
+    output$fasta_head_ex <- renderPrint({
+      rec <- config$fasta_ex
+      ex_txt <- paste0(">", paste0(sapply(input$fasta_head_def, function(x) rec[[x]]), collapse = "|"), "\n",
+                       rec$nuc)
+      cat(ex_txt)
+    })
     
     observeEvent(input$settings, {
-      source("settings.R", local = TRUE)
+      header_opt <- isolate(user_config$settings$fasta_head)
+      showModal(
+        modalDialog(
+          title = "Settings",
+          passwordInput( 
+            "api_key_def",
+            div(h3("BOLD API key"),
+                bslib::tooltip(
+                  icon("circle-question"),
+                  paste0("The API key is saved to your system's credential store (",keystore,")."))
+            ),
+            value = tryCatch({
+              key_get("BOLD.apikey")
+            }, error = function(e){
+              ""
+            })
+          ),
+          inputGroup(title = "FASTA output",
+                     groupId = "fasta_def",
+                     selectizeInput("fasta_head_def",
+                                    "Header labels:",
+                                    choices = c(config$bcdmnames[match(header_opt, config$bcdmnames)], setdiff(config$bcdmnames, header_opt)),
+                                    multiple = TRUE,
+                                    options = list(plugins = list("drag_drop")),
+                                    selected = if(is.null(header_opt)) {
+                                      c("processid", "marker_code")
+                                    } else {
+                                      header_opt
+                                    }
+                     ),
+                     HTML('<span style="margin-bottom: .125rem;">Example:</span>'),
+                     verbatimTextOutput("fasta_head_ex")
+          ),
+          footer = tagList(
+            div(),
+            div(actionButton("save_settings_btn", "Save"),
+                modalButton("Close"))),
+          easyClose = TRUE
+        )
+      )
     })
+    
+    # settings save logic
+    observeEvent(input$save_settings_btn, {
+      removeModal()
+      key <- trimws(gsub('"', "", isolate(input$api_key_def)))
+      validate_apikey(key)
+      header_opt <- isolate(input$fasta_head_def)
+      user_config$settings$fasta_head <<- header_opt
+      save_user_config()
+      updateSelectizeInput(inputId = "fasta_head_def",
+                           selected = header_opt)
+    })
+    
     
   }

@@ -33,18 +33,15 @@ ui <- bslib::page_fillable(
           value="fetchdata",
           "Get data",
           icon = bsicons::bs_icon("cloud-arrow-down"),
-          passwordInput( 
-            "api_key", 
-            div("BOLD API key:",
-                bslib::tooltip(
-                  icon("circle-question"),
-                  paste0("The API key is saved to your system's credential store (",keystore,") when the 'Get data' button is pressed."),
-                  id = "api_key_tip")),
-            value = tryCatch({
-              key_get("BOLD.apikey")
-            }, error = function(e){
-              ""
-            })
+          hidden(
+            passwordInput( 
+              "api_key", 
+              div("BOLD API key:",
+                  bslib::tooltip(
+                    icon("circle-question"),
+                    paste0("The API key is saved to your system's credential store (",keystore,") when the 'Get data' button is pressed. Once set, it can be updated from the settings panel."),
+                    id = "api_key_tip"))
+              )
           ),
           bslib::navset_pill( 
                         id="query_params",
@@ -290,8 +287,8 @@ ui <- bslib::page_fillable(
                  class="testclass",
                  div(id = "copy_buttons",
                      actionButton("copy_fasta","Copy FASTA",icon=icon("copy")),
-                     actionButton("copy_table","Copy table",icon=icon("copy")),
-                     actionButton("copy_reps","Copy process IDs",icon=icon("copy"))),
+                     downloadButton("save_fasta","Save FASTA"),
+                     actionButton("copy_table","Copy table",icon=icon("copy"))),
                  div(id = "save_buttons",
                      downloadButton("save_tsv","TSV"),
                      downloadButton("save_csv","CSV"),

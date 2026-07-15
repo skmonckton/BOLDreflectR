@@ -24,9 +24,14 @@ h3 {
   padding-bottom: 0;
 }
 
-.modal-body div {
+.modal-body:not(:has(#api_key_def)) div {
   margin-bottom: 1rem;
 }
+
+.modal-body:has(#api_key_def) .form-group.shiny-input-container {
+  width: 100%;
+}
+
 
 .modal-footer {
   padding-top: 0;
@@ -38,6 +43,12 @@ h3 {
 .warn-text a {
   color: red;
   font-size: 0.9rem;
+}
+
+#fasta_head_ex {
+  text-wrap: wrap;
+  word-wrap: anywhere;
+  max-height: 100px;
 }
 
 .shiny-input-container:has(#sets_to_delete-label),

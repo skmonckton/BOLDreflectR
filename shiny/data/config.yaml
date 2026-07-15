@@ -872,3 +872,76 @@ markercodes:
   - ycf1b
   - ycf5
   - ypt1
+fasta_ex:
+  processid: BCMIN7614-23
+  sampleid: CBG-A18330-D04
+  fieldid: BCT23#0134
+  museumid: CBG-A18330-D04
+  record_id: BCMIN7614-23.COI-5P
+  specimenid: 19137827
+  processid_minted_date: 45204
+  bin_uri: BOLD:AFK8960
+  bin_created_date: 45226
+  collection_code: BIOUG
+  inst: Centre for Biodiversity Genomics
+  taxid: 1368071
+  kingdom: Animalia
+  phylum: Arthropoda
+  class: Insecta
+  order: Lepidoptera
+  family: Tridentaformidae
+  subfamily: 
+  tribe: 
+  genus: Tridentaforma
+  species: Tridentaforma browncopper
+  subspecies: 
+  species_reference: Monckton & Levesque-Beaudin, 2025
+  identification: Tridentaforma browncopper
+  identification_method: Morphology
+  identification_rank: species
+  identified_by: Spencer K. Monckton
+  taxonomy_notes: "id-date: Feb 2024"
+  sex: 
+  reproduction: 
+  life_stage: 
+  short_note: 
+  notes: 
+  voucher_type: "Vouchered:Registered Collection"
+  tissue_type: inv whole voucher
+  specimen_linkout: 
+  associated_specimens: 
+  associated_taxa: 
+  collectors: 
+  collection_date_start: 45180
+  collection_date_end: 45194
+  collection_event_id: 
+  collection_time: 
+  collection_notes: Reference
+  geoid: 516
+  country.ocean: Canada
+  country_iso: CA
+  province.state: British Columbia
+  region: 
+  sector: Undisturbed Reference
+  site: R33
+  site_code: 
+  coord: 50.5056,-121.032
+  coord_accuracy: 14
+  coord_source: 
+  elev: 
+  elev_accuracy: 
+  depth: 
+  depth_accuracy: 
+  habitat: 
+  sampling_protocol: Malaise Trap
+  nuc: AACCTTATATTTTATTTTTGGAATTTGATCAGGAATAATAGGAACTTCTTTAAGTCTTTTAATTCGAACAGAATTAGGAGTAACAAGAACTTTAATTGGAAATGATCAAATTTATAACACAATTGTAACAGCTCATGCCTTTATTATAATTTTCTTCATAGTAATGCCAATTATAATTGGAGGATTTGGTAACTGATTAATTCCTTTAATATTAGGAGCCCCAGATATAGCGTTTCCACGATTAAATAACATAAGTTTTTGGTTATTGCCCCCTTCATTAACCCTATTAATTTCAAGAAGTTTTGTTGAAACTGGTGCAGGAACAGGATGAACTGTTTATCCTCCTTTATCCTCTAATATTGCTCATGCTGGAGGATCTGTTGATTTAGCTATTTTCTCTTTACACTTAGCTGGAATTTCATCAATCTTAGGAGCAGTTAATTTTATTACAACAGTAATTAATATACGAACTCATGGAATAACTTTTGATCAAATACCACTATTTGTTTGAGCTGTTGCAATTACAGCTCTATTACTACTTCTCTCACTTCCTGTTTTAGCAGGAGCTATTACAATATTATTAACAGATCGAAACTTAAATACATCCTTCTTTGATCCAGCAGGAGGAGGAGACCCCATTCTATATCAACATTTATTT
+  nuc_basecount: 658
+  insdc_acs: PX223569
+  funding_src: 
+  marker_code: COI-5P
+  sequence_run_site: Centre for Biodiversity Genomics
+  sequence_upload_date: 45222
+  bold_recordset_code_arr: BCMIN,DS-BCBAR56,DS-TRDNTFM,DS-BRWNCP
+  ecoregion: Okanogan_dry_forests
+  biome: Temperate_Conifer_Forest_simplify-0.001_buffered-0.018
+  realm: Nearctic
