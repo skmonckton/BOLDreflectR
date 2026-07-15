@@ -180,25 +180,26 @@ ui <- bslib::page_fillable(
           value="summarize",
           "Summarize",
           icon = bsicons::bs_icon("bar-chart"),
-          inputGroup(
-            selectInput("ana_opt",
-                        "Summarize by:",
-                        list(
-                          "Taxonomy" = list(
-                            "Taxonomic summary" = "tax_summary"),
-                          "Unique values - selected fields" = list(
-                            "Taxon" = "identification",
-                            "BIN" = "bin_uri",
-                            "Identification dates (parsed)" = "id_date_parsed",
-                            "Projects" = "projects",
-                            "Datasets" = "datasets",
-                            "Country" = "country.ocean"),
-                          "Unique values - all fields" = as.list(config$fieldsets$bcdm[!config$fieldsets$bcdm %in% c("identification","bin_uri","country.ocean","id_date_parsed","project_code")])
-                          ), multiple = FALSE),
-            div(class="form-group shiny-input-container",
-                actionButton(
-                  "ana_btn",
-                  "Summarize"))),
+          inputGroup(title = "Value counts",
+                     groupId = "sum-opts",
+                     selectInput("ana_opt",
+                                 "Summarize by:",
+                                 list(
+                                   "Taxonomy" = list(
+                                     "Taxonomic summary" = "tax_summary"),
+                                   "Unique values - selected fields" = list(
+                                     "Taxon" = "identification",
+                                     "BIN" = "bin_uri",
+                                     "Identification dates (parsed)" = "id_date_parsed",
+                                     "Projects" = "projects",
+                                     "Datasets" = "datasets",
+                                     "Country" = "country.ocean"),
+                                   "Unique values - all fields" = as.list(config$fieldsets$bcdm[!config$fieldsets$bcdm %in% c("identification","bin_uri","country.ocean","id_date_parsed","project_code")])
+                                 ), multiple = FALSE),
+                     div(class="form-group shiny-input-container",
+                         actionButton(
+                           "ana_btn",
+                           "Generate"))),
           inputGroup(title = "Query hit report",
                      groupId = "qhits-opts",
                      div(class="form-group",
@@ -208,7 +209,7 @@ ui <- bslib::page_fillable(
                            HTML("This reflects the original query only, not additional BIN members."))),
                      div(actionButton(
                        "query_hits_btn",
-                       "Generate report"
+                       "Generate"
                      ))),
           inputGroup(title = "Distribution map",
                      groupId = "map-opts",
@@ -219,12 +220,53 @@ ui <- bslib::page_fillable(
                            HTML("Only rows matching current filters that have valid coordinates will be included on the map."))),
                      div(actionButton(
                        "map_btn",
-                       "Generate map"
+                       "Generate"
                      )))),
         bslib::accordion_panel(
           value="analyze",
           "Analyze",
           icon = bsicons::bs_icon("graph-up"),
+          inputGroup(title = tagList("Diversity profile", actionLink("div_profile_info", icon("info"))),
+                     groupId = "div-analysis",
+                     selectInput("div_rank", "Analyze by:", 
+                                 c("Species if known, BIN if not" = "bin_fallback",
+                                   "BIN" = "bin_uri",
+                                   "Species" = "species")),
+                                   # rev(config$bcdmnames)[rev(config$bcdmnames) %in% ranks])),
+                     # selectInput("div_taxon", "Restrict to taxon:", c()),
+                     selectInput("div_site_type", "Site type:",
+                                 list("Locations" = "locations",
+                                      "Grid squares" = "grids")),
+                     hidden(selectInput("div_location_type", "Use as sites:", 
+                                        list("Sites" = "site",
+                                             "Sectors" = "sector",
+                                             "Regions" = "region",
+                                             "Provinces/States" = "province.state",
+                                             "Countries/Oceans" = "country.ocean",
+                                             "Ecoregions" = "ecoregion",
+                                             "Biomes" = "biome",
+                                             "Realms" = "realm"))),
+                     hidden(numericInput("div_grid_size", "Grid unit size (km):",
+                                         value = 500, min = 0.001, max = 9227, step = 1)),
+                     checkboxInput("div_presence", "Compute as presence-absence matrix"),
+                     selectizeInput("div_profile", "Profile:", 
+                                    list("Rarefaction & extrapolation" = "rarefy",
+                                         "Shannon diversity index" = "shannon",
+                                         "Preston plot" = "preston",
+                                         "Beta diversity index" = "beta"),
+                                    selected = c("rarefy", "shannon", "preston", "beta"),
+                                    multiple = TRUE),
+                     checkboxInput("div_rare_by_site", 
+                                   div("Perform rarefaction for all sites",
+                                       bslib::tooltip(
+                                         icon("circle-question"),
+                                         paste0("Sites with fewer than 10 observations or 2 species will be dropped for this analysis."))),
+                                   value = FALSE),
+                     selectInput("div_beta_type", "Beta diversity type:",
+                                 list("Jaccard index" = "jaccard",
+                                      "Sorensen index" = "sorensen"),
+                                 selected = "jaccard"),
+                     actionButton("div_compute_btn", "Run")),
           inputGroup(title = "Consensus BIN taxonomy",
                      groupId = "bin-cons-opts",
                      numericInput(
@@ -255,19 +297,93 @@ ui <- bslib::page_fillable(
                            ))),
                      div(actionButton(
                        "bin_consensus_btn",
-                       "Get BIN consensus"))),
+                       "Run"))),
           inputGroup(title = "BIN representatives",
                      groupId = "bin-rep-opts",
-                     div(class="form-group",
-                         "Select one record for each unique BIN-taxon combination:",
-                         bslib::tooltip(
-                           icon("circle-question"),
-                           "BIN reps are chosen per the following criteria in order of priority: (1) sequence length modal and/or closest to 658 bp; (2) identification by morphology or image; (3) voucher deposited at the CBG; (4) recent collection date.",
-                           id = "bintip"
-                         )),
+                     numericInput(
+                       "bin_rep_num",
+                       "Number of representatives per BIN:",
+                       value = 1,
+                       min = 1, step = 1
+                     ),
+                     checkboxInput(
+                       "bin_rep_tax",
+                       "Add representatives per distinct taxon",
+                       value = FALSE
+                     ),
+                     hidden(div(id = "bin_rep_tax_opts",
+                                checkboxInput(
+                                  "bin_rep_scientific",
+                                  div("Enforce scientific names",
+                                      bslib::tooltip(
+                                        icon("circle-question"),
+                                        HTML("Ignore interim / provisional names for the purposes of determining distinct taxa.")
+                                      )),
+                                  value = TRUE
+                                ),
+                                checkboxInput(
+                                  "bin_rep_non_redundant",
+                                  div("Lowest non-redundant taxa",
+                                      bslib::tooltip(
+                                        icon("circle-question"),
+                                        HTML("Select representatives at the lowest available rank from each distinct taxonomic lineage. For example, in a BIN with the identifications Apidae, <em>Bombus</em>, and <em>Bombus terrestris</em>, records assigned to <em>Bombus terrestris</em> will be selected first."),
+                                      )),
+                                  value = TRUE
+                                ))),
+                     bslib::input_switch(
+                       "bin_rep_default",
+                       "Use default selection criteria",
+                       value = TRUE
+                     ),
+                     hidden(div(id = "bin_rep_criteria_wrapper",
+                       div(id = "bin-rep-tooltip",
+                           bslib::tooltip(icon("circle-question"),
+                                          options = list(customClass = "grey_tooltip"),
+                                          "Drag and drop to order by priority, or move unwanted criteria to 'ignored' box.")),
+                       bucket_list(
+                         header = "Select representative records by:",
+                         group_name = "bucket_list_group",
+                         orientation = "vertical",
+                         add_rank_list(
+                           input_id = "bin_rep_criteria",
+                           text = "Selected criteria:",
+                           labels = list(
+                             "bin_rep_vouchered" = div("Sequence is vouchered",
+                                                       bslib::tooltip(icon("circle-question"),
+                                                                      options = list(customClass = "grey_tooltip"),
+                                                                      "Prioritize records with known voucher repositories over those mined from databases like GenBank.")),
+                             "bin_rep_seq" = tagList(selectInput("bin_rep_seq_opt",
+                                                         "COI sequence length",
+                                                         choices = list("nearest to 658bp" = 658,
+                                                                        "nearest to ____bp (specify)" = "custom",
+                                                                        "nearest to mode for BIN" = "COI_auto",
+                                                                        "longest",
+                                                                        "shortest"),
+                                                         selected = "COI_auto"),
+                                                     hidden(numericInput("bin_rep_seq_len", "", value = 658))),
+                             "bin_rep_id" = selectizeInput("bin_rep_id_opt", "Preferred ID method(s)",
+                                                           choices = list("BIN based", "BOLD ID Engine", "Tree based", "Morphology",
+                                                                          "Morphology and sequence based", "Image based",
+                                                                          "Image and sequence based", "Other sequence based approach", "Other"),
+                                                           selected = "Morphology",
+                                                           multiple = TRUE),
+                             "bin_rep_inst" = selectizeInput("bin_rep_inst_opt", "Preferred institution(s)",
+                                                             choices = list("Centre for Biodiversity Genomics"),
+                                                             selected = "Centre for Biodiversity Genomics",
+                                                             multiple = TRUE),
+                             "bin_rep_date" = selectInput("bin_rep_date_opt", "Collection date", choices = list("latest", "oldest")),
+                             "bin_rep_up" = selectInput("bin_rep_up_opt", "Sequence upload date", choices = list("latest", "oldest"))
+                           )
+                         ),
+                         add_rank_list(
+                           input_id = "bin_rep_unused",
+                           text = "Ignored criteria:",
+                           labels = NULL
+                         )
+                       ))),
                      div(actionButton(
                        "bin_rep_btn",
-                       "Get BIN reps"
+                       "Run"
                      ))))
       ), width = 3
     ),

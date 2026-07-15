@@ -1,6 +1,6 @@
 <img src="shiny/www/reflectR-name.png" alt="BOLDreflectR" height="60px" style="display:block; margin:auto;">
 
-A graphical user interface for [BOLDconnectR](https://doi.org/10.32614/CRAN.package.BOLDconnectR) allowing basic exploration and analysis of data from BOLD.
+A graphical user interface for [BOLDconnectR](https://doi.org/10.32614/CRAN.package.BOLDconnectR) and BOLD's data APIs, allowing retrieval, exploration, and analysis of DNA barcode data.
 
 **BOLDreflectR** is a Shiny app built in R, and packaged as a desktop application using a [fork](https://github.com/skmonckton/nhyris) of [nhyris](https://github.com/jahnen/nhyris). This repository includes all the necessary files to build the standalone application using the modified nhyris code (i.e., while excluding the bundled R installation and Node.js packages used by the Electron framework that powers the desktop app).
 
@@ -9,18 +9,20 @@ Bundled executables are available from the [releases](https://github.com/skmonck
 The R code can also be downloaded from the [Shiny sub-directory](https://github.com/skmonckton/BOLDreflectR/tree/main/shiny), should you wish to run the app using RStudio.
 
 ### Highlights
-**Rapid data retrieval & inspection:**
+**Data retrieval & inspection:**
 * Fetch records by process ID, sample ID, BIN, or project/dataset code
 * Search BOLD by taxonomy, geography, marker, etc.
 * Get a hit/miss report for query terms
-* Find additional BIN members for all retrieved records
+* Find additional members of BINs in retrieved data
 
 **Explore and anlayze results:**
-* Customize visible columns and pre-filter results in-app
-* Generate simple summaries for any field
+* Customize column sets and filter results
+* Generate simple summaries & value counts
+* Compute alpha & beta diversity metrics
 * Compute consensus BIN taxonomy
+* Obtain a sample of BIN representatives
 * Retrieve BIN statistics from BOLD Portal (e.g. pairwise divergence, nearest neighbours)
-* Plot interactive occurrence maps (which update in real-time)
+* Plot interactive occurrence maps
 
 **Convenience features:**
 * Copy FASTA-formatted sequences to clipboard
@@ -33,7 +35,7 @@ The R code can also be downloaded from the [Shiny sub-directory](https://github.
 
 >**VERSIONING NOTE**:
 >
-> BOLDreflectR's version history will be adjusted on or before July 15th, 2026, with the release of "v1.3.4" revised to v0.9.4. Earlier versions are retroactively revised as such:
+> BOLDreflectR's version history was adjusted with the release of "v1.3.4", now revised to v0.9.4. Earlier versions are retroactively revised as such:
 >
 >| Original | Revised |
 >| :------: | :-----: |
