@@ -705,6 +705,7 @@ inputGroup <- function(...,
 callback_js <- DT::JS("
       window.mapBySID = window.mapBySID || {};
       window.mapByPID = window.mapByPID || {};
+      $.fn.dataTable.ext.errMode = 'none';
     ")
 header_js <- DT::JS("
   function(thead, data, start, end, display) {

@@ -17,6 +17,12 @@ ui <- bslib::page_fillable(
           window.mapBySID[row.sampleid] = row.processid;
         });
       });
+      Shiny.addCustomMessageHandler("resize_map", function(mapId) {
+        setTimeout(function() {
+          var map = HTMLWidgets.find(mapId).getMap();
+          map.invalidateSize();
+        }, 100);
+      });
     )"))
   ),
   useShinyjs(),
@@ -26,7 +32,8 @@ ui <- bslib::page_fillable(
           div(id = "side-title",
               span(img(src = "reflectR-name.png", alt = "BOLDreflectR", style = "height: 3rem;")),
               `data-ver` = paste0("v", ver)),
-          actionLink("settings", icon("gear"))),
+          actionLink("settings", icon("gear")),
+          actionLink("cbg_btn", label = " ")),
       bslib::accordion(
         id="optpanels",
         bslib::accordion_panel(
@@ -232,8 +239,6 @@ ui <- bslib::page_fillable(
                                  c("Species if known, BIN if not" = "bin_fallback",
                                    "BIN" = "bin_uri",
                                    "Species" = "species")),
-                                   # rev(config$bcdmnames)[rev(config$bcdmnames) %in% ranks])),
-                     # selectInput("div_taxon", "Restrict to taxon:", c()),
                      selectInput("div_site_type", "Site type:",
                                  list("Locations" = "locations",
                                       "Grid squares" = "grids")),
@@ -332,7 +337,11 @@ ui <- bslib::page_fillable(
                                 ))),
                      bslib::input_switch(
                        "bin_rep_default",
-                       "Use default selection criteria",
+                       div("Use default selection criteria",
+                           bslib::tooltip(
+                             icon("circle-question"),
+                             HTML("Default criteria, in order of priority, are: <strong>(1)</strong> vouchered (i.e. not mined from an external database); <strong>(2)</strong> COI-5P sequence length closest to mode for BIN; <strong>(3)</strong> identified by morphology, image, or sequence (in descending order of preference); <strong>(4)</strong> specimen stored at the CBG (i.e. may be available to loan); <strong>(5)</strong> latest collection date; <strong>(6)</strong> latest sequence upload date.")
+                           )),
                        value = TRUE
                      ),
                      hidden(div(id = "bin_rep_criteria_wrapper",

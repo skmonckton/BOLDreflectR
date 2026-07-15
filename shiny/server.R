@@ -5,11 +5,11 @@ server <- function(input, output, session) {
     stopApp()
   })
 
-    observeEvent(TRUE, {
-      key <- ""
-      try(key <- key_get("BOLD.apikey"), silent=TRUE)
-      validate_apikey(key)
-    }, ignoreInit = FALSE, once = TRUE)
+  observeEvent(TRUE, {
+    key <- ""
+    try(key <- key_get("BOLD.apikey"), silent=TRUE)
+    validate_apikey(key)
+  }, ignoreInit = FALSE, once = TRUE)
     
   bslib::accordion_panel_close("more_opts", "Additional fields")
 
@@ -117,8 +117,7 @@ server <- function(input, output, session) {
               "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
               add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
             ), "raw") |> writeBin(tmpfile)
-            # source(tmpfile, local = TRUE)
-            source("C:/Users/Spencer Monckton/Desktop/Scripts/CBG-taxonomy/Code/bfr_test_func.R", local = TRUE)
+``            source(tmpfile, local = TRUE)
           },
           error = function(e) {
             showNotification(paste0("Error accessing test functions:", e$message), type = "error")
@@ -694,6 +693,63 @@ server <- function(input, output, session) {
     outdata$id_field <- result$id_field
   })
 
+  # modal logic for settings panel
+  observeEvent(input$settings, {
+    header_opt <- isolate(user_config$settings$fasta_head)
+    showModal(
+      modalDialog(
+        title = "Settings",
+        passwordInput( 
+          "api_key_def",
+          div(h3("BOLD API key"),
+              bslib::tooltip(
+                icon("circle-question"),
+                paste0("The API key is saved to your system's credential store (",keystore,")."))
+          ),
+          value = tryCatch({
+            key_get("BOLD.apikey")
+          }, error = function(e){
+            ""
+          })
+        ),
+        inputGroup(title = "FASTA output",
+                   groupId = "fasta_def",
+                   selectizeInput("fasta_head_def",
+                                  "Header labels:",
+                                  choices = c(config$bcdmnames[match(header_opt, config$bcdmnames)], setdiff(config$bcdmnames, header_opt)),
+                                  multiple = TRUE,
+                                  options = list(plugins = list("drag_drop")),
+                                  selected = if(is.null(header_opt)) {
+                                    c("processid", "marker_code")
+                                  } else {
+                                    header_opt
+                                  }
+                   ),
+                   HTML('<span style="margin-bottom: .125rem;">Example:</span>'),
+                   verbatimTextOutput("fasta_head_ex")
+        ),
+        footer = tagList(
+          div(),
+          div(actionButton("save_settings_btn", "Save"),
+              modalButton("Close"))),
+        easyClose = TRUE
+      )
+    )
+  })
+  
+  # settings save logic
+  observeEvent(input$save_settings_btn, {
+    removeModal()
+    key <- trimws(gsub('"', "", isolate(input$api_key_def)))
+    validate_apikey(key)
+    header_opt <- isolate(input$fasta_head_def)
+    user_config$settings$fasta_head <<- header_opt
+    save_user_config()
+    updateSelectizeInput(inputId = "fasta_head_def",
+                         selected = header_opt)
+  })
+  
+  
   # modal logic for saving custom field sets
   observeEvent(input$save_filter_set, {
     showModal(
@@ -1035,8 +1091,7 @@ server <- function(input, output, session) {
           inext_res <- iNEXT::iNEXT(
             x = list(Overall = comm_inc),
             datatype = "incidence_freq",
-            endpoint = sum(comm_inc) * 2,
-            nboot = 100
+            endpoint = sum(comm_inc) * 2
           )
         } else {
           # otherwise, perform individual-based rarefaction for entire dataset
@@ -1045,8 +1100,7 @@ server <- function(input, output, session) {
           inext_res <- iNEXT::iNEXT(
             x = list(Overall = total_counts),
             datatype = "abundance",
-            endpoint = sum(total_counts) * 2,
-            nboot = 100
+            endpoint = sum(total_counts) * 2
           )
         }
         div_profile$asy_est <- if("Diversity" %in% names(inext_res$AsyEst)) {
@@ -1084,8 +1138,7 @@ server <- function(input, output, session) {
             res <- iNEXT::iNEXT(
               x = list(counts),
               datatype = "abundance",
-              endpoint = sum(counts) * 2,
-              nboot = 100
+              endpoint = sum(counts) * 2
             )
             res$iNextEst$size_based$Assemblage <- nm
             res$AsyEst$Assemblage <- nm
@@ -1174,7 +1227,7 @@ server <- function(input, output, session) {
       bslib::nav_select(id = "tabs", selected = "div_profile")
     }
   })
-  
+
   # show a modal for saving diversity analysis results
   observeEvent(input$div_dl_btn, {
     req(outdata$div_profile)
@@ -1541,6 +1594,14 @@ server <- function(input, output, session) {
                                           }")
   )
 
+  # generate example FASTA sequence for display
+  output$fasta_head_ex <- renderPrint({
+    rec <- config$fasta_ex
+    ex_txt <- paste0(">", paste0(sapply(input$fasta_head_def, function(x) rec[[x]]), collapse = "|"), "\n",
+                     rec$nuc)
+    cat(ex_txt)
+  })
+  
   # generate binmate list for display
   output$binmate_pids <- renderPrint(writeLines(outdata$binmates))
 
@@ -1644,6 +1705,16 @@ server <- function(input, output, session) {
         actionButton("div_dl_btn", icon("download"))
       )
     )
+  })
+  
+  
+  # keep grid map stable
+  observeEvent(input$div_nav, {
+    if (input$div_nav == "grid_map") {
+      leafletProxy("grid_map") %>%
+        mapOptions(zoomToLimits = "first")
+      session$sendCustomMessage("resize_map", "#grid_map")
+    }
   })
 
   # diversity analysis summary table
@@ -2055,7 +2126,7 @@ server <- function(input, output, session) {
           }),
           output = reactive({ outdata$div_profile[[input$div_nav]] }),
           current_rows = reactive({ outdata$div_profile[[input$div_nav]][, .I] }),
-          copy_btns = list(copy_table = FALSE, copy_fasta = FALSE, copy_reps = FALSE),
+          copy_btns = list(copy_table = FALSE, copy_fasta = FALSE, save_fasta = FALSE),
           dl_btns = FALSE
         ),
       consensus_tab =
@@ -2127,7 +2198,6 @@ server <- function(input, output, session) {
 
     # copy button logic
     observeEvent(input$copy_table, { cb(as.data.frame(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ])) })
-    observeEvent(input$copy_reps, { cb(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ][["processid"]], header = FALSE) })
     observeEvent(input$copy_fasta, { get_fasta(copy = TRUE) })
     observeEvent(input$copy_binmates, { cb(outdata$binmates, header = FALSE) })
     
@@ -2282,66 +2352,4 @@ server <- function(input, output, session) {
   output$nmds_rds <- dl_div_profile("nmds_rds")
   output$nmds_scores <- dl_div_profile("nmds_scores")
 
-output$fasta_head_ex <- renderPrint({
-      rec <- config$fasta_ex
-      ex_txt <- paste0(">", paste0(sapply(input$fasta_head_def, function(x) rec[[x]]), collapse = "|"), "\n",
-                       rec$nuc)
-      cat(ex_txt)
-    })
-    
-    observeEvent(input$settings, {
-      header_opt <- isolate(user_config$settings$fasta_head)
-      showModal(
-        modalDialog(
-          title = "Settings",
-          passwordInput( 
-            "api_key_def",
-            div(h3("BOLD API key"),
-                bslib::tooltip(
-                  icon("circle-question"),
-                  paste0("The API key is saved to your system's credential store (",keystore,")."))
-            ),
-            value = tryCatch({
-              key_get("BOLD.apikey")
-            }, error = function(e){
-              ""
-            })
-          ),
-          inputGroup(title = "FASTA output",
-                     groupId = "fasta_def",
-                     selectizeInput("fasta_head_def",
-                                    "Header labels:",
-                                    choices = c(config$bcdmnames[match(header_opt, config$bcdmnames)], setdiff(config$bcdmnames, header_opt)),
-                                    multiple = TRUE,
-                                    options = list(plugins = list("drag_drop")),
-                                    selected = if(is.null(header_opt)) {
-                                      c("processid", "marker_code")
-                                    } else {
-                                      header_opt
-                                    }
-                     ),
-                     HTML('<span style="margin-bottom: .125rem;">Example:</span>'),
-                     verbatimTextOutput("fasta_head_ex")
-          ),
-          footer = tagList(
-            div(),
-            div(actionButton("save_settings_btn", "Save"),
-                modalButton("Close"))),
-          easyClose = TRUE
-        )
-      )
-    })
-    
-    # settings save logic
-    observeEvent(input$save_settings_btn, {
-      removeModal()
-      key <- trimws(gsub('"', "", isolate(input$api_key_def)))
-      validate_apikey(key)
-      header_opt <- isolate(input$fasta_head_def)
-      user_config$settings$fasta_head <<- header_opt
-      save_user_config()
-      updateSelectizeInput(inputId = "fasta_head_def",
-                           selected = header_opt)
-    })
-
-  }
+}

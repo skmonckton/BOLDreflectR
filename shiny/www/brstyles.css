@@ -1,6 +1,7 @@
 :has(#div_details_table) pre {
   padding: 2px 6px;
   display: inline;
+  text-wrap: inherit;
   background-color: #fbfbfb;
 }
 
@@ -700,6 +701,10 @@ div[data-rank-id = "bin_rep_vouchered"] div .fa-circle-question {
   padding: 5px 10px;
 }
 
+.modal-body:has(#div_details_table) {
+  overflow-x: scroll;
+}
+
 .modal-dialog:has(#div_details_table) {
   top: -8vh;
 }
@@ -993,7 +998,7 @@ th:hover .col-copy-btn {
 }
 
 #summary_table td {
-  padding: 2px 4px;
+  padding: 3px 9px;
 }
 
 .datatables .dataTables_length, .datatables .dataTables_filter {

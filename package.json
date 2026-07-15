@@ -2,7 +2,7 @@
   "name": "BOLDreflectR",
   "productName": "BOLDreflectR",
   "version": "0.9.5",
-  "description": "A graphical user interface for BOLDconnectR (https://doi.org/10.32614/CRAN.package.BOLDconnectR) allowing basic exploration and analysis of BOLD data. This installable executable is bundled using a modified version of nhyris (https://github.com/jahnen/nhyris).",
+  "description": "A graphical user interface for BOLDconnectR (https://doi.org/10.32614/CRAN.package.BOLDconnectR) and BOLD's data APIs, allowing retrieval, exploration, and analysis of DNA barcode data. This installable executable is bundled using a modified version of nhyris (original: https://github.com/jahnen/nhyris; fork: https://github.com/skmonckton/nhyris).",
   "main": "src/index.js",
   "author": {
     "name": "Spencer K. Monckton",
