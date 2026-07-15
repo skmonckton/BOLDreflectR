@@ -944,18 +944,22 @@ server <- function(input, output, session) {
     input_opts <- div_opts[c(2,5,7,9)]
     # get BIN-based names for BINs without species names
     if (div_opts$taxon_rank == "bin_fallback") {
-      withInfProgress(message = "Assigning fallback BIN-based names...", {
-        unid_bins <- unique(data[, if (all(empty(species))) .SD, by = bin_uri]$bin_uri)
-        unid_bin_tax <- get_bin_consensus(data[bin_uri %in% unid_bins], min_ids = 1)
-        data[, bin_fallback := fifelse(
-          bin_uri %in% unid_bins,
-          unid_bin_tax[.SD,
-            on = .(bin_uri),
-            paste(concordant_id, bin_uri, sep = "_sp_")
-          ],
-          as.character(species)
-        )]
-      })
+      unid_bins <- unique(data[, if (all(empty(species))) .SD, by = bin_uri]$bin_uri)
+      if(length(unid_bins) > 0) {
+        withInfProgress(message = "Assigning fallback BIN-based names...", {
+          unid_bin_tax <- get_bin_consensus(data[bin_uri %in% unid_bins], min_ids = 1)
+          data[, bin_fallback := fifelse(
+            bin_uri %in% unid_bins,
+            unid_bin_tax[.SD,
+              on = .(bin_uri),
+              paste(concordant_id, bin_uri, sep = "_sp_")
+            ],
+            as.character(species)
+          )]
+        })
+      } else {
+        data[, bin_fallback := as.character(species)]
+      }
     }
     # replace any blank values with NA
     data.table::set(data, i = which(empty(data[[div_opts$taxon_rank]])),
@@ -1346,38 +1350,6 @@ server <- function(input, output, session) {
     insert_portal_warning(init_stats)
   })
 
-  observe({
-    criteria <- if (!input$bin_rep_default) {
-      list(
-        vouchered = TRUE,
-        seq_length = ifelse(input$bin_rep_seq_opt == "custom",
-          input$bin_rep_seq_len,
-          input$bin_rep_seq_opt
-        ),
-        id_method = input$bin_rep_id_opt,
-        inst = input$bin_rep_inst_opt,
-        coll_date = input$bin_rep_date_opt,
-        seq_date = input$bin_rep_up_opt
-      )[match(
-        input$bin_rep_criteria,
-        c("bin_rep_vouchered", "bin_rep_seq", "bin_rep_id", "bin_rep_inst", "bin_rep_date", "bin_rep_up")
-      )]
-    } else {
-      list(
-        vouchered = TRUE,
-        seq_length = "COI_auto",
-        id_method = c(
-          "Morphology", "Morphology and sequence based",
-          "Image based", "Image and sequence based"
-        ),
-        inst = "Centre for Biodiversity Genomics",
-        coll_date = "latest",
-        seq_date = "latest"
-      )
-    }
-  })
-
-
   # select BIN reps and inject as a new tab
   observeEvent(input$bin_rep_btn, {
     req(nrow(outdata$data) > 0)
@@ -1386,10 +1358,10 @@ server <- function(input, output, session) {
       criteria <- if (!input$bin_rep_default) {
         list(
           vouchered = TRUE,
-          seq_length = ifelse(input$bin_rep_seq_opt == "custom",
-            input$bin_rep_seq_len,
-            input$bin_rep_seq_opt
-          ),
+          seq_length = switch(input$bin_rep_seq_opt,
+                              "custom" = input$bin_rep_seq_len,
+                              "658" = 658,
+                              input$bin_rep_seq_opt),
           id_method = input$bin_rep_id_opt,
           inst = input$bin_rep_inst_opt,
           coll_date = input$bin_rep_date_opt,
@@ -1721,9 +1693,10 @@ server <- function(input, output, session) {
   # grid cell map
   output$grid_map <- renderLeaflet({
     req(outdata$div_profile$grids.data)
-    grids_wgs84 <- sf::st_transform(outdata$div_profile$grids.data, crs = 4326)
-    merge(grids_wgs84, outdata$div_profile$site_stats[, .(`Grid cell`, N, S)])
-    grids_wgs84 <- merge(grids_wgs84, test_div_profile$site_stats[, .(cell.id = `Grid cell`, N, S)])
+    res <- outdata$div_profile
+    grids_wgs84 <- sf::st_transform(res$grids.data, crs = 4326)
+    merge(grids_wgs84, res$site_stats[, .(`Grid cell`, N, S)])
+    grids_wgs84 <- merge(grids_wgs84, res$site_stats[, .(cell.id = `Grid cell`, N, S)])
     grids_wgs84$label <- lapply(paste0('<span style="font-weight: 600;">', grids_wgs84$cell.id, '</span></br>',
                                        'N = ', grids_wgs84$N, '; S = ', grids_wgs84$S), HTML)
     leaflet(grids_wgs84) %>%

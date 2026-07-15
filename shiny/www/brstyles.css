@@ -1,4 +1,4 @@
-pre {
+:not(:has(#binmate_pids)) pre {
   padding: 2px 6px;
   display: inline;
   background-color: #fbfbfb;
@@ -390,19 +390,20 @@ div.form-group:has(.has-items) #save_filter_set {
 
 .fa-info {
   position: relative;
-  display: inline-block;
+  /* display: inline-block; */
   background-color: #404040;
   width: 14px;
   height: 14px;
   text-align: center;
   color: #fff;
   font-size: 0.6rem;
-  padding-top: 0;
-  line-height: 1.2;
+  /* padding-top: 0; */
+  line-height: 0.85rem;
   border-radius: 2px;
   margin-left: 0.3rem;
-  margin-top: -0.2rem;
-  alignment-baseline: middle;
+  /* margin-top: 0; */
+  /* alignment-baseline: middle; */
+  top: -3px;
 }
 
 .fa-info:hover {
@@ -944,12 +945,6 @@ th:hover .col-copy-btn {
     white-space: nowrap;
 }
 
-@-moz-document url-prefix() {
-  .datatables .dataTables_wrapper tbody td div {
-    padding-bottom: 0.6rem;
-  }
-}
-
 .datatables .dataTables_wrapper tbody td div::-webkit-scrollbar {
   height: 0.6rem;
   width: 0.6rem;
@@ -971,8 +966,12 @@ th:hover .col-copy-btn {
   align-items: flex-start;
 }
 
+#summary_table td div {
+  margin-bottom: 0;
+}
+
 #summary_table td {
-  padding: 6px;
+  padding: 2px 4px;
 }
 
 .datatables .dataTables_length, .datatables .dataTables_filter {

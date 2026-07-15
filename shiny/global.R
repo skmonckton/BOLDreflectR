@@ -14,6 +14,7 @@ library(writexl)
 library(yaml)
 library(plotly)
 library(vegan)
+library(iNEXT)
 
 source("R/tctools.R")
 source("R/bold.full.search.two.step.R")
