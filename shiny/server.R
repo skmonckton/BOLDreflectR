@@ -5,11 +5,11 @@ server <- function(input, output, session) {
     stopApp()
   })
 
-  observeEvent(TRUE, {
-    key <- ""
-    try(key <- key_get("BOLD.apikey"), silent=TRUE)
-    validate_apikey(key)
-  }, ignoreInit = FALSE, once = TRUE)
+    observeEvent(TRUE, {
+      key <- ""
+      try(key <- key_get("BOLD.apikey"), silent=TRUE)
+      validate_apikey(key)
+    }, ignoreInit = FALSE, once = TRUE)
     
   bslib::accordion_panel_close("more_opts", "Additional fields")
 
@@ -117,7 +117,7 @@ server <- function(input, output, session) {
               "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
               add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
             ), "raw") |> writeBin(tmpfile)
-``            source(tmpfile, local = TRUE)
+            source(tmpfile, local = TRUE)
           },
           error = function(e) {
             showNotification(paste0("Error accessing test functions:", e$message), type = "error")
@@ -343,7 +343,7 @@ server <- function(input, output, session) {
       key <- if(isTruthy(input$api_key)) input$api_key else Sys.getenv("api_key")
       validate_apikey(key)
       req(((isTruthy(input$fetch_id_list) || isTruthy(input$search_tax) || isTruthy(input$search_geo) || 
-            isTruthy(input$seq_marker)) && isTruthy(Sys.getenv("api_key"))))
+              isTruthy(input$seq_marker)) && isTruthy(Sys.getenv("api_key"))))
       shinyjs::show("table_area")
       shinyjs::hide("table_buttons")
       reset_ui()
@@ -1274,7 +1274,7 @@ server <- function(input, output, session) {
             if("nmds.beta" %in% names(div)) {
               tagList(
                 h3("Beta diversity ordination:"),
-                "vegan::monoMDS() analysis results (R object)", downloadButton("nmds_rds", "RDS"),
+                "NMDS analysis results (R object)", downloadButton("nmds_rds", "RDS"),
                 "NMDS scores", downloadButton("nmds_scores", "CSV")
               )
             }

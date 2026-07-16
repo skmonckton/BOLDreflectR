@@ -94,19 +94,21 @@ validate_apikey <- function(key) {
   stored <- Sys.getenv("api_key")
   try(stored <- key_get("BOLD.apikey"), silent=TRUE)
   if ((stored != key) | (all(stored == "", key == ""))) {
-    if(key != "") {
+    if(key == "") {
+      Sys.setenv(api_key = "")
+      shinyjs::show("api_key")
+      shinyjs::reset("api_key")
+    } else {
       tryCatch({
         bold.apikey(key)
         shinyjs::hide("api_key")
       }, error = function(e) {
-        showNotification(e$message, id="error", id="fetch_msg", type = "error")
+        showNotification(e$message, type = "error")
       })
-    } else {
-      Sys.setenv(api_key = "")
-      shinyjs::show("api_key")
-      shinyjs::reset("api_key")
     }
     try(key_set_with_value("BOLD.apikey", password = key), silent = TRUE)
+  } else {
+    try(bold.apikey(stored), silent=TRUE)
   }
 }
 
