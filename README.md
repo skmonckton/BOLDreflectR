@@ -31,6 +31,18 @@ The R code can also be downloaded from the [Shiny sub-directory](https://github.
 * Open results directly in Excel
 * Parsed columns include separate lat/long, identification date, project code
 
+### Acknowledgements
+
+This software was developed at the Centre for Biodiversity Genomics, which is supported by funding from the Government of Canada through Genome Canada and Ontario Genomics (OGI-208), the Ontario Ministry of Colleges and Universities, the Natural Sciences and Engineering Research Council of Canada (NSERC), the New Frontiers in Research Fund (NFRFT-2020-00073), and the Canada Foundation for Innovation (MSI 42450).
+
+### Citation
+
+If you use this software, please cite it as below:
+
+```
+Monckton, S.K., & Padhye, S. (2026). BOLDreflectR (Version 0.9.5) [Software]. https://https://github.com/skmonckton/BOLDreflectR
+```
+
 ---
 
 >**VERSIONING NOTE**:

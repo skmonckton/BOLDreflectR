@@ -32,7 +32,9 @@ ui <- bslib::page_fillable(
           div(id = "side-title",
               span(img(src = "reflectR-name.png", alt = "BOLDreflectR", style = "height: 3rem;")),
               `data-ver` = paste0("v", ver)),
-          actionLink("settings", icon("gear")),
+          div(
+            actionLink("app_info", icon("circle-info")),
+            actionLink("settings", icon("gear"))),
           actionLink("cbg_btn", label = " ")),
       bslib::accordion(
         id="optpanels",

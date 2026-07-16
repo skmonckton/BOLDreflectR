@@ -98,12 +98,22 @@ a#del_filter_btn {
   margin-bottom: 1.1rem;
 }
 
-#settings {
-  font-size: 1.25rem;
-  color: #999;
-  margin-right: 0.25rem;
+#app_info {
+  font-size: 1.2rem;
 }
 
+#settings {
+  font-size: 1.25rem;
+}
+
+#settings,
+#app_info {  
+  color: #999;
+  margin-right: 0.25rem;
+  margin-left: 0.5rem;
+}
+
+#app_info:hover,
 #settings:hover {
   color: #404040;
 }
@@ -612,7 +622,7 @@ div[data-rank-id = "bin_rep_vouchered"] div .fa-circle-question {
 #bin-cons-opts > .form-group.shiny-input-container,
 #bin-rep-opts > .form-group.shiny-input-container,
 #img-gal-opt > .flex-div .form-group.shiny-input-container,
-.flex-div .form-group.form-group.shiny-input-container:has(input[type="number"]) {
+.flex-div:not(.coord-range) > .form-group.shiny-input-container:has(input[type="number"]) {
   width: 100%;
   display: flex;
   justify-content: space-between;

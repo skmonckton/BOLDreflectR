@@ -51,7 +51,9 @@ server <- function(input, output, session) {
   }, once = TRUE)
 
   # initialize object to store search parameters
-  fetch_params <- reactiveValues()
+  fetch_params <- reactiveValues(
+    n_node_markers = 1
+  )
 
   init_fetch_params <- list(
     query = list(),
@@ -353,7 +355,7 @@ server <- function(input, output, session) {
     if (any(c("bin_uri", "species") %in% allow_tax)) allow_tax <- c(allow_tax, "bin_fallback")
     updateSelectizeInput(session, "div_location_type",
       choices = allow_sites,
-      selected = allow_sites[[1]]
+      selected = unlist(allow_sites)[1]
     )
     updateSelectInput(session, "div_rank", choices = taxon_ranks[taxon_ranks %in% allow_tax], selected = allow_tax[1])
   })
@@ -414,6 +416,41 @@ server <- function(input, output, session) {
     observeEvent(input$reset_btn, {
       reset_filter(is.null(fetch_params$search_token$node_result))
     })
+    
+    # reactively assemble node search query
+    node_query <- reactiveVal()
+    
+    observe({
+      n_node_markers <- fetch_params$n_node_markers
+      node_query <- list(
+        ids = split_query(input$node_id_list),
+        bins = split_query(input$node_bin_list),
+        dataset.projects = split_query(input$node_recset_list),
+        taxonomy = split_query(input$node_tax),
+        geography = split_query(input$node_geo),
+        identified.by = split_query(input$node_ider_list),
+        biogeo.cat = split_query(input$node_biogeo_list),
+        institutes = split_query(input$node_inst_list),
+        seq.source = split_query(input$node_seqinst_list),
+        bounding.box = c(input$node_lon_min, input$node_lon_max, input$node_lat_min, input$node_lat_max),
+        marker = sapply(1:n_node_markers, function(m) input[[paste0("node_seq_marker_", m)]]),
+        basecount = setNames(
+          lapply(1:n_node_markers, function(m) {
+            vals <- c(input[[paste0("node_seq_min_", m)]], input[[paste0("node_seq_max_", m)]])
+            if(!all(is.na(vals))) {
+              minmax <- c(5, 2000)
+              minmax[!is.na(vals)] <- vals[!is.na(vals)]
+              minmax
+            } else { NULL }}),
+          sapply(1:n_node_markers, function(m) input[[paste0("node_seq_marker_", m)]])))
+      if(sum(node_query$bounding.box) == 0) node_query$bounding.box <- NULL
+      node_query$marker <- if(all(empty(node_query$marker))) { NULL } else { node_query$marker[!empty(node_query$marker)] }
+      node_query$basecount <- node_query$basecount[!sapply(node_query$basecount, is.null)]
+      for(q in names(node_query)) {
+        if(is.null(unlist(node_query[[q]]))) node_query[[q]] <- NULL
+      }
+      node_query(node_query)
+    })
 
   ### Data fetching ----
     
@@ -439,7 +476,7 @@ server <- function(input, output, session) {
           showNotification("Searching data package for matching records...", id = "fetch_msg", duration=NULL, type = "message")
           num_records <- 0
           withCallingHandlers({
-            result <- do.call(bold.data.search, node_params)
+            result <- do.call(bold_parquet_search, node_params)
           }, message = function(m) {
             notif_txt <- clean_ansi(conditionMessage(m))
             if(grepl("^The search has", notif_txt)) {
@@ -554,7 +591,7 @@ server <- function(input, output, session) {
       showNotification(paste0("Collecting ", format(isolate(fetch_params$search_token$num_of_accessible), big.mark = ","),
                               " records from data package..."),
                        id = "fetch_msg", duration=NULL, type = "message")
-      data <- as.data.table(bold.data.collect(fetch_params$search_token$node_result))
+      data <- as.data.table(bold_search_collect(fetch_params$search_token$node_result))
       fetch_params$fetch_by <- "processid"
       showNotification("Preparing table...", id = "fetch_msg", duration=NULL, type = "message")
       populate_data(data)
@@ -652,8 +689,8 @@ server <- function(input, output, session) {
       } else {
         withInfProgress("Collecting additional BIN members from data package...", {
           as.data.table(
-            bold.data.collect(
-              bold.data.search(dtpkg_parquet,ids = outdata$binmates)))
+            bold_search_collect(
+              bold_parquet_search(dtpkg_parquet,ids = outdata$binmates)))
         })
       }
       add_binmates(binmate_data)
@@ -878,6 +915,28 @@ server <- function(input, output, session) {
       result <- computed_fields()
       outdata$select_fields <- result$fields
       outdata$id_field <- result$id_field
+    })
+    
+    # modal logic for info panel
+    observeEvent(input$app_info, {
+      showModal(
+        modalDialog(
+          title = "",
+          HTML(sprintf('
+          <div style="display:flex; flex-direction:column; justify-content:flex-start; align-items:center; text-align:center;">
+          <img src="reflectR-name.png" alt="BOLDreflectR" height="60px" style="display:block; margin:auto;">
+          <div style="font-size:1.2rem; font-weight:bold; margin-bottom:0.2rem;">v%s</div>
+          <div style="font-size:0.9rem;">© 2026 Spencer K. Monckton – MIT License</div>
+          <div>This software was developed at the Centre for Biodiversity Genomics, which is supported by funding from the Government of Canada through Genome Canada and Ontario Genomics (OGI-208), the Ontario Ministry of Colleges and Universities, the Natural Sciences and Engineering Research Council of Canada (NSERC), the New Frontiers in Research Fund (NFRFT-2020-00073), and the Canada Foundation for Innovation (MSI 42450).</div>
+          <div style="margin-bottom:0.8rem;">If you use this software, please cite it as below:</div>
+          <pre style="text-align:left; width:80%%; word-wrap:normal; text-wrap:auto;">Monckton, S.K., & Padhye, S. (2026). BOLDreflectR (Version %s) [Software]. <a href="https://https://github.com/skmonckton/BOLDreflectR">https://https://github.com/skmonckton/BOLDreflectR</a></pre>
+          </div>
+          ', ver, ver)),
+          footer = "",
+          size = "l",
+          easyClose = TRUE
+        )
+      )
     })
     
     # modal logic for settings panel
