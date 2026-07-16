@@ -268,7 +268,7 @@ server <- function(input, output, session) {
     if (any(c("bin_uri", "species") %in% allow_tax)) allow_tax <- c(allow_tax, "bin_fallback")
     updateSelectizeInput(session, "div_location_type",
       choices = allow_sites,
-      selected = allow_sites[[1]]
+      selected = unlist(allow_sites)[1]
     )
     updateSelectInput(session, "div_rank", choices = taxon_ranks[taxon_ranks %in% allow_tax], selected = allow_tax[1])
   })
