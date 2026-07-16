@@ -1,4 +1,8 @@
+if (!"BOLD.NODE" %in% rownames(installed.packages())) {
+  devtools::install_github('https://github.com/sameerpadhye/BOLD.NODE.git')
+}
 library(BOLDconnectR)
+library(BOLD.NODE)
 library(data.table)
 library(httr)
 library(keyring)
@@ -112,6 +116,19 @@ validate_apikey <- function(key) {
   }
 }
 
+# function to update user_config.yaml with current list of available data package files (also returns a list of said files)
+update_datapackages <- function() {
+  datapkgs <- data.table(file.info(list.files(path = file.path(user_data_path, "BOLD_data_packages"), full.names = TRUE))[c("size", "ctime")],
+                         keep.rownames = TRUE)[, .(id = tools::file_path_sans_ext(basename(rn)),
+                                                   path = rn, size_kb = format(size, scientific = FALSE),
+                                                   created = format(ctime, "%Y-%m-%d"))][order(-created)]
+  user_config[["datapackages"]] <- apply(datapkgs, 1, as.list)
+  write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+  return(datapkgs)
+}
+
+datapkgs <- update_datapackages()
+
 # copy to clipboard with size limit
 cb <- function(df, header=TRUE, sep="\t", na="", max.size=(200*1000)){
   os <- Sys.info()["sysname"]
@@ -203,6 +220,38 @@ split_query <- function(query_input, list = FALSE) {
       terms
     }
   }
+}
+
+# save or delete local data packages
+modify_datapackage <- function(dtpkg, operation = "save") {
+  if(operation == "save") {
+    outdir <- file.path(user_data_path, "BOLD_data_packages")
+    if (!dir.exists(outdir)) {
+      dir.create(outdir, recursive = TRUE)
+    }
+    save_id <- tools::file_path_sans_ext(basename(dtpkg))
+    save_path <- file.path(outdir, basename(dtpkg))
+    if(save_id %in% datapkgs$id) {
+      showNotification("There is already a data package with this ID. If you wish to overwrite the existing file, please delete it first.", id = "fileio", type = "error")
+    } else {
+      file.copy(dtpkg, save_path)
+      datapkg <- data.table(file.info(dtpkg)[c("size", "ctime")],
+                            keep.rownames = TRUE)[, .(id = save_id, path = save_path,
+                                                      size_kb = format(size, scientific = FALSE),
+                                                      created = format(ctime, "%Y-%m-%d"))]
+      datapkgs <<- rbindlist(list(datapkgs, datapkg))[order(-created)]
+      user_config[["datapackages"]] <- apply(datapkgs, 1, as.list)
+      write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+      showNotification("Data package saved!", id = "fileio", type = "message")
+    }
+  } else if(operation == "delete") {
+    del_path <- datapkgs[id == dtpkg, path]
+    datapkgs <<- datapkgs[id != dtpkg][order(-created)]
+    user_config[["datapackages"]] <- apply(datapkgs, 1, as.list)
+    file.remove(del_path)
+    write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+  }
+  invisible(datapkgs)
 }
 
 # save or delete user field sets
@@ -561,6 +610,7 @@ bold.fetch.shiny <- function (get_by,
                               query,
                               BCDM_only = FALSE,
                               notification_id = "fetch_msg") {
+
   tryCatch({
     withCallingHandlers({
       if(get_by == "search") {
@@ -655,7 +705,7 @@ get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
   
   if(length(bins) == 0) {
     showNotification("No BINs were found in the fetched data.", id = "bin_msg", duration=2, type = "message")
-  } else {
+  } else if(is.null(dtpkg_parquet)) {
     batches = ceiling(length(bins) / batch_size)
     for (r in 1:batches) {
       start = (r-1) * batch_size + 1
@@ -678,12 +728,25 @@ get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
       add_pids <- sort(unique(c(add_pids, setdiff(out[["records"]], df[["processid"]]))))
       Sys.sleep(sleep)
     }
+  } else {
+    withInfProgress(paste0("Searching data package for additional BIN members from ", length(bins), " BINs..."), {
+      current_pids <- unique(df[["processid"]])
+      pkg_data <- BOLD.NODE:::import_parquet_data(dtpkg_parquet)
+      bins_tbl <- dbplyr::copy_inline(pkg_data$src$con, dplyr::tibble(bin_uri = bins))
+      pids_tbl <- dbplyr::copy_inline(pkg_data$src$con, dplyr::tibble(processid = current_pids))
+      add_pids <- pkg_data |>
+        dplyr::semi_join(bins_tbl, by = "bin_uri") |>
+        dplyr::anti_join(pids_tbl, by = "processid") |>
+        dplyr::distinct(processid) |>
+        dplyr::collect() |>
+        _$processid
+    })
+  }
     
-    if(length(add_pids) == 0) {
-      showNotification(paste0("No additional BIN members found."), id = "bin_msg", type = "message")
-    } else {
-      showNotification(paste0(length(add_pids), " additional BIN members found."), id = "bin_msg", type = "message")
-    }
+  if(length(add_pids) == 0) {
+    showNotification(paste0("No additional BIN members found."), id = "bin_msg", type = "message")
+  } else {
+    showNotification(paste0(length(add_pids), " additional BIN members found."), id = "bin_msg", type = "message")
   }
   
   return(add_pids)

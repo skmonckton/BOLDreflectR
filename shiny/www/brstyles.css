@@ -146,6 +146,10 @@ a#del_filter_btn {
   line-height: 2.2;
 }
 
+#data_source .nav-link {
+  padding: 6px 12px;
+}
+
 .flex-div .form-check {
   margin-bottom: 0;
 }

@@ -59,7 +59,9 @@ server <- function(input, output, session) {
     fetch_by = NULL,
     search_token = NULL,
     binmates_checked = FALSE,
-    binmates_fetched = FALSE
+    binmates_fetched = FALSE,
+    node_dtpkg = NULL,
+    node_result = NULL
   )
 
   # initialize object to store fetched records and associated data
@@ -172,6 +174,55 @@ server <- function(input, output, session) {
     }
   })
 
+  # logic for multiple markers when searching local data
+    observeEvent(input$node_add_marker, {
+      i <- fetch_params$n_node_markers
+      n <- i + 1
+      fetch_params$n_node_markers <- n
+      insertUI(selector = '.tab-pane[data-value="source-local"] div.marker-select div.single-marker:nth-last-child(1 of .single-marker)',
+               where = "afterEnd",
+               ui = div(class="form-group shiny-input-container single-marker",
+                        selectInput(
+                          paste0("node_seq_marker_", n),
+                          label = "",
+                          selected = "",
+                          marker_options),
+                        numericInput(
+                          paste0("node_seq_min_", n),
+                          label = "",
+                          value = NULL,
+                          min = 5, max = 2000, step = 1),
+                        numericInput(
+                          paste0("node_seq_max_", n),
+                          label = "",
+                          value = NULL,
+                          min = 5, max = 2000, step = 1)))
+    })
+    
+    # remove marker from search
+    observeEvent(input$node_del_marker, {
+      i <- fetch_params$n_node_markers
+      req(i > 1)
+      n <- i - 1
+      fetch_params$n_node_markers <- n
+      shinyjs::runjs(paste0("Shiny.setInputValue(\"node_seq_marker_", i, "\", null);"))
+      removeUI(selector = '.tab-pane[data-value="source-local"] div.marker-select div.single-marker:nth-last-child(1 of .single-marker)',
+               immediate = TRUE)
+    })
+    
+    # update select inputs to permit only one input per marker
+    observeEvent(input$node_markers, {
+      selected <- input$node_markers
+      for(i in 1:isolate(fetch_params$n_node_markers)) {
+        marker_i <- input[[paste0("node_seq_marker_", i)]]
+        update_opts <- lapply(marker_options, function(m) m[!m %in% c(setdiff(selected, marker_i))])
+        updateSelectInput(session,
+                          paste0("node_seq_marker_", i),
+                          choices = update_opts,
+                          selected = ifelse(is.null(marker_i), "", marker_i))
+      }
+    })
+
   # disable option to find additional BIN records when fetching by BIN
   # (in this case, fetching BIN mates will always return zero records)
   observe({
@@ -193,23 +244,57 @@ server <- function(input, output, session) {
       sibling_value <- input[[sibling_id]]
 
       val_range <- fcase(grepl("seq", id), list(c(5, 2000)))
+      
+      if(isTRUE(value < val_range[[1]][1])) updateNumericInput(inputId = id, value = val_range[[1]][1])
+      if(isTRUE(value > val_range[[1]][2])) updateNumericInput(inputId = id, value = val_range[[1]][2])
+      if(isTRUE(is_max && value < sibling_value)) updateNumericInput(inputId = id, value = sibling_value)
+      if(isTRUE(is_min && value > sibling_value)) updateNumericInput(inputId = id, value = sibling_value)
+    }, ignoreInit = TRUE)
 
-      if (isTRUE(value < val_range[[1]][1])) updateNumericInput(inputId = id, value = val_range[[1]][1])
-      if (isTRUE(value > val_range[[1]][2])) updateNumericInput(inputId = id, value = val_range[[1]][2])
-      if (isTRUE(is_max && value < sibling_value)) updateNumericInput(inputId = id, value = sibling_value)
-      if (isTRUE(is_min && value > sibling_value)) updateNumericInput(inputId = id, value = sibling_value)
-    },
-    ignoreInit = TRUE
-  )
-
-  # only show NTS toggle when data contains NTS records
-  observe({
-    nts_idx <- nts_idx()
-    req(length(nts_idx) > 0)
-    shinyjs::toggleElement(id = "include_nts", condition = (sum(nts_idx) > 0))
-  })
-
-  # reactively adjust available diversity analysis options
+    # keep coordinate ranges and manual inputs synchronized (and visually indicate "default" state to imply it will be ignored)
+    observeEvent(input$node_lon_range, {
+      range <- input$node_lon_range
+      updateNumericInput(session, "node_lon_min", value = range[1])
+      updateNumericInput(session, "node_lon_max", value = range[2])
+      if(all(range == c(-180, 180))) {
+        shinyjs::addClass(selector = ".coord-range:has(#node_lon_range)", class = "dim-input")
+      } else {
+        shinyjs::removeClass(selector = ".coord-range:has(#node_lon_range)", class = "dim-input")
+      }
+    })
+    observeEvent(input$node_lat_range, {
+      range <- input$node_lat_range
+      updateNumericInput(session, "node_lat_min", value = range[1])
+      updateNumericInput(session, "node_lat_max", value = range[2])
+      if(all(range == c(-90, 90))) {
+        shinyjs::addClass(selector = ".coord-range:has(#node_lat_range)", class = "dim-input")
+      } else {
+        shinyjs::removeClass(selector = ".coord-range:has(#node_lat_range)", class = "dim-input")
+      }
+    })
+    lon_range_man <- debounce(reactive(c(input$node_lon_min, input$node_lon_max)), 800)
+    observeEvent(lon_range_man(), {
+      freezeReactiveValue(input, "node_lon_range")
+      updateSliderInput(session, "node_lon_range", value = lon_range_man())
+    })
+    lat_range_man <- debounce(reactive(c(input$node_lat_min, input$node_lat_max)), 800)
+    observeEvent(lat_range_man(), {
+      freezeReactiveValue(input, "node_lat_range")
+      updateSliderInput(session, "node_lat_range", value = lat_range_man())
+    })
+    
+    # only show NTS toggle when data contains NTS records
+    observe({
+      nts_idx <- nts_idx()
+      req(length(nts_idx) > 0)
+      if(sum(nts_idx) > 0) {
+        shinyjs::show('include_nts')
+      } else {
+        shinyjs::hide('include_nts')
+      }
+    })
+    
+    # reactively adjust available diversity analysis options
   observeEvent(input$div_presence, {
     if(input$div_presence) {
       updateCheckboxInput(inputId = "div_rare_by_site", value = FALSE)
@@ -291,409 +376,511 @@ server <- function(input, output, session) {
 
 
   ### Server helpers ----
-
-  # function to reset filter options
-  reset_filter <- function(include_verbatim = TRUE) {
-    if (!isolate(input$tabs) %in% c("data", "bin_reps", "map_tab")) {
-      bslib::nav_select(id = "tabs", selected = "data")
+    
+    # function to reset filter options
+    reset_filter <- function(include_verbatim = TRUE) {
+      if (!isolate(input$tabs) %in% c("data", "bin_reps", "map_tab")) {bslib::nav_select(id="tabs", selected="data")}
+      outdata$select_fields <- if (is.null(isolate(outdata$data))) {
+        config$fieldsets$bcdm
+      } else {
+        c(config$fieldsets$bcdm, isolate(coll_mrkr_fields()))
+      }
+      updateSelectizeInput(session,"filt_opt",
+                           choices = filter_options(include_verbatim),
+                           selected = NULL)
+      updateSelectizeInput(session, "filt_seq",
+                           choices = outdata$markers,
+                           selected = NULL)
     }
-    outdata$select_fields <- if (is.null(isolate(outdata$data))) {
-      config$fieldsets$bcdm
-    } else {
-      c(config$fieldsets$bcdm, isolate(coll_mrkr_fields()))
+    
+    # function to reset UI (and reactive values) to blank state
+    reset_ui <- function() {
+      for(i in seq_along(init_outdata)) {
+        outdata[[names(init_outdata[i])]] <- unname(unlist(init_outdata[i]))
+      }
+      for(i in seq_along(init_fetch_params)) {
+        fetch_params[[names(init_fetch_params[i])]] <- unname(unlist(init_fetch_params[i]))
+      }
+      bslib::nav_select(id="tabs", selected = "data")
+      for(t in names(tab_status)[names(tab_status) != "data"]) bslib::nav_remove(id="tabs", target = t, session)
+      for(i in seq_along(reactiveValuesToList(tab_status))) tab_status[[names(tab_status)[i]]] <- FALSE
+      bslib::update_switch("include_binmates", value = FALSE)
+      bslib::update_switch("include_nts", value = FALSE)
+      bslib::update_switch("collapse_mrkrs", value = FALSE)
+      updateCheckboxInput(inputId = "bc_portal_stats", value = FALSE)
     }
-    updateSelectizeInput(session, "filt_opt",
-      choices = filter_options(include_verbatim),
-      selected = NULL
-    )
-    updateSelectizeInput(session, "filt_seq",
-      choices = outdata$markers,
-      selected = NULL
-    )
-  }
-
-  # function to reset UI (and reactive values) to blank state
-  reset_ui <- function() {
-    for (i in seq_along(init_outdata)) {
-      outdata[[names(init_outdata[i])]] <- unname(unlist(init_outdata[i]))
-    }
-    for (i in seq_along(init_fetch_params)) {
-      fetch_params[[names(init_fetch_params[i])]] <- unname(unlist(init_fetch_params[i]))
-    }
-    bslib::nav_select(id = "tabs", selected = "data")
-    for (t in names(tab_status)[names(tab_status) != "data"]) bslib::nav_remove(id = "tabs", target = t, session)
-    for (i in seq_along(reactiveValuesToList(tab_status))) tab_status[[names(tab_status)[i]]] <- FALSE
-    bslib::update_switch("include_binmates", value = FALSE)
-    bslib::update_switch("include_nts", value = FALSE)
-    bslib::update_switch("collapse_mrkrs", value = FALSE)
-    updateCheckboxInput(inputId = "bc_portal_stats", value = FALSE)
-  }
-
-  # execute reset function when button is pressed
-  observeEvent(input$reset_btn, {
-    reset_filter()
-  })
+    
+    # execute reset function when button is pressed
+    observeEvent(input$reset_btn, {
+      reset_filter(is.null(fetch_params$search_token$node_result))
+    })
 
   ### Data fetching ----
-
-  # set API key and generate fetch_ids
-  observeEvent(input$fetch_btn | input$fetch_ctrl_enter,
-    {
+    
+    # set API key and generate fetch_ids
+    observeEvent(input$fetch_btn | input$fetch_ctrl_enter, {
       shinyjs::hide("main_panel")
       key <- if(isTruthy(input$api_key)) input$api_key else Sys.getenv("api_key")
       validate_apikey(key)
       req(((isTruthy(input$fetch_id_list) || isTruthy(input$search_tax) || isTruthy(input$search_geo) || 
-              isTruthy(input$seq_marker)) && isTruthy(Sys.getenv("api_key"))))
-      shinyjs::show("table_area")
-      shinyjs::hide("table_buttons")
+            isTruthy(input$seq_marker)) && isTruthy(Sys.getenv("api_key")))
+          || (isTruthy(length(node_query()) > 0) && isTruthy(input$datapackage_id)))
+      shinyjs::show('table_area')
+      shinyjs::hide('table_buttons')
       reset_ui()
+      reset_filter(input$data_source == "source-api")
       tab_status$data <- TRUE
       shinyjs::show("main_panel")
-      tryCatch(
-        {
-          if (input$query_params == "search_opts") {
-            showNotification("Searching for matching records...", id = "fetch_msg", duration = NULL, type = "message")
-            search_query <- list(
-              taxonomy = split_query(input$search_tax, list = TRUE),
-              geography = split_query(input$search_geo, list = TRUE),
-              marker = input$seq_marker[input$seq_marker != ""],
-              marker_min_length = input$seq_min[!is.na(input$seq_min)],
-              marker_max_length = input$seq_max[!is.na(input$seq_max)],
-              collection_start_date = input$search_dates[1][!is.na(input$search_dates[1])],
-              collection_end_date = input$search_dates[2][!is.na(input$search_dates[1])],
-              institutes = split_query(input$search_inst, list = TRUE)
-            )
-            fetch_params$query <- search_query[sapply(search_query, length) > 0]
-            search_token <- do.call(bold.full.search.step1, search_query[sapply(search_query, length) > 0])
-            if (is.null(search_token)) {
-              showNotification("No records found matching search terms.", id = "fetch_msg", type = "warning")
-            } else if (search_token$num_of_accessible >= 100000) {
-              removeNotification(id = "fetch_msg")
-              fetch_params$search_token <- search_token
-              search_confirm_modal()
-            } else {
-              showNotification(paste0(
-                "Downloading ids of ",
-                format(search_token$num_of_accessible, big.mark = ",", scientific = FALSE),
-                "  matching records..."
-              ), id = "fetch_msg", duration = NULL, type = "message")
-              fetch_params$fetch_by <- "processid"
-              fetch_params$fetch_ids <- bold.full.search.step2(search_token)$processid
+      tryCatch({
+        if(input$data_source == "source-local") {
+          node_params <- node_query()
+          fetch_params$query <- node_params
+          node_params[["input.parquet"]] <- input$datapackage_id
+          showNotification("Searching data package for matching records...", id = "fetch_msg", duration=NULL, type = "message")
+          num_records <- 0
+          withCallingHandlers({
+            result <- do.call(bold.data.search, node_params)
+          }, message = function(m) {
+            notif_txt <- clean_ansi(conditionMessage(m))
+            if(grepl("^The search has", notif_txt)) {
+              num_records <<- as.numeric(regmatches(notif_txt, gregexpr("(?<=has )[0-9,]+(?= records)", notif_txt, perl = TRUE))[[1]][1])
             }
+            showNotification(notif_txt, id = "fetch_msg", duration = NULL, type = "message")
+          })
+          fetch_params$node_dtpkg <- input$datapackage_id
+          fetch_params$search_token <- list(num_of_accessible = num_records,
+                                            num_of_records = num_records,
+                                            limit = Inf,
+                                            node_result = result)
+          if(num_records == 0) {
+            showNotification("No records found matching search terms.", id="fetch_msg", type = "warning")
+          } else if(num_records >= 100000) {
+            search_confirm_modal()
           } else {
-            fetch_by <- input$fetch_by
-            fetch_ids <- split_query(input$fetch_id_list, list = TRUE)
-            fetch_params$query[[fetch_by]] <- fetch_ids
-            fetch_params$fetch_by <- fetch_by
-            fetch_params$fetch_ids <- unlist(fetch_ids)
+            collect_node_data()
           }
-        },
-        warning = function(w) {
-          showNotification("No results found using provided search terms.", id = "fetch_msg", type = "warning")
-        },
-        error = function(e) {
-          showNotification(paste0("Error processing record identifiers: ", e$message), id = "fetch_msg", type = "error")
+        } else if(input$query_params == "search_opts") {
+          showNotification("Searching for matching records...", id = "fetch_msg", duration=NULL, type = "message")
+          search_query <- list(taxonomy = split_query(input$search_tax, list = TRUE),
+                               geography = split_query(input$search_geo, list = TRUE),
+                               marker = input$seq_marker[input$seq_marker != ""],
+                               marker_min_length = input$seq_min[!is.na(input$seq_min)],
+                               marker_max_length = input$seq_max[!is.na(input$seq_max)],
+                               collection_start_date = input$search_dates[1][!is.na(input$search_dates[1])],
+                               collection_end_date = input$search_dates[2][!is.na(input$search_dates[1])],
+                               institutes = split_query(input$search_inst, list = TRUE))
+          fetch_params$query <- search_query[sapply(search_query, length) > 0]
+          search_token <- do.call(bold.full.search.step1, search_query[sapply(search_query, length) > 0])
+          if(is.null(search_token)) {
+            showNotification("No records found matching search terms.", id="fetch_msg", type = "warning")
+          } else if(search_token$num_of_accessible >= 100000) {
+            removeNotification(id = "fetch_msg")
+            fetch_params$search_token <- search_token
+            search_confirm_modal()
+          } else {
+            showNotification(paste0("Downloading ids of ",
+                                    format(search_token$num_of_accessible, big.mark = ",", scientific = FALSE),
+                                    "  matching records..."), id = "fetch_msg", duration=NULL, type = "message")
+            fetch_params$fetch_by <- "processid"
+            fetch_params$fetch_ids <- bold.full.search.step2(search_token)$processid
+          }
+        } else {
+          fetch_by <- input$fetch_by
+          fetch_ids <- split_query(input$fetch_id_list, list = TRUE)
+          fetch_params$query[[fetch_by]] <- fetch_ids
+          fetch_params$fetch_by <- fetch_by
+          fetch_params$fetch_ids <- unlist(fetch_ids)
         }
-      )
-    },
-    ignoreInit = TRUE
-  )
-
-  # modal to call up upon finding over 100k records from search
-  search_confirm_modal <- function() {
-    req(fetch_params$search_token)
-    search_token <- fetch_params$search_token
-    modal_msg <- p(HTML(paste0("Search returned <strong>", format(search_token$num_of_accessible, big.mark = ",", scientific = FALSE), "</strong> accessible records.")))
-    if (search_token$num_of_records >= search_token$limit) {
-      modal_msg <- div(modal_msg, p(class = "warn-text", HTML("<strong>Note:</strong> Maximum search limit of ", format(search_token$limit, big.mark = ",", scientific = FALSE), " was reached. Additional matches may exist beyond what can be fetched.")))
-    }
-    showModal(
-      modalDialog(
-        title = "Confirm fetch",
-        modal_msg,
-        footer = tagList(
-          div("Proceed to fetch records?"),
-          div(
-            id = "modal_confirm",
-            actionButton("search_confirm_btn", "Yes"),
-            modalButton("No")
-          )
-        ),
-        easyClose = TRUE
-      )
-    )
-  }
-
-  # upon confirming search, proceed to get fetch_ids (process IDs)
-  observeEvent(input$search_confirm_btn, {
-    removeModal()
-    search_token <- fetch_params$search_token
-    tryCatch(
-      {
-        showNotification(paste0(
-          "Downloading ids of ",
-          format(search_token$num_of_accessible, big.mark = ",", scientific = FALSE),
-          "  matching records..."
-        ), id = "fetch_msg", duration = NULL, type = "message")
-        fetch_params$fetch_by <- "processid"
-        fetch_params$fetch_ids <- bold.full.search.step2(search_token)$processid
-      },
-      error = function(e) {
-        showNotification(paste0("Error retrieving records from BOLD: ", e$message), id = "fetch_msg", type = "error")
+      }, warning = function(w) {
+        showNotification("No results found using provided search terms.", id="fetch_msg", type = "warning")
+      }, error = function(e) {
+        showNotification(paste0("Error processing record identifiers: ", e$message), id="fetch_msg", type = "error")
+      })
+    }, ignoreInit = TRUE)
+    
+    # modal to call up upon finding over 100k records from search
+    search_confirm_modal <- function() {
+      req(fetch_params$search_token)
+      search_token <- fetch_params$search_token
+      modal_msg <- p(HTML(paste0("Search returned <strong>", format(search_token$num_of_accessible, big.mark = ",", scientific = FALSE), "</strong> accessible records.")))
+      if(search_token$num_of_records >= search_token$limit) {
+        modal_msg <- div(modal_msg, p(class="warn-text", HTML("<strong>Note:</strong> Maximum search limit of ", format(search_token$limit, big.mark = ",", scientific = FALSE), " was reached. Additional matches may exist beyond what can be fetched.")))
       }
-    )
-  })
-
-  # perform fetch
-  observeEvent(fetch_params$fetch_ids, {
-    req(fetch_params$fetch_ids, fetch_params$fetch_by)
-    data <- as.data.table(bold.fetch.shiny(
-      get_by = fetch_params$fetch_by,
-      query = fetch_params$fetch_ids,
-      BCDM_only = FALSE
-    ))
-    req(nrow(data) > 0)
-    populate_data(data)
-  })
-
-  # populate data
-  populate_data <- function(data) {
-    data[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
-    convert_factor_char(data)
-    if (fetch_params$fetch_by == "bin_uris") {
-      shinyjs::hide("include_binmates")
-      shinyjs::hide("view_binmates")
-    } else {
-      shinyjs::show("include_binmates")
-      shinyjs::show("view_binmates")
+      showModal(
+        modalDialog(
+          title = "Confirm fetch",
+          modal_msg,
+          footer = tagList(
+            div("Proceed to fetch records?"),
+            div(id="modal_confirm",
+                actionButton("search_confirm_btn", "Yes"),
+                modalButton("No"))),
+          easyClose = TRUE)
+      )
     }
-    outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if (anyNA(data$marker_code)) "ZZZ"))))
-    outdata$data <- data
-
-    shinyjs::show("table_buttons")
-    bslib::accordion_panel_close(id = "optpanels", values = "fetchdata")
-    bslib::accordion_panel_open(id = "optpanels", values = c("customize", "summarize", "analyze"))
-    if (input$fetch_binmates == TRUE) {
-      binmate_modal()
+    
+    # upon confirming search, proceed to get fetch_ids (process IDs)
+    observeEvent(input$search_confirm_btn, {
+      removeModal()
+      search_token <- fetch_params$search_token
+      if(input$data_source == "source-local") {
+        collect_node_data()
+      } else {
+        tryCatch({
+          showNotification(paste0("Downloading ids of ",
+                                  format(search_token$num_of_accessible, big.mark = ",", scientific = FALSE),
+                                  "  matching records..."), id = "fetch_msg", duration=NULL, type = "message")
+          fetch_params$fetch_by <- "processid"
+          fetch_params$fetch_ids <- bold.full.search.step2(search_token)$processid
+        }, error = function(e) {
+          showNotification(paste0("Error retrieving records from BOLD: ", e$message), id="fetch_msg", type = "error")
+        })
+      }
+    })
+    
+    # perform fetch
+    observeEvent(fetch_params$fetch_ids, {
+      req(fetch_params$fetch_ids, fetch_params$fetch_by)
+      data <- as.data.table(bold.fetch.shiny(get_by = fetch_params$fetch_by,
+                               query = fetch_params$fetch_ids,
+                               BCDM_only = FALSE))
+      req(nrow(data) > 0)
+      populate_data(data)
+    })
+    
+    # collect data from local data package
+    collect_node_data <- function() {
+      req(fetch_params$search_token)
+      showNotification(paste0("Collecting ", format(isolate(fetch_params$search_token$num_of_accessible), big.mark = ","),
+                              " records from data package..."),
+                       id = "fetch_msg", duration=NULL, type = "message")
+      data <- as.data.table(bold.data.collect(fetch_params$search_token$node_result))
+      fetch_params$fetch_by <- "processid"
+      showNotification("Preparing table...", id = "fetch_msg", duration=NULL, type = "message")
+      populate_data(data)
+      showNotification("Data assembled.", id = "fetch_msg", duration=2, type = "message")
     }
-  }
-
-  # logic for initiating search (or fetch) of additional BIN records ("BIN mates")
-  # if the BIN mates switch is toggled on, a modal opens to report the number of additional BIN records
-  observeEvent(input$include_binmates,
-    {
+    
+    # populate data
+    populate_data <- function(data) {
+      data[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
+      convert_factor_char(data)
+      if(fetch_params$fetch_by == "bin_uris") {
+        shinyjs::hide("include_binmates")
+        shinyjs::hide("view_binmates")
+      } else {
+        shinyjs::show("include_binmates")
+        shinyjs::show("view_binmates")
+      }
+      outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
+      outdata$data <- data
+      
+      shinyjs::show('table_buttons')
+      bslib::accordion_panel_close(id="optpanels", values="fetchdata")
+      bslib::accordion_panel_open(id="optpanels", values=c("customize","summarize","analyze"))
+      if (input$fetch_binmates == TRUE) {
+        binmate_modal()
+      }
+    }
+    
+    # logic for initiating search (or fetch) of additional BIN records ("BIN mates") 
+    # if the BIN mates switch is toggled on, a modal opens to report the number of additional BIN records
+    observeEvent(input$include_binmates, {
       req(outdata$data)
       if ((isolate(input$include_binmates) == TRUE) && (isolate(fetch_params$binmates_checked) == FALSE)) {
         binmate_modal()
       } else if ((length(outdata$binmates) > 0) && (fetch_params$binmates_fetched == FALSE)) {
         fetch_binmates()
       }
-    },
-    ignoreInit = TRUE,
-    ignoreNULL = TRUE
-  )
-
-  # the modal can also be accessed without toggling the switch, in case the user simply wants to review the BIN mate list
-  observeEvent(input$view_binmates, {
-    req(outdata$data)
-    binmate_modal()
-  })
-
-  # modal logic for BIN mates
-  binmate_modal <- function() {
-    req(outdata$data)
-    binmate_pids <- outdata$binmates
-    if (is.null(outdata$binmates)) {
-      binmate_pids <- get_binmates(outdata$data[!is.na(bin_uri)])
-      outdata$binmates <- binmate_pids
-    }
-    if (length(binmate_pids) == 0) {
-      modal_msg <- div(HTML(paste0("No additional BIN members found.")))
-      modal_footer <- tagList(
-        div(
-          id = "modal_confirm",
-          actionButton("binmate_btn", "OK")
+    }, ignoreInit = TRUE, ignoreNULL = TRUE)
+    
+    # the modal can also be accessed without toggling the switch, in case the user simply wants to review the BIN mate list
+    observeEvent(input$view_binmates, {
+      req(outdata$data)
+      binmate_modal()
+    })
+    
+    # modal logic for BIN mates
+    binmate_modal <- function() {
+      req(outdata$data)
+      binmate_pids <- outdata$binmates
+      if (is.null(outdata$binmates)) {
+        binmate_pids <- get_binmates(outdata$data[!empty(bin_uri)], fetch_params$node_dtpkg)
+        outdata$binmates <- binmate_pids
+      }
+      if(length(binmate_pids) == 0) {
+        modal_msg <- div(HTML(paste0("No additional BIN members found.")))
+        modal_footer <- tagList(
+          div(id="modal_confirm",
+              actionButton("binmate_btn", "OK")))
+        binmate_list <- div("")
+      } else if (fetch_params$binmates_checked == FALSE) {
+        modal_msg <- div(HTML(paste0("Found <strong>",length(binmate_pids),"</strong> additional BIN members. Retrieve and add to table?")))
+        modal_footer <- tagList(
+          actionButton("copy_binmates", "Copy"),
+          div(id="modal_confirm",
+              actionButton("binmate_btn", "Yes"),
+              actionButton("binmate_no", "No"))
+        )
+        binmate_list <- verbatimTextOutput("binmate_pids")
+      } else {
+        modal_msg <- div(HTML(paste0("The following <strong>",length(binmate_pids),"</strong> additional BIN members were added to the retrieved data.")))
+        modal_footer <- tagList(
+          actionButton("copy_binmates", "Copy"),
+          div(id="modal_confirm",
+              modalButton("OK"))
+        )
+        binmate_list <- verbatimTextOutput("binmate_pids")
+      }
+      showModal(
+        modalDialog(
+          title = "Additional BIN members",
+          modal_msg,
+          binmate_list,
+          footer = modal_footer,
+          easyClose = (fetch_params$binmates_checked == TRUE)
         )
       )
-      binmate_list <- div("")
-    } else if (fetch_params$binmates_checked == FALSE) {
-      modal_msg <- div(HTML(paste0("Found <strong>", length(binmate_pids), "</strong> additional BIN members. Retrieve and add to table?")))
-      modal_footer <- tagList(
-        actionButton("copy_binmates", "Copy"),
-        div(
-          id = "modal_confirm",
-          actionButton("binmate_btn", "Yes"),
-          actionButton("binmate_no", "No")
-        )
-      )
-      binmate_list <- verbatimTextOutput("binmate_pids")
-    } else {
-      modal_msg <- div(HTML(paste0("The following <strong>", length(binmate_pids), "</strong> additional BIN members were added to the retrieved data.")))
-      modal_footer <- tagList(
-        actionButton("copy_binmates", "Copy"),
-        div(
-          id = "modal_confirm",
-          modalButton("OK")
-        )
-      )
-      binmate_list <- verbatimTextOutput("binmate_pids")
+      fetch_params$binmates_checked <- TRUE
     }
-    showModal(
-      modalDialog(
-        title = "Additional BIN members",
-        modal_msg,
-        binmate_list,
-        footer = modal_footer,
-        easyClose = (fetch_params$binmates_checked == TRUE)
-      )
-    )
-    fetch_params$binmates_checked <- TRUE
-  }
-
-  fetch_binmates <- function() {
-    binmate_data <- as.data.table(bold.fetch.shiny(
-      get_by = "processid",
-      query = outdata$binmates,
-      BCDM_only = FALSE
-    ))
-    add_binmates(binmate_data)
-  }
-
-  add_binmates <- function(binmate_data) {
-    showNotification("Processing additional BIN member data...",
-      id = "fetch_msg", duration = NULL, type = "message"
-    )
-    binmate_data <- binmate_data[, c("id_date_parsed", "project_code", "lat", "lon") :=
-      c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
-    convert_factor_char(binmate_data)
-    data <- unique(rbindlist(
-      list(
-        outdata$data,
-        binmate_data
-      ),
-      fill = TRUE
-    ))
-    showNotification("Additional BIN members retrieved.",
-      id = "fetch_msg", duration = 2, type = "message"
-    )
-    outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if (anyNA(data$marker_code)) "ZZZ"))))
-    outdata$data <- data
-    fetch_params$binmates_fetched <- TRUE
-  }
-
-  # user can close the BIN mate modal without fetching BIN mates
-  observeEvent(input$binmate_no, {
-    removeModal()
-    bslib::update_switch("include_binmates", label = "Include additional BIN members", value = FALSE, session)
-  })
-
-  # fetch BIN mates and add them to the data
-  observeEvent(input$binmate_btn, {
-    removeModal()
-    if (length(outdata$binmates) > 0) {
-      fetch_binmates()
-      bslib::update_switch("include_binmates", label = "Include additional BIN members", value = TRUE, session)
-    } else {
-      bslib::update_switch("include_binmates", label = "Include additional BIN members", value = FALSE, session)
+    
+    fetch_binmates <- function(dtpkg_parquet = fetch_params$node_dtpkg) {
+      binmate_data <- if(is.null(dtpkg_parquet)) {
+        as.data.table(bold.fetch.shiny(get_by = "processid",
+                                       query = outdata$binmates,
+                                       BCDM_only = FALSE))
+      } else {
+        withInfProgress("Collecting additional BIN members from data package...", {
+          as.data.table(
+            bold.data.collect(
+              bold.data.search(dtpkg_parquet,ids = outdata$binmates)))
+        })
+      }
+      add_binmates(binmate_data)
     }
-  })
+    
+    add_binmates <- function(binmate_data) {
+      withInfProgress("Processing additional BIN member data...", {
+        binmate_data <- binmate_data[, c("id_date_parsed", "project_code", "lat", "lon") :=
+                                       c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", outdata$id_field)), parse_lat_lon(coord))]
+        convert_factor_char(binmate_data)
 
+      data <- unique(rbindlist(list(outdata$data,
+                                      binmate_data),
+                                 fill = TRUE))
+      })
+      showNotification("Additional BIN members retrieved.",
+                       id = "fetch_msg", type = "message")
+      outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if(anyNA(data$marker_code)) "ZZZ"))))
+      outdata$data <- data
+      fetch_params$binmates_fetched <- TRUE
+    }
+    
+    # user can close the BIN mate modal without fetching BIN mates
+    observeEvent(input$binmate_no, {
+      removeModal()
+      bslib::update_switch("include_binmates",label="Include additional BIN members",value=FALSE,session)
+    })
+    
+    # fetch BIN mates and add them to the data
+    observeEvent(input$binmate_btn, {
+      removeModal()
+      if(length(outdata$binmates) > 0) {
+        fetch_binmates()
+        bslib::update_switch("include_binmates",label="Include additional BIN members",value=TRUE,session)
+      } else {
+        bslib::update_switch("include_binmates",label="Include additional BIN members",value=FALSE,session)
+      }
+    })
+    
   ### Reactive computations & observers ----
+    
+    # keep summary analysis options updated according to available fields
+    observeEvent(outdata$data, {
+      req(outdata$data)
+      updateSelectInput(session, 
+                        "ana_opt",
+                        choices = list(
+                          "Taxonomy" = list(
+                            "Taxonomic summary" = "tax_summary"),
+                          "Unique values - selected fields" = list(
+                            "Taxon" = "identification",
+                            "BIN" = "bin_uri",
+                            "Identification dates (parsed)" = "id_date_parsed",
+                            "Projects" = "projects",
+                            "Datasets" = "datasets",
+                            "Country" = "country.ocean"),
+                          "Unique values - all fields" = as.list(
+                            names(outdata$data)[
+                              !names(outdata$data) %in% c("identification","bin_uri","country.ocean","id_date_parsed","project_code")])
+                        ))
+    })
 
-  # keep summary analysis options updated according to available fields
-  observeEvent(outdata$data, {
-    req(outdata$data)
-    updateSelectInput(session,
-      "ana_opt",
-      choices = list(
-        "Taxonomy" = list(
-          "Taxonomic summary" = "tax_summary"
-        ),
-        "Unique values - selected fields" = list(
-          "Taxon" = "identification",
-          "BIN" = "bin_uri",
-          "Identification dates (parsed)" = "id_date_parsed",
-          "Projects" = "projects",
-          "Datasets" = "datasets",
-          "Country" = "country.ocean"
-        ),
-        "Unique values - all fields" = as.list(
-          names(outdata$data)[
-            !names(outdata$data) %in% c("identification", "bin_uri", "country.ocean", "id_date_parsed", "project_code")
-          ]
-        )
+    user_datapkgs <- reactiveVal(datapkgs)
+    
+    # modal logic for data package options
+    observeEvent(input$datapackage_btn, {
+      showModal(
+        modalDialog(
+          title = "Saved data packages",
+          HTML('Data packages must be in Parquet format. BOLD data packages are available for download <a href="https://bench.boldsystems.org/index.php/datapackages/" target="_blank" rel="noopener noreferrer">here <i class="fa fa-external-link" aria-hidden="true"></i></a>.'),
+          DT::dataTableOutput("datapkg_table"),
+          div(class = "flex-div",
+              div(hidden(div(id = "delete_confirm", class = "warn-text", "Are you sure? File(s) will be permanently deleted."))),
+              div(actionButton("datapackage_delete",
+                               icon = HTML('<i role="presentation" aria-label="trash icon" class="fa fa-trash"></i>'),
+                               label = "Delete selected"),
+                  hidden(actionButton(inputId = "datapackage_del_cancel", icon = icon("x"), label = "Cancel")),
+                  actionButton("datapackage_browse",
+                               icon = HTML('<i role="presentation" aria-label="folder icon" class="far fa-folder"></i>'),
+                               label = "Add..."))),
+          footer = tagList(div(), modalButton("Close")),
+          easyClose = TRUE,
+          size = "l")
       )
-    )
-  })
-
-  # logic for generating marker-collapsed data table
-  collapsed_data <- reactive({
-    req(outdata$data)
-    collapse_markers(outdata$data)
-  })
-
-  # reactive to store additional marker-specific fields/columns
-  coll_mrkr_fields <- reactive({
-    cd <- collapsed_data()
-    req(cd)
-    setdiff(names(cd), c(config$fieldsets$all, config$fieldsets$parsed))
-  })
-
-  # reactive object for user-selected fields/column filters
-  computed_fields <- reactive({
-    # if no column filters have been selected, select all fields (plus collapsed table fields if there are any)
-    if (length(input$filt_opt) == 0) {
-      fields <- c(config$fieldsets$bcdm, coll_mrkr_fields())
-      # show_copy_fasta <- TRUE
-      id_field <- "processid"
-    } else {
-      # expand out any custom user field sets
-      field_opts <- c()
-      for (o in input$filt_opt) {
-        if (grepl("^userset", o)) {
-          field_opts <- unique(c(field_opts, unlist(sapply(user_config$fieldsets$custom, function(x) if (x$id == o) x$fields))))
+    })
+    
+    # record selected file info and copy to user data directory
+    observeEvent(input$datapackage_browse, {
+      path <- try(file.choose(), silent = TRUE)
+      req(path)
+      if (!is.null(path) && nzchar(path)) {
+        if(tools::file_ext(path) != "parquet") {
+          showNotification("Only data packages in Parquet format are currently supported.", type = "error")
         } else {
-          field_opts <- unique(c(field_opts, o))
+          showNotification(paste0("Copying ", basename(path), " to user data folder..."), duration = NULL, id = "fileio", type = "message")
+          tryCatch({
+            datapkgs <- modify_datapackage(path, "save")
+            updateSelectInput(inputId = "datapackage_id", choices = stats::setNames(datapkgs$path, datapkgs$id), selected = datapkgs$path[1])
+            user_datapkgs(datapkgs)
+          }, error = function(e) {
+            showNotification(paste0("Error saving data package: ", e$message), duration = NULL, id = "fileio", type = "error")
+          })
         }
       }
-
-      # determine which filter selections are field sets from config specification
-      sets <- field_opts[(field_opts %in% names(config$fieldsets)) | grepl("|", field_opts, fixed = T)]
-
-      fields <- c()
-      # step through selected fields, handling them according to whether they are preset field sets, custom field sets, or individual fields
-      for (o in field_opts) {
-        if (o %in% sets) {
-          opt <- unlist(strsplit(o, "|", fixed = TRUE))
-          if (length(opt) > 1) {
-            fields <- unique(c(fields, opt[-1]))
-          } else {
-            fields <- unique(c(fields, config$fieldsets[o][[1]]))
+    })
+    
+    delete_check <- TRUE
+    
+    # delete selected data package
+    observeEvent(input$datapackage_delete, {
+      req(input$datapkg_table_rows_selected)
+      delete_ids <- user_datapkgs()[input$datapkg_table_rows_selected, id]
+      if(delete_check){
+        shinyjs::show("delete_confirm")
+        updateActionButton(inputId = "datapackage_delete", icon = icon("check"), label = "Delete")
+        shinyjs::show("datapackage_del_cancel")
+        delete_check <<- FALSE
+      } else {
+        shinyjs::hide("delete_confirm")
+        tryCatch({
+          for(id in delete_ids) {
+            datapkgs <- modify_datapackage(id, "delete")
+            updateSelectInput(inputId = "datapackage_id", choices = stats::setNames(datapkgs$path, datapkgs$id), selected = datapkgs$path[1])
           }
-        } else {
-          fields <- unique(c(fields, o))
-        }
+          user_datapkgs(datapkgs)
+        }, error = function(e) {
+          showNotification(paste0("Error deleting data package: ", e$message), duration = NULL, id = "fileio", type = "error")
+        })
+        shinyjs::hide("datapackage_del_cancel")
+        updateActionButton(inputId = "datapackage_delete",
+                           icon = HTML('<i role="presentation" aria-label="trash icon" class="fa fa-trash"></i>'),
+                           label = "Delete selected")
+        delete_check <<- TRUE
       }
-
-      id_idx <- which(c("processid", "sampleid") %in% fields)
-      if (length(id_idx) == 0) {
-        fields <- c("processid", fields)
+    })
+    
+    observeEvent(input$datapackage_del_cancel, {
+      shinyjs::hide("delete_confirm")
+      shinyjs::hide("datapackage_del_cancel")
+      updateActionButton(inputId = "datapackage_delete",
+                         icon = HTML('<i role="presentation" aria-label="trash icon" class="fa fa-trash"></i>'),
+                         label = "Delete selected")
+      delete_check <<- TRUE
+    })
+    
+    output$datapkg_table <- DT::renderDataTable(DT::datatable({
+      dtpkg_dt <- user_datapkgs()
+      if(nrow(dtpkg_dt) > 0) {
+        datapkgs[, .(`ID` = id,
+                     `Size (MB)` = format(round(as.numeric(size_kb) / 1024^2, 2), big.mark = ","),
+                     `Date added` = as.IDate(created))]
+      } else {
+        data.table(`ID` = character(), `Size (MB)` = character(), `Date added` = character()) 
+      }
+    },
+    rownames = FALSE,
+    options = list(dom = 't')))
+    
+    # logic for generating marker-collapsed data table
+    collapsed_data <- reactive({
+      req(outdata$data)
+      collapse_markers(outdata$data)
+    })
+    
+    # reactive to store additional marker-specific fields/columns
+    coll_mrkr_fields <- reactive({
+      cd <- collapsed_data()
+      req(cd)
+      setdiff(names(cd), c(config$fieldsets$all, config$fieldsets$parsed))
+    })
+    
+    # reactive object for user-selected fields/column filters
+    computed_fields <- reactive({
+      # if no column filters have been selected, select all fields (plus collapsed table fields if there are any) 
+      if (length(input$filt_opt) == 0) {
+        fields <- c(config$fieldsets$bcdm, coll_mrkr_fields())
+        # show_copy_fasta <- TRUE
         id_field <- "processid"
       } else {
-        id_field <- c("processid", "sampleid")[min(id_idx)]
+        
+        # expand out any custom user field sets
+        field_opts <- c()
+        for(o in input$filt_opt) {
+          if (grepl("^userset", o)) {
+            field_opts <- unique(c(field_opts, unlist(sapply(user_config$fieldsets$custom, function(x) if(x$id == o) x$fields))))
+          } else {
+            field_opts <- unique(c(field_opts, o))
+          }
+        }
+        
+        # determine which filter selections are field sets from config specification
+        sets <- field_opts[(field_opts %in% names(config$fieldsets)) | grepl("|", field_opts, fixed=T)]
+        
+        fields <- c()
+        # step through selected fields, handling them according to whether they are preset field sets, custom field sets, or individual fields
+        for(o in field_opts) {
+          if(o %in% sets) {
+            opt <- unlist(strsplit(o, "|", fixed=TRUE))
+            if(length(opt) > 1) {
+              fields <- unique(c(fields, opt[-1]))
+            } else {
+              fields <- unique(c(fields, config$fieldsets[o][[1]]))
+            }
+          } else {
+            fields <- unique(c(fields, o))
+          }
+        }
+        
+        id_idx <- which(c("processid", "sampleid") %in% fields)
+        if(length(id_idx) == 0) {
+          fields <- c("processid", fields)
+          id_field <- "processid"
+        } else {
+          id_field <- c("processid", "sampleid")[min(id_idx)]
+        }
       }
-    }
-    list(fields = fields, id_field = id_field)
-  })
-
-  # consume computed filter fields and record them in the reactive value list
-  observeEvent(computed_fields(), {
-    result <- computed_fields()
-    outdata$select_fields <- result$fields
-    outdata$id_field <- result$id_field
-  })
-
-  # modal logic for settings panel
+      list(fields = fields, id_field = id_field)
+    })
+    
+    # consume computed filter fields and record them in the reactive value list
+    observeEvent(computed_fields(), {
+      result <- computed_fields()
+      outdata$select_fields <- result$fields
+      outdata$id_field <- result$id_field
+    })
+    
+    # modal logic for settings panel
   observeEvent(input$settings, {
     header_opt <- isolate(user_config$settings$fasta_head)
     showModal(
@@ -748,85 +935,71 @@ server <- function(input, output, session) {
     updateSelectizeInput(inputId = "fasta_head_def",
                          selected = header_opt)
   })
-  
-  
-  # modal logic for saving custom field sets
-  observeEvent(input$save_filter_set, {
-    showModal(
-      modalDialog(
-        title = "Saved column sets",
-        div(
-          selectInput(
-            "sets_to_delete",
-            "Existing presets:",
-            sapply(user_config$fieldsets$custom, function(s) setNames(s$id, s$name)),
+
+    # modal logic for saving custom field sets
+    observeEvent(input$save_filter_set, {
+      showModal(
+        modalDialog(
+          title = "Saved column sets",
+          div(selectInput( 
+            "sets_to_delete", 
+            "Existing presets:", 
+            sapply(user_config$fieldsets$custom, function(s) setNames(s$id, s$name)), 
             multiple = TRUE,
-            selectize = FALSE, width = "100%"
-          ),
-          hidden(actionLink("del_filter_btn", "× Delete selected", class = "warn-text"))
-        ),
-        textInput(
-          "save_filter_name",
-          tagList(
-            span("Save current column selection as:"),
-            bslib::tooltip(
-              icon("circle-question"),
-              "Using the name of an existing preset will update/overwrite it."
-            )
-          ),
-          width = "100%"
-        ),
-        footer = tagList(
-          div(),
-          div(
-            id = "modal_confirm",
-            actionButton("save_filter_btn", "Save"),
-            modalButton("Cancel")
-          )
-        ),
-        easyClose = TRUE
+            selectize = FALSE, width = "100%"),
+            hidden(actionLink("del_filter_btn", "× Delete selected", class = "warn-text"))),
+          textInput(
+            "save_filter_name", 
+            tagList(span("Save current column selection as:"),
+                bslib::tooltip(
+                  icon("circle-question"),
+                  "Using the name of an existing preset will update/overwrite it.")),
+            width = "100%"),
+          footer = tagList(
+            div(),
+            div(id="modal_confirm",
+                actionButton("save_filter_btn", "Save"),
+                modalButton("Cancel"))),
+          easyClose = TRUE)
       )
-    )
-  })
-
-  # field set save logic
-  observeEvent(input$save_filter_btn, {
-    req(isTruthy(input$save_filter_name), isTruthy(input$filt_opt))
-    removeModal()
-    filter_set <- modify_custom_fieldset(input$save_filter_name, input$filt_opt)
-    updateSelectizeInput(session, "filt_opt",
-      choices = filter_options(),
-      selected = filter_set
-    )
-  })
-
-  # reactively show/hide delete button
+    })
+    
+    # field set save logic
+    observeEvent(input$save_filter_btn, {
+      req(isTruthy(input$save_filter_name), isTruthy(input$filt_opt))
+      removeModal()
+      filter_set <- modify_custom_fieldset(input$save_filter_name, input$filt_opt)
+      updateSelectizeInput(session,"filt_opt",
+                           choices = filter_options(is.null(fetch_params$search_token$node_result)),
+                           selected = filter_set)
+    })
+    
+    # reactively show/hide delete button
   observe({
     shinyjs::toggleElement(id = "del_filter_btn", condition = isTruthy(input$sets_to_delete))
   }) # , ignoreInit = TRUE, ignoreNULL = FALSE)
-
-  # field set delete logic
-  observeEvent(input$del_filter_btn, {
-    for (s in input$sets_to_delete) {
-      filter_set <- modify_custom_fieldset(s, operation = "delete")
-    }
-    updateSelectInput(
-      inputId = "sets_to_delete",
-      choices = sapply(user_config$fieldsets$custom, function(s) s$name),
-      selected = NULL
-    )
-    updateSelectizeInput(session, "filt_opt",
-      choices = filter_options(),
-      selected = input$filt_opt[input$filt_opt %in% unname(unlist(input$filt_opt))]
-    )
-  })
-
-  # keep marker filters updated based on available data
-  observeEvent(outdata$markers, {
-    updateSelectizeInput(session, "filt_seq", choices = outdata$markers, selected = NULL)
-  })
-
-  # keep BIN rep options updated based on available data
+    
+    # field set delete logic
+    observeEvent(input$del_filter_btn, {
+      for(s in input$sets_to_delete) {
+        filter_set <- modify_custom_fieldset(s, operation = "delete")
+      }
+      updateSelectInput(
+        inputId = "sets_to_delete", 
+        choices = sapply(user_config$fieldsets$custom, function(s) s$name),
+        selected = NULL
+      )
+      updateSelectizeInput(session,"filt_opt",
+                           choices = filter_options(is.null(fetch_params$search_token$node_result)),
+                           selected = input$filt_opt[input$filt_opt %in% unname(unlist(input$filt_opt))])
+    })
+    
+    # keep marker filters updated based on available data
+    observeEvent(outdata$markers, {
+      updateSelectizeInput(session, "filt_seq", choices = outdata$markers, selected = NULL)
+    })
+    
+# keep BIN rep options updated based on available data
   observeEvent(outdata$data, {
     req(outdata$data)
     insts <- unique(as.character(outdata$data[["inst"]]))
@@ -839,120 +1012,115 @@ server <- function(input, output, session) {
     )
   })
 
-  # function to compute a row index based on user-selected markers
-  # this is needed for the flexibility to work either with the full table or collapsed-marker table
-  seq_filter <- function(data, filt_seq) {
-    filt_markers <- filt_seq[filt_seq != "None"]
-    nuc_cols <- intersect(paste0(filt_markers, "_nuc"), names(data))
-    keep_seq <- list()
-
-    if ("marker_code" %in% names(data)) {
-      if (length(filt_markers) > 0) {
-        keep_seq[[1]] <- data[["marker_code"]] %in% filt_markers
+    # function to compute a row index based on user-selected markers
+    # this is needed for the flexibility to work either with the full table or collapsed-marker table  
+    seq_filter <- function(data, filt_seq) {
+      
+      filt_markers <- filt_seq[filt_seq != "None"]
+      nuc_cols <- intersect(paste0(filt_markers, "_nuc"), names(data))
+      keep_seq <- list()
+      
+      if("marker_code" %in% names(data)) {
+        if (length(filt_markers) > 0) {
+          keep_seq[[1]] <- data[["marker_code"]] %in% filt_markers
+        }
+        if ("None" %in% filt_seq & ("marker_code" %in% names(data))) {
+          keep_seq[[2]] <- empty(data[["marker_code"]])
+        }
       }
-      if ("None" %in% filt_seq & ("marker_code" %in% names(data))) {
-        keep_seq[[2]] <- empty(data[["marker_code"]])
+      if(length(nuc_cols) > 0) {
+        keep_seq[[3]] <- rowSums(data[, lapply(.SD, function(x) !empty(x)), .SDcols = nuc_cols]) > 0
+      }
+      
+      if(length(keep_seq) > 0) {
+        return(Reduce("|", keep_seq[!sapply(keep_seq, is.null)]))
+      } else {
+        return(TRUE)
       }
     }
-    if (length(nuc_cols) > 0) {
-      keep_seq[[3]] <- rowSums(data[, lapply(.SD, function(x) !empty(x)), .SDcols = nuc_cols]) > 0
-    }
-
-    if (length(keep_seq) > 0) {
-      return(Reduce("|", keep_seq[!sapply(keep_seq, is.null)]))
-    } else {
-      return(TRUE)
-    }
-  }
-
-  # reactive computation of NTS row indexer
-  nts_idx <- reactive({
-    req(outdata$data)
-    if (input$collapse_mrkrs == TRUE) {
-      dt <- collapsed_data()
-      req(dt)
-      dt[, grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) |
-        grepl("^BIOUG.+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
-    } else {
-      dt <- outdata$data
-      grepl("NTS(?:_[A-Za-z]+)?_OF:", dt$associated_specimens, perl = TRUE) |
-        grepl("^BIOUG.+?\\.NTS[0-9]*?$", dt$sampleid, perl = TRUE)
-    }
-  })
-
-  # reactive computation of filtered data table
-  filtered_data <- reactive({
-    req(outdata$data)
-    data <- if (input$collapse_mrkrs == TRUE) {
-      cd <- collapsed_data()
-      req(cd)
-      cd
-    } else {
-      outdata$data
-    }
-
-    if (!isTRUE(input$include_nts)) {
-      data <- data[!nts_idx()]
-    }
-
-    if (!isTRUE(input$include_binmates) || length(outdata$binmates) == 0) {
-      data <- data[!processid %in% outdata$binmates]
-    }
-
-    data[seq_filter(data, input$filt_seq)]
-  })
-
-  # compute summary counts and inject as a new tab
-  observeEvent(input$ana_btn, {
-    req(nrow(outdata$data) > 0)
-    outdata$summary <- NULL
-    # outdata$summary <- summarize_table(filtered_data(), input$ana_opt, outdata$id_field)
-    withInfProgress(message = "Generating summary...", {
-      outdata$summary <- summarize_table(filtered_data()[input$data_table_rows_all, ], input$ana_opt, outdata$id_field)
+    
+    # reactive computation of NTS row indexer
+    nts_idx <- reactive({
+      req(outdata$data)
+      if (input$collapse_mrkrs == TRUE) {
+        dt <- collapsed_data()
+        req(dt)
+        dt[, grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) |
+             grepl("^BIOUG.+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
+      } else {
+        dt <- outdata$data
+        grepl("NTS(?:_[A-Za-z]+)?_OF:", dt$associated_specimens, perl = TRUE) |
+          grepl("^BIOUG.+?\\.NTS[0-9]*?$", dt$sampleid, perl = TRUE)
+      }
     })
-    if (!tab_status$summary) {
-      bslib::nav_insert(
-        "tabs",
-        target = tab_monitor("ins_target", "summary"), position = "after", select = TRUE,
-        bslib::nav_panel(
-          id = "summary",
-          value = "summary",
-          "Summary",
-          div(
-            id = "sum_table_area",
-            DT::dataTableOutput("summary_table") |> withSpinner(color = "#aaaaaa", type = 5, size = 0.6)
-          )
+    
+    # reactive computation of filtered data table
+    filtered_data <- reactive({
+      req(outdata$data)
+      data <- if (input$collapse_mrkrs == TRUE) {
+        cd <- collapsed_data()
+        req(cd)
+        cd
+      } else {
+        outdata$data
+      }
+      
+      if(!isTRUE(input$include_nts)) {
+        data <- data[!nts_idx()]
+      }
+      
+      if (!isTRUE(input$include_binmates) || length(outdata$binmates) == 0) {
+        data <- data[!processid %in% outdata$binmates]
+      }
+      
+      data[seq_filter(data, input$filt_seq)]
+      
+    })
+    
+    # compute summary counts and inject as a new tab
+    observeEvent(input$ana_btn, {
+      req(nrow(outdata$data) > 0)
+      outdata$summary <- NULL
+      # outdata$summary <- summarize_table(filtered_data(), input$ana_opt, outdata$id_field)
+      withInfProgress(message = "Generating summary...", {
+        outdata$summary <- summarize_table(filtered_data()[input$data_table_rows_all, ], input$ana_opt, outdata$id_field)
+      })
+      if(!tab_status$summary) {
+        bslib::nav_insert(
+          "tabs", target = tab_monitor("ins_target","summary"), position = "after", select = TRUE,
+          bslib::nav_panel(id = "summary",
+                    value = "summary",
+                    "Summary",
+                    div(id = 'sum_table_area',
+                        DT::dataTableOutput("summary_table") |> withSpinner(color="#aaaaaa", type=5, size=0.6)))
         )
-      )
-      tab_status$summary <- TRUE
-    } else {
-      bslib::nav_select(id = "tabs", selected = "summary")
-    }
-  })
-
-  # compute query coverage report
-  observeEvent(input$query_hits_btn, {
-    req(nrow(outdata$data) > 0)
-    hits <- get_query_hits(data = outdata$data, query = fetch_params$query)
-    outdata$hits <- hits$hits_dt
-    if (!tab_status$qhits_tab) {
-      bslib::nav_insert(
-        "tabs",
-        target = tab_monitor("ins_target", "qhits_tab"), select = TRUE,
-        bslib::nav_panel(
-          id = "qhits_tab",
-          value = "qhits_tab",
-          "Hit report",
-          hits$report
+        tab_status$summary <- TRUE
+      } else {
+        bslib::nav_select(id = "tabs", selected = "summary")
+      }
+    })
+    
+    # compute query coverage report
+    observeEvent(input$query_hits_btn, {
+      req(nrow(outdata$data) > 0)
+      hits <- get_query_hits(data = outdata$data, query = fetch_params$query)
+      outdata$hits <- hits$hits_dt
+      if(!tab_status$qhits_tab) {
+        bslib::nav_insert(
+          "tabs", target = tab_monitor("ins_target","qhits_tab"), select = TRUE,
+          bslib::nav_panel(
+            id="qhits_tab",
+            value="qhits_tab",
+            "Hit report",
+            hits$report)
         )
-      )
-      tab_status$qhits_tab <- TRUE
-    } else {
-      bslib::nav_select(id = "tabs", selected = "qhits_tab")
-    }
-  })
-
-  # display diversity profile info
+        tab_status$qhits_tab <- TRUE
+      } else {
+        bslib::nav_select(id = "tabs", selected = "qhits_tab")
+      }
+    })
+    
+     # display diversity profile info
   observeEvent(input$div_profile_info, {
     showModal(
       modalDialog(
@@ -1287,118 +1455,110 @@ server <- function(input, output, session) {
     )
   })
 
-  # compute BIN consensus and inject as a new tab
-  observeEvent(input$bin_consensus_btn, {
-    req(nrow(outdata$data) > 0)
-    outdata$bin_consensus <- NULL
-    data <- filtered_data()[input$data_table_rows_all, ][!empty(bin_uri)]
-    withInfProgress(message = "Computing consensus BIN taxonomy...", {
-      bin_consensus <- get_bin_consensus(
-        df = data,
-        threshold = as.double(unlist(unname(input$bc_threshold))),
-        min_ids = unlist(unname(input$bc_minids)),
-        enforce_scientific = input$bc_enforcesci,
-        discord_format = "text"
-      )
-      col_order <- append(names(bin_consensus), c("min_rank", "max_rank"), after = 2)
-      include <- ifelse(input$bc_enforcesci,
-        which(!grepl(re_int, data[, identification], perl = TRUE)),
-        seq_along(data[, identification])
-      )
-      bin_consensus <- merge(bin_consensus,
-        data[, .(
-          min_rank = as.factor(ranks[min(match(data[include, identification_rank], ranks))]),
-          max_rank = as.factor(ranks[max(match(data[include, identification_rank], ranks))])
-        ), by = "bin_uri"],
-        by = "bin_uri",
-        all.x = TRUE
-      )
-      setcolorder(bin_consensus, col_order)
-    })
-
-    outdata$bin_consensus <- bin_consensus
-
-    if (!tab_status$consensus_tab) {
-      bslib::nav_insert(
-        "tabs",
-        target = tab_monitor("ins_target", "consensus_tab"), position = "after", select = TRUE,
-        bslib::nav_panel(
-          id = "consensus_tab",
-          value = "consensus_tab",
-          "BIN consensus",
-          div(
-            id = "consensus_table_area",
-            DT::dataTableOutput("bincons_table") |> withSpinner(color = "#aaaaaa", type = 5, size = 0.6)
-          )
-        )
-      )
-      tab_status$consensus_tab <- TRUE
-    } else {
-      bslib::nav_select(id = "tabs", selected = "consensus_tab")
-    }
-  })
-
-  observeEvent(outdata$bin_consensus, {
-    req(outdata$bin_consensus)
-    delay(1000, {
-      if (input$bc_portal_stats == TRUE && is.null(outdata$bin_portal_stats)) {
-        outdata$bin_portal_stats <- get_portal_bin_stats(as.character(isolate(outdata$bin_consensus$bin_uri)), shiny = TRUE)
-        outdata$bin_consensus <- merge(isolate(outdata$bin_consensus),
-          isolate(outdata$bin_portal_stats),
+    # compute BIN consensus and inject as a new tab
+    observeEvent(input$bin_consensus_btn, {
+      req(nrow(outdata$data) > 0)
+      # outdata$bin_consensus <- NULL
+      data <- filtered_data()[input$data_table_rows_all, ][!empty(bin_uri)]
+      withInfProgress(message = "Computing consensus BIN taxonomy...", {
+        bin_consensus <- get_bin_consensus(df = data,
+                                           threshold = as.double(unlist(unname(input$bc_threshold))),
+                                           min_ids = unlist(unname(input$bc_minids)),
+                                           enforce_scientific = input$bc_enforcesci,
+                                           discord_format = "text")
+        col_order <- append(names(bin_consensus), c("min_rank", "max_rank"), after = 2)
+        include <- if(input$bc_enforcesci) {
+          which(!grepl(re_int, data[, identification], perl = TRUE)) 
+        } else {
+          seq_along(data[, identification])
+        }
+       bin_consensus <- merge(bin_consensus,
+          data[, .(
+            min_rank = as.factor(ranks[min(match(data[include, identification_rank], ranks))]),
+            max_rank = as.factor(ranks[max(match(data[include, identification_rank], ranks))])
+          ), by = "bin_uri"],
           by = "bin_uri",
           all.x = TRUE
         )
+        setcolorder(bin_consensus, col_order)
+      })
+      
+      outdata$bin_consensus <- bin_consensus
+      
+      if(!tab_status$consensus_tab) {
+        bslib::nav_insert(
+          "tabs", target = tab_monitor("ins_target","consensus_tab"), position = "after", select = TRUE,
+          bslib::nav_panel(
+            id="consensus_tab",
+            value="consensus_tab",
+            "BIN consensus",
+            div(id = 'consensus_table_area',
+                DT::dataTableOutput("bincons_table") |> withSpinner(color="#aaaaaa", type=5, size=0.6))
+          )
+        )
+        tab_status$consensus_tab <- TRUE
+      } else {
         bslib::nav_select(id = "tabs", selected = "consensus_tab")
       }
     })
-  })
-
-  # the portal API can be somewhat inconsistent; this will insert a warning message about any BINs for which the query timed out
-  insert_portal_warning <- function(portal_stats) {
-    removeUI("#bc_portal_warning", immediate = TRUE)
-    failed <- nrow(portal_stats[empty(member_count)])
-    if (failed > 0) {
-      insertUI(
-        selector = "div.form-group:has(#bc_portal_stats):not(:has(div.form-group:has(#bc_portal_stats)))",
-        where = "beforeEnd",
-        ui = div(
-          id = "bc_portal_warning",
-          class = "control-label warn-text",
-          HTML(paste0("Portal stats timed out for ", failed, " BINs. ")),
-          actionLink("bc_portal_retry", "Click to retry.")
+    
+    observeEvent(outdata$bin_consensus, {
+      req(outdata$bin_consensus)
+      delay(1000, {
+        if(input$bc_portal_stats == TRUE && is.null(outdata$bin_portal_stats)) {
+          outdata$bin_portal_stats <- get_portal_bin_stats(as.character(isolate(outdata$bin_consensus$bin_uri)), shiny = TRUE)
+          outdata$bin_consensus <- merge(isolate(outdata$bin_consensus),
+                                         isolate(outdata$bin_portal_stats),
+                                         by = "bin_uri",
+                                         all.x = TRUE)
+          bslib::nav_select(id="tabs", selected="consensus_tab")
+        }
+      })
+    })
+    
+    # the portal API can be somewhat inconsistent; this will insert a warning message about any BINs for which the query timed out
+    insert_portal_warning <- function(portal_stats) {
+      removeUI("#bc_portal_warning", immediate = TRUE)
+      failed <- nrow(portal_stats[empty(member_count)])
+      if(failed > 0) {
+        insertUI(
+          selector = "div.form-group:has(#bc_portal_stats):not(:has(div.form-group:has(#bc_portal_stats)))",
+          where = "beforeEnd",
+          ui = div(id = "bc_portal_warning",
+                   class="control-label warn-text",
+                   HTML(paste0("Portal stats timed out for ", failed, " BINs. ")),
+                   actionLink("bc_portal_retry", "Click to retry."))
         )
-      )
+      }
     }
-  }
-
-
-  # check portal stats upon calculation and insert UI with a link to retry the query for failed BINs
-  observeEvent(outdata$bin_portal_stats, {
-    portal_stats <- outdata$bin_portal_stats
-    req(portal_stats)
-    if ("member_count" %in% names(portal_stats)) {
-      insert_portal_warning(portal_stats)
-    }
-  })
-
-  # logic for retrying portal BIN query
-  observeEvent(input$bc_portal_retry, {
-    init_stats <- outdata$bin_portal_stats
-    req(init_stats)
-    retry_stats <- get_portal_bin_stats(as.character(init_stats[empty(member_count), bin_uri]), shiny = TRUE)
-    init_stats[retry_stats, (names(init_stats)) := mget(paste0("i.", names(init_stats))), on = "bin_uri"]
-    cons <- isolate(outdata$bin_consensus)
-    outdata$bin_consensus <- merge(cons[, .SD, .SDcols = c("bin_uri", names(cons)[!names(cons) %in% names(init_stats)])],
-      init_stats,
-      by = "bin_uri",
-      all.x = TRUE
-    )
-    bslib::nav_select(id = "tabs", selected = "consensus_tab")
-    outdata$bin_portal_stats <- init_stats
-    insert_portal_warning(init_stats)
-  })
-
-  # select BIN reps and inject as a new tab
+    
+    
+    # check portal stats upon calculation and insert UI with a link to retry the query for failed BINs
+    observeEvent(outdata$bin_portal_stats, {
+      portal_stats <- outdata$bin_portal_stats
+      req(portal_stats)
+      if("member_count" %in% names(portal_stats)) {
+        insert_portal_warning(portal_stats)
+      }
+    })
+    
+    # logic for retrying portal BIN query
+    observeEvent(input$bc_portal_retry, {
+      init_stats <- outdata$bin_portal_stats
+      req(init_stats)
+      retry_stats <- get_portal_bin_stats(as.character(init_stats[empty(member_count), bin_uri]), shiny = TRUE)
+      init_stats[retry_stats, (names(init_stats)) := mget(paste0("i.", names(init_stats))), on = "bin_uri"]
+      cons <- isolate(outdata$bin_consensus)
+      outdata$bin_consensus <- merge(cons[, .SD, .SDcols = c("bin_uri",names(cons)[!names(cons) %in% names(init_stats)])],
+                                     init_stats,
+                                     by = "bin_uri",
+                                     all.x = TRUE)
+      bslib::nav_select(id="tabs", selected="consensus_tab")
+      outdata$bin_portal_stats <- init_stats
+      insert_portal_warning(init_stats)
+    })
+    
+    # select BIN reps and inject as a new tab
   observeEvent(input$bin_rep_btn, {
     req(nrow(outdata$data) > 0)
     outdata$bin_reps <- NULL
@@ -1469,110 +1629,103 @@ server <- function(input, output, session) {
       bslib::nav_select(id = "tabs", selected = "bin_reps")
     }
   })
-
-  # insert map tab when button is pressed (or jump to existing tab)
-  observeEvent(input$map_btn, {
-    req(nrow(outdata$data) > 0)
-    if (!tab_status$map_tab) {
-      bslib::nav_insert(
-        "tabs",
-        target = tab_monitor("ins_target", "map_tab"), position = "after", select = TRUE,
-        bslib::nav_panel(
-          id = "map_tab",
-          value = "map_tab",
-          "Occurrence map",
-          div(
-            id = "map_area",
-            leafletOutput("record_map")
+    
+    # insert map tab when button is pressed (or jump to existing tab)
+    observeEvent(input$map_btn, {
+      req(nrow(outdata$data) > 0)
+      if(!tab_status$map_tab) {
+        bslib::nav_insert(
+          "tabs", target = tab_monitor("ins_target","map_tab"), position = "after", select = TRUE,
+          bslib::nav_panel(
+            id="map_tab",
+            value="map_tab",
+            "Occurrence map",
+            div(id = 'map_area',
+                leafletOutput("record_map"))
           )
         )
+        shinyjs::delay(500, {
+          tab_status$map_tab <- TRUE
+          bslib::nav_select(id = "tabs", selected = "map_tab")
+        })
+      } else {
+        bslib::nav_select(id = "tabs", selected = "map_tab")  
+      }
+    })
+    
+    # plot/update records on the map (update function is further below)
+    observeEvent(list(input$map_btn, tab_status$map_tab, input$tabs, input$data_table_rows_all, filtered_data()), {
+      req(tab_status$map_tab, input$tabs == "map_tab")
+      update_map()
+    })
+    
+    # function used to update the rendered markers on the occurrence point map
+    update_map <- function() {
+      req(input$data_table_rows_all)
+      # data <- filtered_data()[input$data_table_rows_all, ]
+      data <- filtered_data()[input$data_table_rows_all, ]
+      data <- unique(data[!empty(coord)], by = "processid")
+      req(nrow(data) > 0)
+      pal <- colorFactor(
+        palette = map_colours,
+        domain = data$identification
       )
-      shinyjs::delay(500, {
-        tab_status$map_tab <- TRUE
-        bslib::nav_select(id = "tabs", selected = "map_tab")
-      })
-    } else {
-      bslib::nav_select(id = "tabs", selected = "map_tab")
+      leafletProxy("record_map") |>
+        clearMarkers() |>
+        clearMarkerClusters() |>
+        fitBounds(
+          lng1 = min(data$lon),
+          lat1 = min(data$lat),
+          lng2 = max(data$lon),
+          lat2 = max(data$lat)
+        ) |>
+        addCircleMarkers(lat = data$lat,
+                         lng = data$lon,
+                         color = "#444",
+                         fillColor = pal(data$identification),
+                         weight = 2,
+                         radius = 9,
+                         opacity = 0.3,
+                         fillOpacity = 0.7,
+                         popup = paste0(
+                           '<span class="tag">Sample ID:</span><span class="value"><a href="https://bench.boldsystems.org/index.php/MAS_DataRetrieval_OpenSpecimen?selectedrecordid=', data$processid, '" target="_blank">', data$sampleid,'</a></span>',
+                           '<span class="tag">Process ID:</span><span class="value">', data$processid, '</span>',
+                           '<span class="tag">Identification:</span><span class="value">', data$identification,'</span>',
+                           '<span class="tag">Country:</span><span class="value">', data$country.ocean, '</span>',
+                           '<span class="tag">Province/State:</span><span class="value">', data$province.state, '</span>',
+                           '<span class="tag">Region:</span><span class="value">', data$region, '</span>',
+                           '<span class="tag">Sector:</span><span class="value">', data$sector, '</span>',
+                           '<span class="tag">Site:</span><span class="value">', data$site, '</span>'),
+                         clusterOptions = markerClusterOptions())
     }
-  })
-
-  # plot/update records on the map (update function is further below)
-  observeEvent(list(input$map_btn, tab_status$map_tab, input$tabs, input$data_table_rows_all, filtered_data()), {
-    req(tab_status$map_tab, input$tabs == "map_tab")
-    update_map()
-  })
-
-  # function used to update the rendered markers on the occurrence point map
-  update_map <- function() {
-    req(input$data_table_rows_all)
-    # data <- filtered_data()[input$data_table_rows_all, ]
-    data <- filtered_data()[input$data_table_rows_all, ]
-    data <- unique(data[!empty(coord)], by = "processid")
-    req(nrow(data) > 0)
-    pal <- colorFactor(
-      palette = map_colours,
-      domain = data$identification
-    )
-    leafletProxy("record_map") |>
-      clearMarkers() |>
-      clearMarkerClusters() |>
-      fitBounds(
-        lng1 = min(data$lon),
-        lat1 = min(data$lat),
-        lng2 = max(data$lon),
-        lat2 = max(data$lat)
-      ) |>
-      addCircleMarkers(
-        lat = data$lat,
-        lng = data$lon,
-        color = "#444",
-        fillColor = pal(data$identification),
-        weight = 2,
-        radius = 9,
-        opacity = 0.3,
-        fillOpacity = 0.7,
-        popup = paste0(
-          '<span class="tag">Sample ID:</span><span class="value"><a href="https://bench.boldsystems.org/index.php/MAS_DataRetrieval_OpenSpecimen?selectedrecordid=', data$processid, '" target="_blank">', data$sampleid, "</a></span>",
-          '<span class="tag">Process ID:</span><span class="value">', data$processid, "</span>",
-          '<span class="tag">Identification:</span><span class="value">', data$identification, "</span>",
-          '<span class="tag">Country:</span><span class="value">', data$country.ocean, "</span>",
-          '<span class="tag">Province/State:</span><span class="value">', data$province.state, "</span>",
-          '<span class="tag">Region:</span><span class="value">', data$region, "</span>",
-          '<span class="tag">Sector:</span><span class="value">', data$sector, "</span>",
-          '<span class="tag">Site:</span><span class="value">', data$site, "</span>"
-        ),
-        clusterOptions = markerClusterOptions()
-      )
-  }
-
-  # reactively subset the filtered data table based on selected fields
-  out_table <- reactive({
-    data <- filtered_data()
-    data[, .SD, .SDcols = intersect(outdata$select_fields, names(data))]
-  })
-
-  # BIN reps are also updated reactively, using the same filters and field selections as the full data table
-  rep_table <- reactive({
-    req(outdata$data, outdata$bin_reps)
-    outdata$data[record_id %in% outdata$bin_reps,
-      .SD,
-      .SDcols = intersect(outdata$select_fields, names(outdata$data))
-    ]
-  })
-
+    
+    # reactively subset the filtered data table based on selected fields
+    out_table <- reactive({
+      data <- filtered_data()
+      data[, .SD, .SDcols = intersect(outdata$select_fields, names(data))]
+    })
+    
+    # BIN reps are also updated reactively, using the same filters and field selections as the full data table
+    rep_table <- reactive({
+      req(outdata$data, outdata$bin_reps)
+      outdata$data[record_id %in% outdata$bin_reps,
+                 .SD,
+                 .SDcols = intersect(outdata$select_fields, names(outdata$data))]
+    })
+    
   ### Output rendering ----
-
-  # build a reactive JSON lookup map and send it to the window
-  # (enables hyperlinking of sample IDs and process IDs even when dependent columns are excluded)
-  observeEvent(outdata$data, {
-    req(outdata$data)
-    json <- jsonlite::toJSON(outdata$data[, .(sampleid, processid, specimenid)], auto_unbox = TRUE)
-    session$sendCustomMessage("initLookupMap", json)
-  })
-
-  # define options once, then add them to each table individually
-  DT_extensions <- c("FixedColumns")
-  DT_options <- list(
+  
+    # build a reactive JSON lookup map and send it to the window
+    # (enables hyperlinking of sample IDs and process IDs even when dependent columns are excluded)
+    observeEvent(outdata$data, {
+      req(outdata$data)
+      json <- jsonlite::toJSON(outdata$data[, .(sampleid, processid, specimenid)], auto_unbox = TRUE)
+      session$sendCustomMessage("initLookupMap", json)
+    })
+    
+    # define options once, then add them to each table individually
+    DT_extensions <- c("FixedHeader", "FixedColumns")
+    DT_options <- list(
     headerCallback = header_js,
     columnDefs = list(
       list(

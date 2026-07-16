@@ -1,11 +1,11 @@
 re_int <- "\\.\\Z|\\S{2,}\\.\\S|[0-9]|\\s[A-Z]|[A-Z]\\Z|[A-Z]{2}|[a-z][A-Z]|_(?!(hn|sl|ss)\\Z)|%|\\?|!|\\[|\\]|\\{|\\}|\\(|\\)|,|\\s(?:aff|agg|cf|complex|group|grp|gr|gp|cmplx|pr|ms|cfr|nr|nsp|near|nomen|hybrid|voucher|form|from|ss|ssl|see|spp?|sample)\\.?(?:\\s|\\Z)"
 
-bold.fetch.plus <- function (get_by, identifiers, cols = NULL, BCDM_only=TRUE, export = NULL,
-                             na.rm = FALSE, filt_taxonomy = NULL, filt_geography = NULL,
-                             filt_latitude = NULL, filt_longitude = NULL, filt_shapefile = NULL,
-                             filt_institutes = NULL, filt_identified.by = NULL, filt_seq_source = NULL,
-                             filt_marker = NULL, filt_collection_period = NULL, filt_basecount = NULL,
-                             filt_altitude = NULL, filt_depth = NULL)
+bold.fetch.plus <- function (get_by, identifiers, cols = NULL, BCDM_only = TRUE, 
+    export = NULL, na.rm = FALSE, filt_taxonomy = NULL, filt_geography = NULL, 
+    filt_latitude = NULL, filt_longitude = NULL, filt_shapefile = NULL, 
+    filt_institutes = NULL, filt_identified.by = NULL, filt_seq_source = NULL, 
+    filt_marker = NULL, filt_collection_period = NULL, filt_basecount = NULL, 
+    filt_altitude = NULL, filt_depth = NULL) 
 {
   stopifnot(nrow(identifiers) > 0)
   
