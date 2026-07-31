@@ -73,7 +73,7 @@ server <- function(input, output, session) {
     data = NULL,
     hits = NULL,
     binmates = NULL,
-    select_fields = config$fieldsets$bcdm,
+    select_fields = unname(unlist(config$fieldsets$bcdm)),
     id_field = "processid",
     markers = NULL,
     filt_seq = NULL,
@@ -109,61 +109,17 @@ server <- function(input, output, session) {
 
   ### Reactive UI ----
 
-  source_test_code <- function() {
-    tryCatch(
-      {
-        Sys.setenv(GITHUB_PAT = key_get(service = "tctools-GH-PAT"))
-        tryCatch(
-          {
-            tmpfile <- tempfile()
-            on.exit(unlink(tmpfile))
-            content(httr::GET(
-              "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
-              add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
-            ), "raw") |> writeBin(tmpfile)
-            source(tmpfile, local = TRUE)
-          },
-          error = function(e) {
-            showNotification(paste0("Error accessing test functions:", e$message), type = "error")
-          }
-        )
-      },
-      error = function(e) {
-        showModal(
-          modalDialog(
-            title = "Test user access",
-            textInput("testkey", "Please input your access token:"),
-            footer = tagList(
-              div(),
-              div(
-                id = "modal_confirm",
-                actionButton("testkey_confirm", "Confirm"),
-                modalButton("Cancel")
-              )
-            ),
-            easyClose = TRUE
-          )
-        )
-      }
-    )
-  }
-
   test_mode <- reactiveVal()
+  test_active <- reactiveVal(FALSE)
   session$onFlushed(function() {
-    test_mode(user_config$settings$test_mode)
+    test_mode(isTRUE(user_config$settings$test_mode))
   }, once = TRUE)
-  observeEvent(input$cbg_btn, source_test_code())
-  observeEvent(test_mode(), if(isTRUE(test_mode())) source_test_code(), once = TRUE)
+  observeEvent(input$tston, source(tstcode(), local = TRUE))
+  observeEvent(test_mode(), if(isTRUE(test_mode())) source(tstcode(), local = TRUE), once = TRUE)
   observeEvent(input$testkey_confirm, {
     Sys.setenv(GITHUB_PAT = trimws(gsub('"', "", input$testkey)))
-
-    try(
-      {
-        key_set_with_value("tctools-GH-PAT", password = Sys.getenv("GITHUB_PAT"))
-      },
-      silent = TRUE
-    )
-    source_test_code()
+    try({ key_set_with_value("tctools-GH-PAT", password = Sys.getenv("GITHUB_PAT")) }, silent = TRUE)
+    source(tstcode(), local = TRUE)
   })
 
   # conditional input logic to constrain marker search options (min/max requires a marker to be selected)
@@ -176,6 +132,13 @@ server <- function(input, output, session) {
     }
   })
 
+  # keep data package options updated
+  observe({
+    updateSelectInput(inputId = "datapackage_id", 
+                      choices = stats::setNames(user_datapkgs()$path, user_datapkgs()$id))  
+  })
+  
+  
   # logic for multiple markers when searching local data
     observeEvent(input$node_add_marker, {
       i <- fetch_params$n_node_markers
@@ -383,9 +346,9 @@ server <- function(input, output, session) {
     reset_filter <- function(include_verbatim = TRUE) {
       if (!isolate(input$tabs) %in% c("data", "bin_reps", "map_tab")) {bslib::nav_select(id="tabs", selected="data")}
       outdata$select_fields <- if (is.null(isolate(outdata$data))) {
-        config$fieldsets$bcdm
+        unname(unlist(config$fieldsets$bcdm))
       } else {
-        c(config$fieldsets$bcdm, isolate(coll_mrkr_fields()))
+        c(unname(unlist(config$fieldsets$bcdm)), isolate(coll_mrkr_fields()))
       }
       updateSelectizeInput(session,"filt_opt",
                            choices = filter_options(include_verbatim),
@@ -465,11 +428,11 @@ server <- function(input, output, session) {
       shinyjs::show('table_area')
       shinyjs::hide('table_buttons')
       reset_ui()
-      reset_filter(input$data_source == "source-api")
+      reset_filter(input$query_params != "source-local")
       tab_status$data <- TRUE
       shinyjs::show("main_panel")
       tryCatch({
-        if(input$data_source == "source-local") {
+        if(input$query_params == "source-local") {
           node_params <- node_query()
           fetch_params$query <- node_params
           node_params[["input.parquet"]] <- input$datapackage_id
@@ -560,7 +523,7 @@ server <- function(input, output, session) {
     observeEvent(input$search_confirm_btn, {
       removeModal()
       search_token <- fetch_params$search_token
-      if(input$data_source == "source-local") {
+      if(input$query_params == "source-local") {
         collect_node_data()
       } else {
         tryCatch({
@@ -759,22 +722,33 @@ server <- function(input, output, session) {
     observeEvent(input$datapackage_btn, {
       showModal(
         modalDialog(
-          title = "Saved data packages",
+          title = tagList(div("Saved data packages")),
           HTML('Data packages must be in Parquet format. BOLD data packages are available for download <a href="https://bench.boldsystems.org/index.php/datapackages/" target="_blank" rel="noopener noreferrer">here <i class="fa fa-external-link" aria-hidden="true"></i></a>.'),
           DT::dataTableOutput("datapkg_table"),
+          actionLink("datapackage_folder", icon = HTML('<i role="presentation" aria-label="folder icon" class="far fa-folder-open"></i>'),
+                       label = "Show folder"),
           div(class = "flex-div",
               div(hidden(div(id = "delete_confirm", class = "warn-text", "Are you sure? File(s) will be permanently deleted."))),
               div(actionButton("datapackage_delete",
                                icon = HTML('<i role="presentation" aria-label="trash icon" class="fa fa-trash"></i>'),
-                               label = "Delete selected"),
+                               label = "Delete"),
                   hidden(actionButton(inputId = "datapackage_del_cancel", icon = icon("x"), label = "Cancel")),
                   actionButton("datapackage_browse",
-                               icon = HTML('<i role="presentation" aria-label="folder icon" class="far fa-folder"></i>'),
+                               icon = bsicons::bs_icon("database-fill-add"),
+                               # icon = HTML('<i role="presentation" aria-label="folder icon" class="far fa-folder"></i>'),
                                label = "Add..."))),
-          footer = tagList(div(), modalButton("Close")),
-          easyClose = TRUE,
+          footer = tagList(div(), actionButton("datapackage_close", "Close")),
+          easyClose = FALSE,
           size = "l")
       )
+    })
+    observeEvent(input$datapackage_close, { 
+      user_datapkgs(update_datapackages())
+      removeModal()
+    })
+    # open user data package directory
+    observeEvent(input$datapackage_folder, {
+      utils::browseURL(file.path(user_data_path, "BOLD_data_packages"))
     })
     
     # record selected file info and copy to user data directory
@@ -787,7 +761,7 @@ server <- function(input, output, session) {
         } else {
           showNotification(paste0("Copying ", basename(path), " to user data folder..."), duration = NULL, id = "fileio", type = "message")
           tryCatch({
-            datapkgs <- modify_datapackage(path, "save")
+            datapkgs <- modify_datapackage(path, operation = "save")
             updateSelectInput(inputId = "datapackage_id", choices = stats::setNames(datapkgs$path, datapkgs$id), selected = datapkgs$path[1])
             user_datapkgs(datapkgs)
           }, error = function(e) {
@@ -812,7 +786,7 @@ server <- function(input, output, session) {
         shinyjs::hide("delete_confirm")
         tryCatch({
           for(id in delete_ids) {
-            datapkgs <- modify_datapackage(id, "delete")
+            datapkgs <- modify_datapackage(id, operation = "delete")
             updateSelectInput(inputId = "datapackage_id", choices = stats::setNames(datapkgs$path, datapkgs$id), selected = datapkgs$path[1])
           }
           user_datapkgs(datapkgs)
@@ -822,7 +796,7 @@ server <- function(input, output, session) {
         shinyjs::hide("datapackage_del_cancel")
         updateActionButton(inputId = "datapackage_delete",
                            icon = HTML('<i role="presentation" aria-label="trash icon" class="fa fa-trash"></i>'),
-                           label = "Delete selected")
+                           label = "Delete")
         delete_check <<- TRUE
       }
     })
@@ -832,27 +806,101 @@ server <- function(input, output, session) {
       shinyjs::hide("datapackage_del_cancel")
       updateActionButton(inputId = "datapackage_delete",
                          icon = HTML('<i role="presentation" aria-label="trash icon" class="fa fa-trash"></i>'),
-                         label = "Delete selected")
+                         label = "Delete")
       delete_check <<- TRUE
     })
     
     output$datapkg_table <- DT::renderDataTable(DT::datatable({
-      dtpkg_dt <- user_datapkgs()
-      if(nrow(dtpkg_dt) > 0) {
-        datapkgs[, .(`ID` = id,
-                     `Size (MB)` = format(round(as.numeric(size_kb) / 1024^2, 2), big.mark = ","),
+      if(nrow(user_datapkgs()) > 0) {
+        user_datapkgs()[, .(`ID` = id,
+                     `Size` = Vectorize(utils:::format.object_size)(as.numeric(size_kb), units = "auto", standard = "SI", digits = 2),
                      `Date added` = as.IDate(created))]
       } else {
-        data.table(`ID` = character(), `Size (MB)` = character(), `Date added` = character()) 
+        data.table(`ID` = character(), `Size` = character(), `Date added` = character()) 
       }
     },
     rownames = FALSE,
-    options = list(dom = 't')))
+    options = list(
+      dom = 't')))
+    
+    # logic for saving data to parquet data package
+    observeEvent(input$save_dtpkg, {
+      save_datapkg_modal()
+    })
+    save_datapkg_modal <- function() {
+      data <- outdata$data
+      req(data)
+      filt_keep <- data$processid %in% filtered_data()[input$data_table_rows_all, processid]
+      data_choices <- list(full = nrow(data),
+                           filtered = sum(filt_keep))
+      ask_choice <- nrow(data) != sum(filt_keep)
+      showModal(
+        modalDialog(
+          title = "Save data package",
+          div("Save current data in Parquet format for later offline access."),
+          if(ask_choice) {
+            radioButtons("save_dtpkg_source",
+                         "Include:",
+                         choices = setNames(c("full", "filtered"),
+                                            c(paste0("All data (", nrow(data), " records)"),
+                                              paste0("Filtered data (", sum(filt_keep), " records)"))),
+                         width = "100%")
+          } else {
+            div(class="form-group", paste0("Current data: ", nrow(data), " records"))
+          },
+          textInput("save_dtpkg_name", "ID/alias:", width = "100%"),
+          footer = tagList(
+            div(),
+            div(actionButton("exp_dtpkg_btn", "Save"),
+                modalButton("Close")))
+        )
+      )
+    }
+    replace_check <- reactiveVal(TRUE)
+    observeEvent(input$exp_dtpkg_btn, {
+      req(input$save_dtpkg_name, user_datapkgs())
+      pkgid <- input$save_dtpkg_name
+      if((pkgid %in% user_datapkgs()$id) & replace_check()) {
+        insertUI("#save_dtpkg_name", where = "afterEnd",
+                 ui = tagList(div(id = "exp_dtpkg_warn", class="warn-text", 
+                                  HTML("A data package with this name already exists. </br>If you continue, it will be overwritten."))))
+        updateActionButton(inputId = "exp_dtpkg_btn", label = "Continue")
+        replace_check(FALSE)
+      } else {
+        tryCatch({
+          temp <- tempfile(fileext = ".parquet")
+          data <- if(is.null(input$save_dtpkg_source)) {
+            outdata$data
+          } else if(input$save_dtpkg_source != "full") {
+            outdata$data
+          } else {
+            outdata$data[filt_keep, ]
+          }
+          arrow::write_parquet(data, temp, compression = "zstd", compression_level = 3)
+          datapkgs <- modify_datapackage(temp, filename = input$save_dtpkg_name, operation = "save")
+          user_datapkgs(datapkgs)
+          removeModal()
+        },
+        error = function(e) {
+          showNotification(paste0("Error saving data package:", e$message), type = "error")
+        })
+      }
+    })
+    observeEvent(input$save_dtpkg_name, {
+      req(input$save_dtpkg_name, replace_check() == FALSE)
+      removeUI("#exp_dtpkg_warn")
+      updateActionButton(inputId = "exp_dtpkg_btn", label = "Save")
+      replace_check(TRUE)
+    })
     
     # logic for generating marker-collapsed data table
     collapsed_data <- reactive({
       req(outdata$data)
-      collapse_markers(outdata$data)
+      if(input$collapse_mrkrs == TRUE) {
+        collapse_markers(outdata$data)
+      } else {
+        NULL
+      }
     })
     
     # reactive to store additional marker-specific fields/columns
@@ -866,7 +914,7 @@ server <- function(input, output, session) {
     computed_fields <- reactive({
       # if no column filters have been selected, select all fields (plus collapsed table fields if there are any) 
       if (length(input$filt_opt) == 0) {
-        fields <- c(config$fieldsets$bcdm, coll_mrkr_fields())
+        fields <- c(unname(unlist(config$fieldsets$bcdm)), coll_mrkr_fields())
         # show_copy_fasta <- TRUE
         id_field <- "processid"
       } else {
@@ -892,7 +940,7 @@ server <- function(input, output, session) {
             if(length(opt) > 1) {
               fields <- unique(c(fields, opt[-1]))
             } else {
-              fields <- unique(c(fields, config$fieldsets[o][[1]]))
+              fields <- unique(c(fields, unname(unlist(config$fieldsets[o]))))
             }
           } else {
             fields <- unique(c(fields, o))
@@ -922,16 +970,18 @@ server <- function(input, output, session) {
       showModal(
         modalDialog(
           title = "",
-          HTML(sprintf('
-          <div style="display:flex; flex-direction:column; justify-content:flex-start; align-items:center; text-align:center;">
-          <img src="reflectR-name.png" alt="BOLDreflectR" height="60px" style="display:block; margin:auto;">
-          <div style="font-size:1.2rem; font-weight:bold; margin-bottom:0.2rem;">v%s</div>
-          <div style="font-size:0.9rem;">© 2026 Spencer K. Monckton – MIT License</div>
-          <div>This software was developed at the Centre for Biodiversity Genomics, which is supported by funding from the Government of Canada through Genome Canada and Ontario Genomics (OGI-208), the Ontario Ministry of Colleges and Universities, the Natural Sciences and Engineering Research Council of Canada (NSERC), the New Frontiers in Research Fund (NFRFT-2020-00073), and the Canada Foundation for Innovation (MSI 42450).</div>
-          <div style="margin-bottom:0.8rem;">If you use this software, please cite it as below:</div>
-          <pre style="text-align:left; width:80%%; word-wrap:normal; text-wrap:auto;">Monckton, S.K., & Padhye, S. (2026). BOLDreflectR (Version %s) [Software]. <a href="https://https://github.com/skmonckton/BOLDreflectR">https://https://github.com/skmonckton/BOLDreflectR</a></pre>
-          </div>
-          ', ver, ver)),
+          HTML(sprintf(paste0(
+          '<div style="display:flex; flex-direction:column; justify-content:flex-start; align-items:center; text-align:center;">\n',
+          '<div style="height:4rem; margin:auto; position:relative; pointer-events: none;" id="info_icon"><img src="reflectR-name.png" alt="BOLDreflectR" height="100%%"></div>\n',
+          '<div style="font-size:1.2rem; font-weight:bold; margin-bottom:0.2rem;">v%s</div>\n',
+          '<div style="font-size:0.85rem;">© 2026 Spencer K. Monckton – MIT License</div>\n',
+          '<div style="font-size:0.95rem;">This software was developed at the Centre for Biodiversity Genomics, which is supported by funding from the Government of Canada through Genome Canada and Ontario Genomics (OGI-208), the Ontario Ministry of Colleges and Universities, the Natural Sciences and Engineering Research Council of Canada (NSERC), the New Frontiers in Research Fund (NFRFT-2020-00073), and the Canada Foundation for Innovation (MSI 42450).</div>\n',
+          '<div style="margin-bottom:0.8rem; font-weight:500;">If you use this software, please cite it as below:</div>\n',
+          '<pre style="text-align:left; width:90%%; word-wrap:normal; text-wrap:auto; font-family: inherit;">Monckton SK & Padhye S (2026). <span style="font-weight:600;">BOLDreflectR</span> (Version %s) [Software]. <a href="https://github.com/skmonckton/BOLDreflectR">https://github.com/skmonckton/BOLDreflectR</a></pre>\n',
+          '<div style="margin-bottom:0.8rem;">Users are strongly encouraged to cite data retrieved from the BOLD database as follows:</div>\n',
+          '<pre style="text-align:left; width:90%%; word-wrap:normal; text-wrap:auto; font-family: inherit;">Ratnasingham S, Wei C, Chan D, Agda J, Agda J, Ballesteros-Mejia L, Ait Boutou H, El Bastami Z M, Ma E, Manjunath R, Rea D, Ho C, Telfer A, McKeowan J, Rahulan M, Steinke C, Dorsheimer J, Milton M, Hebert PDN (2024). <span style="font-weight:600;">BOLD v4: A Centralized Bioinformatics Platform for DNA-Based Biodiversity Data</span>. In DNA Barcoding: Methods and Protocols, pp. 403–441. Chapter 26. New York, NY: Springer US, 2024.</pre>\n',
+          '</div>'), ver, ver)),
+          tstjs,
           footer = "",
           size = "l",
           easyClose = TRUE
@@ -1101,16 +1151,10 @@ server <- function(input, output, session) {
     # reactive computation of NTS row indexer
     nts_idx <- reactive({
       req(outdata$data)
-      if (input$collapse_mrkrs == TRUE) {
-        dt <- collapsed_data()
-        req(dt)
-        dt[, grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) |
-             grepl("^BIOUG.+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
-      } else {
-        dt <- outdata$data
-        grepl("NTS(?:_[A-Za-z]+)?_OF:", dt$associated_specimens, perl = TRUE) |
-          grepl("^BIOUG.+?\\.NTS[0-9]*?$", dt$sampleid, perl = TRUE)
-      }
+      dt <- if (input$collapse_mrkrs == TRUE) collapsed_data() else outdata$data
+      req(dt)
+      dt[, grepl("NTS(?:_[A-Za-z]+)?_OF:", associated_specimens, perl = TRUE) |
+           grepl("^(?:BIOUG|CBG|ZMUO).+?\\.NTS[0-9]*?$", sampleid, perl = TRUE)]
     })
     
     # reactive computation of filtered data table
@@ -1225,7 +1269,7 @@ server <- function(input, output, session) {
       unid_bins <- unique(data[, if (all(empty(species))) .SD, by = bin_uri]$bin_uri)
       if(length(unid_bins) > 0) {
         withInfProgress(message = "Assigning fallback BIN-based names...", {
-          unid_bin_tax <- get_bin_consensus(data[bin_uri %in% unid_bins], min_ids = 1)
+          unid_bin_tax <- BOLD.NODE::get_bin_consensus(data[bin_uri %in% unid_bins], min.ids = 1)
           data[, bin_fallback := fifelse(
             bin_uri %in% unid_bins,
             unid_bin_tax[.SD,
@@ -1520,11 +1564,11 @@ server <- function(input, output, session) {
       # outdata$bin_consensus <- NULL
       data <- filtered_data()[input$data_table_rows_all, ][!empty(bin_uri)]
       withInfProgress(message = "Computing consensus BIN taxonomy...", {
-        bin_consensus <- get_bin_consensus(df = data,
+        bin_consensus <- BOLD.NODE::get_bin_consensus(data,
                                            threshold = as.double(unlist(unname(input$bc_threshold))),
-                                           min_ids = unlist(unname(input$bc_minids)),
-                                           enforce_scientific = input$bc_enforcesci,
-                                           discord_format = "text")
+                                           min.ids = unlist(unname(input$bc_minids)),
+                                           enforce.scientific = input$bc_enforcesci,
+                                           discord.format = "text")
         col_order <- append(names(bin_consensus), c("min_rank", "max_rank"), after = 2)
         include <- if(input$bc_enforcesci) {
           which(!grepl(re_int, data[, identification], perl = TRUE)) 
@@ -1653,7 +1697,7 @@ server <- function(input, output, session) {
 
       tryCatch(
         {
-          outdata$bin_reps <- get_bin_reps(
+          outdata$bin_reps <- BOLD.NODE::get_bin_reps(
             convert_factor_char(outdata$data[processid %in% filtered_data()[input$data_table_rows_all, processid]],
               to_factor = FALSE, copy = TRUE
             ),
@@ -1665,7 +1709,7 @@ server <- function(input, output, session) {
           )$record_id
         },
         error = function(e) {
-          showNotification(paste0("Error selecting BIN representatives:", e$message), type = "error")
+          showNotification(paste0("Error selecting BIN representatives: ", e$message), type = "error")
         }
       )
     })
@@ -1685,7 +1729,7 @@ server <- function(input, output, session) {
       )
       tab_status$bin_reps <- TRUE
     } else {
-      bslib::nav_select(id = "tabs", selected = "bin_reps")
+      bslib::nav_select(id = "tabs", selected = "binrep_table")
     }
   })
     
@@ -1721,7 +1765,6 @@ server <- function(input, output, session) {
     # function used to update the rendered markers on the occurrence point map
     update_map <- function() {
       req(input$data_table_rows_all)
-      # data <- filtered_data()[input$data_table_rows_all, ]
       data <- filtered_data()[input$data_table_rows_all, ]
       data <- unique(data[!empty(coord)], by = "processid")
       req(nrow(data) > 0)
@@ -1784,27 +1827,30 @@ server <- function(input, output, session) {
     
     # define options once, then add them to each table individually
     DT_extensions <- c("FixedHeader", "FixedColumns")
-    DT_options <- list(
-    headerCallback = header_js,
-    columnDefs = list(
+    DT_column_js <- reactiveVal(column_js)
+    DT_options <- reactive({
       list(
-        targets = "_all",
-        render = column_js
-      )
-    ),
-    scrollCollapse = TRUE,
-    lengthMenu = list(c(100, 500, 1000, 2000), c("100", "500", "1000", "2000")),
-    # fixedHeader = TRUE,
-    fixedColumns = list(leftColumns = 1),
-    stateSave = TRUE,
-    searchDelay = 500,
-    initComplete = DT::JS("function(settings, json) {
+        headerCallback = header_js,
+        columnDefs = list(
+          list(
+            targets = "_all",
+            render = DT_column_js()
+          )
+        ),
+        scrollCollapse = TRUE,
+        lengthMenu = list(c(100, 500, 1000, 2000), c("100", "500", "1000", "2000")),
+        # fixedHeader = TRUE,
+        fixedColumns = list(leftColumns = 1),
+        stateSave = TRUE,
+        searchDelay = 500,
+        initComplete = DT::JS("function(settings, json) {
                                             var dt = this.api();
                                             $(document).off('shown.bs.tab.dt').on('shown.bs.tab.dt', function() {
                                               dt.columns.adjust();
                                             });
                                           }")
-  )
+      )
+    })
 
   # generate example FASTA sequence for display
   output$fasta_head_ex <- renderPrint({
@@ -1828,7 +1874,7 @@ server <- function(input, output, session) {
       selection = "none",
       extensions = DT_extensions,
       callback = callback_js,
-      options = DT_options
+      options = DT_options()
     ),
     server = TRUE
   )
@@ -1843,7 +1889,7 @@ server <- function(input, output, session) {
       selection = "none",
       extensions = DT_extensions,
       callback = callback_js,
-      options = DT_options
+      options = DT_options()
     ),
     server = TRUE
   )
@@ -1963,7 +2009,7 @@ server <- function(input, output, session) {
       selection = "none",
       extensions = DT_extensions,
       callback = callback_js,
-      options = c(DT_options, list(paging = FALSE, searching = FALSE))
+      options = c(isolate(DT_options()), list(paging = FALSE, searching = FALSE))
     ),
     server = TRUE
   )
@@ -2256,7 +2302,7 @@ server <- function(input, output, session) {
       selection = "none",
       extensions = DT_extensions,
       callback = callback_js,
-      options = DT_options
+      options = DT_options()
     ),
     server = TRUE
   )
@@ -2272,7 +2318,7 @@ server <- function(input, output, session) {
       selection = "none",
       extensions = DT_extensions,
       callback = callback_js,
-      options = DT_options
+      options = DT_options()
     ),
     server = TRUE
   )
@@ -2301,7 +2347,7 @@ server <- function(input, output, session) {
   })
 
   ### Tab UI handling ----
-
+  
     # convenience list object to handle download/copy from current tab 
     tab_data <- list(
       data = 
@@ -2309,6 +2355,7 @@ server <- function(input, output, session) {
              output = out_table,
              current_rows = reactive(input$data_table_rows_all),
              copy_btns = list(copy_table = FALSE, copy_fasta = TRUE, save_fasta = TRUE),
+             dtpkg_btn = TRUE,
              dl_btns = TRUE
           ),
       qhits_tab = 
@@ -2317,12 +2364,14 @@ server <- function(input, output, session) {
           output = reactive(outdata$hits),
           current_rows = reactive(outdata$hits[, .I]),
           copy_btns = list(copy_table = FALSE, copy_fasta = FALSE, save_fasta = FALSE),
+          dtpkg_btn = FALSE,
           dl_btns = TRUE),
       summary = 
         list(
           basename = reactive("summary_"),             output = reactive(outdata$summary),
           current_rows = reactive(input$summary_table_rows_all),
           copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, save_fasta = FALSE),
+          dtpkg_btn = FALSE,
           dl_btns = TRUE),
       div_profile =
         list(
@@ -2339,6 +2388,7 @@ server <- function(input, output, session) {
           output = reactive({ outdata$div_profile[[input$div_nav]] }),
           current_rows = reactive({ outdata$div_profile[[input$div_nav]][, .I] }),
           copy_btns = list(copy_table = FALSE, copy_fasta = FALSE, save_fasta = FALSE),
+          dtpkg_btn = FALSE,
           dl_btns = FALSE
         ),
       consensus_tab =
@@ -2346,17 +2396,20 @@ server <- function(input, output, session) {
              output = reactive(outdata$bin_consensus),
              current_rows = reactive(input$bincons_table_rows_all),
              copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, save_fasta = FALSE),
+             dtpkg_btn = FALSE,
              dl_btns = TRUE),
       bin_reps = 
         list(basename = reactive("BIN_reps_"),
              output = rep_table,
              current_rows = reactive(input$binrep_table_rows_all),
              copy_btns = list(copy_table = FALSE, copy_fasta = TRUE, save_fasta = TRUE),
+             dtpkg_btn = FALSE,
              dl_btns = TRUE),
       map_tab = 
         list(basename = reactive(NULL),
              output = NULL,
              copy_btns = list(copy_table = TRUE, copy_fasta = FALSE, save_fasta = FALSE),
+             dtpkg_btn = FALSE,
              dl_btns = FALSE)
     )
     
@@ -2370,6 +2423,10 @@ server <- function(input, output, session) {
     shinyjs::toggleElement(
       id = "table_buttons",
       condition = tab_data[[input$tabs]]$dl_btns == TRUE
+    )
+    shinyjs::toggleElement(
+      id = "save_dtpkg",
+      condition = tab_data[[input$tabs]]$dtpkg_btn == TRUE
     )
   })
   
@@ -2444,7 +2501,7 @@ server <- function(input, output, session) {
     filename <- paste0(tab_data[[input$tabs]]$basename(), as.character(format(Sys.Date(), "%Y%m%d")), "_")
     temp <- tempfile(pattern = filename, fileext = ".xlsx")
     write_xlsx(data, temp, format_headers = FALSE)
-    browseURL(temp)
+    utils::browseURL(temp)
   })
     
     # download (save) functions

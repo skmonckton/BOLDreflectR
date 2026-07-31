@@ -10,7 +10,7 @@ ui <- bslib::page_fillable(
           if (e.ctrlKey && e.key === 'Enter') {
             Shiny.setInputValue('fetch_ctrl_enter', Math.random(), {priority: 'event'});
           }
-        });
+        }); 
       Shiny.addCustomMessageHandler("initLookupMap", function(data) {
         window.mapBySID = {};
         data.forEach(function(row) {
@@ -35,16 +35,13 @@ ui <- bslib::page_fillable(
           div(
             actionLink("app_info", icon("circle-info")),
             actionLink("settings", icon("gear"))),
-          actionLink("cbg_btn", label = " ")),
+          ),
       bslib::accordion(
         id="optpanels",
         bslib::accordion_panel(
           value="fetchdata",
           "Get data",
           icon = bsicons::bs_icon("cloud-arrow-down"),
-          bslib::navset_tab( 
-            id="data_source",
-            bslib::nav_panel("BOLD API", value = "source-api",
                       hidden(
                         passwordInput( 
                           "api_key", 
@@ -59,8 +56,9 @@ ui <- bslib::page_fillable(
                         id="query_params",
                         bslib::nav_panel(value="fetch_opts",
                                          "Fetch",
+                                         inputGroup(title = "Parameters:",
                                          selectInput("fetch_by",
-                                                     "Parameter to fetch by:",
+                                                     "Fetch by:",
                                                      list("Process ID" = "processid",
                                                           "Sample ID" = "sampleid",
                                                           "BIN" = "bin_uris",
@@ -75,9 +73,10 @@ ui <- bslib::page_fillable(
                                                  icon("circle-question"),
                                                  paste0("Comma-separated or one per line."),
                                                  id = "query_tip"))
-                                         )), 
+                                         ))), 
                         bslib::nav_panel(value="search_opts",
-                                         "Full search",
+                                         "Search",
+                                         inputGroup(title = "Parameters:",
                                          textAreaInput( 
                                            "search_tax", 
                                            div("Taxonomy:",
@@ -128,82 +127,82 @@ ui <- bslib::page_fillable(
                                            div("Institutes:",
                                                bslib::tooltip(icon("circle-question"),
                                                               "Institute where physical specimen is stored. Comma-separated or one per line, no quotes."))
-                                         )
-                        )
-                      )), 
-            bslib::nav_panel("Local data package", value = "source-local",
-                             inputGroup(title = "Source data:",
-                                        groupId = "node_source_pkg",
-                                        div(class = "shiny-input-container",
-                                                HTML('<label class="control-label">Select a local data package:</label>'),
-                                                div(class = "file-input-wrapper input-group",
-                                                    selectInput("datapackage_id", "",
-                                                                choices = stats::setNames(datapkgs$path, datapkgs$id)),
-                                                    actionButton("datapackage_btn", "Add/Edit...")))),
-                             inputGroup(title = "Search terms:",
-                                        tipTxt = "Comma-separated or one term per line, no quotes.",
-                                        groupId = "node_source_terms",
-                                        textAreaInput("node_id_list", "Process IDs and/or sample IDs:"),
-                                        textAreaInput("node_bin_list", "BINs:"),
-                                        textAreaInput("node_recset_list", "Project and/or dataset codes:"),
-                                        textAreaInput("node_tax", "Taxonomy:"),
-                                        textAreaInput("node_geo", "Geography:"),
-                                        bslib::accordion(
-                                         id = "more_opts",
-                                         bslib::accordion_panel(
-                                           "Additional fields",
-                                           textAreaInput("node_ider_list", "Identified by:"),
-                                           textAreaInput("node_biogeo_list", "Biome, realm, or ecoregion:"),
-                                           textAreaInput("node_inst_list", "Institutes:"),
-                                           textAreaInput("node_seqinst_list", "Sequence run sites:")))),
-                             inputGroup(title = "Markers:",
-                                         groupId = "node_markers",
-                                         groupClass = "marker-select",
-                                         div(class="form-group shiny-input-container single-marker",
-                                             selectInput(
-                                               "node_seq_marker_1",
-                                               label = "",
-                                               selected = "",
-                                               marker_options),
-                                             numericInput(
-                                               "node_seq_min_1",
-                                               label = "",
-                                               value = NULL,
-                                               min = 5, max = 2000, step = 1),
-                                             numericInput(
-                                               "node_seq_max_1",
-                                               label = "",
-                                               value = NULL,
-                                               min = 5, max = 2000, step = 1)),
-                                         div(class="flex-div",
-                                             actionButton("node_add_marker", icon("plus")),
-                                             actionButton("node_del_marker", icon("minus")))
+                                         ))),
+                        bslib::nav_panel(value = "source-local",
+                                         "Local data",
+                                         inputGroup(title = "Source data:",
+                                                    groupId = "node_source_pkg",
+                                                    div(class = "shiny-input-container",
+                                                        HTML('<label class="control-label">Select a local data package:</label>'),
+                                                        div(class = "file-input-wrapper input-group",
+                                                            selectInput("datapackage_id", "",
+                                                                        choices = stats::setNames(datapkgs$path, datapkgs$id)),
+                                                            actionButton("datapackage_btn", "Add/Edit...")))),
+                                         inputGroup(title = "Search terms:",
+                                                    tipTxt = "Comma-separated or one term per line, no quotes.",
+                                                    groupId = "node_source_terms",
+                                                    textAreaInput("node_id_list", "Process IDs and/or sample IDs:"),
+                                                    textAreaInput("node_bin_list", "BINs:"),
+                                                    textAreaInput("node_recset_list", "Project and/or dataset codes:"),
+                                                    textAreaInput("node_tax", "Taxonomy:"),
+                                                    textAreaInput("node_geo", "Geography:"),
+                                                    bslib::accordion(
+                                                      id = "more_opts",
+                                                      bslib::accordion_panel(
+                                                        "Additional fields",
+                                                        textAreaInput("node_ider_list", "Identified by:"),
+                                                        textAreaInput("node_biogeo_list", "Biome, realm, or ecoregion:"),
+                                                        textAreaInput("node_inst_list", "Institutes:"),
+                                                        textAreaInput("node_seqinst_list", "Sequence run sites:")))),
+                                         inputGroup(title = "Markers:",
+                                                    groupId = "node_markers",
+                                                    groupClass = "marker-select",
+                                                    div(class="form-group shiny-input-container single-marker",
+                                                        selectInput(
+                                                          "node_seq_marker_1",
+                                                          label = "",
+                                                          selected = "",
+                                                          marker_options),
+                                                        numericInput(
+                                                          "node_seq_min_1",
+                                                          label = "",
+                                                          value = NULL,
+                                                          min = 5, max = 2000, step = 1),
+                                                        numericInput(
+                                                          "node_seq_max_1",
+                                                          label = "",
+                                                          value = NULL,
+                                                          min = 5, max = 2000, step = 1)),
+                                                    div(class="flex-div",
+                                                        actionButton("node_add_marker", icon("plus")),
+                                                        actionButton("node_del_marker", icon("minus")))
                                          ),
-                             inputGroup(title = "Coordinates:",
-                                        groupId = "node_bounding_box",
-                                        div(class="form-group shiny-input-container",
-                                            div(class="control-label", "Longitude:"),
-                                            div(class="flex-div coord-range",
-                                               numericInput("node_lon_min", "", value = -180),
-                                               sliderInput(
-                                                 "node_lon_range", "",
-                                                 min = -180, max = 180,
-                                                 step = 0.01,
-                                                 ticks = FALSE,
-                                                 post = "°",
-                                                 value = c(-180, 180)),
-                                               numericInput("node_lon_max", "", value = 180)),
-                                            div(class="control-label", "Latitude:"),
-                                            div(class="flex-div coord-range",
-                                               numericInput("node_lat_min", "", value = -90),
-                                               sliderInput(
-                                                 "node_lat_range", "",
-                                                 min = -90, max = 90,
-                                                 step = 0.01,
-                                                 ticks = FALSE,
-                                                 post = "°",
-                                                 value = c(-90, 90)),
-                                               numericInput("node_lat_max", "", value = 90)))))),
+                                         inputGroup(title = "Coordinates:",
+                                                    groupId = "node_bounding_box",
+                                                    div(class="form-group shiny-input-container",
+                                                        div(class="control-label", "Longitude:"),
+                                                        div(class="flex-div coord-range",
+                                                            numericInput("node_lon_min", "", value = -180),
+                                                            sliderInput(
+                                                              "node_lon_range", "",
+                                                              min = -180, max = 180,
+                                                              step = 0.01,
+                                                              ticks = FALSE,
+                                                              post = "°",
+                                                              value = c(-180, 180)),
+                                                            numericInput("node_lon_max", "", value = 180)),
+                                                        div(class="control-label", "Latitude:"),
+                                                        div(class="flex-div coord-range",
+                                                            numericInput("node_lat_min", "", value = -90),
+                                                            sliderInput(
+                                                              "node_lat_range", "",
+                                                              min = -90, max = 90,
+                                                              step = 0.01,
+                                                              ticks = FALSE,
+                                                              post = "°",
+                                                              value = c(-90, 90)),
+                                                            numericInput("node_lat_max", "", value = 90)))))
+                      ),
           checkboxInput(
             "fetch_binmates",
             "Find additional BIN members"
@@ -280,7 +279,7 @@ ui <- bslib::page_fillable(
                                      "Projects" = "projects",
                                      "Datasets" = "datasets",
                                      "Country" = "country.ocean"),
-                                   "Unique values - all fields" = as.list(config$fieldsets$bcdm[!config$fieldsets$bcdm %in% c("identification","bin_uri","country.ocean","id_date_parsed","project_code")])
+                                   "Unique values - all fields" = config$fieldsets$bcdm[!config$fieldsets$bcdm %in% c("identification","bin_uri","country.ocean","bold_recordset_code_arr")]
                                  ), multiple = FALSE),
                      div(class="form-group shiny-input-container",
                          actionButton(
@@ -490,14 +489,15 @@ ui <- bslib::page_fillable(
       hidden(div(id = "table_buttons",
                  class="testclass",
                  div(id = "copy_buttons",
-                     actionButton("copy_fasta","Copy FASTA",icon=icon("copy")),
-                     downloadButton("save_fasta","Save FASTA"),
-                     actionButton("copy_table","Copy table",icon=icon("copy"))),
+                     actionButton("copy_fasta", "Copy FASTA", icon = icon("copy")),
+                     downloadButton("save_fasta", "Save FASTA"),
+                     actionButton("copy_table", "Copy table", icon = icon("copy"))),
                  div(id = "save_buttons",
-                     downloadButton("save_tsv","TSV"),
-                     downloadButton("save_csv","CSV"),
-                     downloadButton("save_xlsx","XLSX"),
-                     actionButton("open_xlsx","Open XLSX",icon=icon("file-excel"))))
+                     actionButton("save_dtpkg", "", icon = bsicons::bs_icon("database-fill-add")),
+                     downloadButton("save_tsv", "TSV"),
+                     downloadButton("save_csv", "CSV"),
+                     downloadButton("save_xlsx", "XLSX"),
+                     actionButton("open_xlsx", "Open XLSX", icon = icon("file-excel"))))
       ),
     width = 9))
   )

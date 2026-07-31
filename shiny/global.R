@@ -1,6 +1,3 @@
-if (!"BOLD.NODE" %in% rownames(installed.packages())) {
-  devtools::install_github('https://github.com/sameerpadhye/BOLD.NODE.git')
-}
 library(BOLDconnectR)
 library(BOLD.NODE)
 library(data.table)
@@ -33,7 +30,6 @@ ver <- ifelse(Sys.getenv("APP_VER") != "", Sys.getenv("APP_VER"), jsonlite::read
 user_data_path <- ifelse(Sys.getenv("USER_DATA_PATH") != "", Sys.getenv("USER_DATA_PATH"), "user_data")
 
 # initialize user_config file in user data directory
-# (currently only for custom field sets)
 user_config <- if(file.exists(file.path(user_data_path,"user_config.yaml"))) {
   read_yaml(file.path(user_data_path,"user_config.yaml"))
 } else {
@@ -90,21 +86,25 @@ filter_options <- function(include_verbatim = TRUE) {
   
 } 
 
+# list of barcode markers for select/dropdown inputs
 marker_options <- list(" " = "",
                        Primary = stats::setNames(config$markercodes$major, config$markercodes$major),
                        Other = stats::setNames(config$markercodes$other, config$markercodes$other))
 
+# function to validate/store/retrieve API key
 validate_apikey <- function(key) {
   stored <- Sys.getenv("api_key")
   try(stored <- key_get("BOLD.apikey"), silent=TRUE)
   if ((stored != key) | (all(stored == "", key == ""))) {
     if(key == "") {
       Sys.setenv(api_key = "")
+      shinyjs::addClass(id = "api_key", class = "input_visible")
       shinyjs::show("api_key")
       shinyjs::reset("api_key")
     } else {
       tryCatch({
         bold.apikey(key)
+        shinyjs::removeClass(id = "api_key", class = "input_visible")
         shinyjs::hide("api_key")
       }, error = function(e) {
         showNotification(e$message, type = "error")
@@ -116,7 +116,8 @@ validate_apikey <- function(key) {
   }
 }
 
-# function to update user_config.yaml with current list of available data package files (also returns a list of said files)
+# function to update user_config.yaml with current list of available data package files
+# (also returns a list of said files)
 update_datapackages <- function() {
   datapkgs <- data.table(file.info(list.files(path = file.path(user_data_path, "BOLD_data_packages"), full.names = TRUE))[c("size", "ctime")],
                          keep.rownames = TRUE)[, .(id = tools::file_path_sans_ext(basename(rn)),
@@ -127,9 +128,10 @@ update_datapackages <- function() {
   return(datapkgs)
 }
 
+# keep list of BOLD.NODE data packages in memory
 datapkgs <- update_datapackages()
 
-# copy to clipboard with size limit
+# copy table to clipboard
 cb <- function(df, header=TRUE, sep="\t", na="", max.size=(200*1000)){
   os <- Sys.info()["sysname"]
   text <- capture.output(
@@ -223,14 +225,19 @@ split_query <- function(query_input, list = FALSE) {
 }
 
 # save or delete local data packages
-modify_datapackage <- function(dtpkg, operation = "save") {
+modify_datapackage <- function(dtpkg, filename = NULL, operation = "save") {
   if(operation == "save") {
     outdir <- file.path(user_data_path, "BOLD_data_packages")
     if (!dir.exists(outdir)) {
       dir.create(outdir, recursive = TRUE)
     }
-    save_id <- tools::file_path_sans_ext(basename(dtpkg))
-    save_path <- file.path(outdir, basename(dtpkg))
+    outname <- if(is.null(filename)) {
+      basename(dtpkg)
+    } else {
+      paste0(sub("[^a-zA-Z0-9_.-]", "", gsub(" ", "_", gsub("\\.parquet$", "", filename))), ".parquet")
+    }
+    save_id <- tools::file_path_sans_ext(outname)
+    save_path <- file.path(outdir, outname)
     if(save_id %in% datapkgs$id) {
       showNotification("There is already a data package with this ID. If you wish to overwrite the existing file, please delete it first.", id = "fileio", type = "error")
     } else {
@@ -304,27 +311,22 @@ modify_custom_fieldset <- function(set_name, set_fields = NULL, operation = "sav
 
 # function to collapse table to a single row per record, and add extra columns to store marker information (similar to BOLD v4 spreadsheet format)
 collapse_markers <- function(data) {
-  
   # pivot to wide format
   pivot_cols <- c("insdc_acs","nuc","nuc_basecount","sequence_run_site","sequence_upload_date")
   collapsed <- dcast(data[, setdiff(names(data), c("record_id", "pre_md5hash")), with = FALSE],
                      ... ~ marker_code,
                      value.var = pivot_cols)
-  
   # remove junk columns for records with no sequences
   na_cols <- names(collapsed)[grepl("_NA$", names(collapsed))]
   collapsed[, (na_cols) := NULL]
-  
   # invert column names
   old <- grep(paste0("^(",paste(pivot_cols, collapse="|"),")_"), names(collapsed), value = TRUE)
   new <- sub(paste0("^(",paste(pivot_cols, collapse="|"),")_(.*)"), "\\2_\\1", old)
   setnames(collapsed, old, new)
-  
   return(collapsed)
-  
 }
 
-# return copy of table with factor columns converted to character for analyses
+# return copy of table with factor columns converted to character (or vice-versa) for analyses
 convert_factor_char <- function(data, to_factor = TRUE, copy = FALSE) {
   factor_cols <- intersect(config$fieldsets$factorfields, names(data))
   if(copy) data <- copy(data)
@@ -333,7 +335,7 @@ convert_factor_char <- function(data, to_factor = TRUE, copy = FALSE) {
   if(copy) return(data)
 }
 
-# decompose recordset column into a list of dataset or project codes
+# decompose recordset column into a list of datasets or project codes
 list_recordsets <- function(data, set_type, list_by) {
   recordsets <- data[, .(set = unique(trimws(trimws(unlist(strsplit(bold_recordset_code_arr, ",")))))), by = list_by] 
   if(set_type == "parse_project") {
@@ -345,7 +347,7 @@ list_recordsets <- function(data, set_type, list_by) {
   }
 }
 
-# computes the summary table
+# compute summary tables
 summarize_table <- function(data, sum_type, list_by) {
   if (sum_type %in% c("projects","datasets")){
     list_recordsets(data, sum_type, list_by)
@@ -376,7 +378,7 @@ summarize_table <- function(data, sum_type, list_by) {
   }
 }
 
-# extracts identification dates from taxonomy_notes
+# extract identification dates from taxonomy_notes
 parse_id_date <- function(data) {
   string_match <- function(x, pat) regmatches(x, gregexpr(pat, x, perl=TRUE), invert = NA)
   id_date_verb <- if("specimendetails.verbatim_identification_method" %in% names(data)) {
@@ -389,7 +391,7 @@ parse_id_date <- function(data) {
   return(id_date)
 }
 
-# extracts lats and longs from the BCDM coord column
+# extract lats and longs from BCDM coord column
 parse_lat_lon <- function(coord) {
   if(all(empty(coord))) {
     list(rep(as.numeric(NA), length(coord)), rep(as.numeric(NA), length(coord)))
@@ -398,7 +400,7 @@ parse_lat_lon <- function(coord) {
   }
 }
 
-# generates formatted labels for diveristy analysis output
+# generate formatted labels for diversity analysis output
 get_div_label <- function(type, capitalize = FALSE, plural = FALSE) {
   label <- switch(type,
                   bin_uri = c("BIN", "BINs"),
@@ -427,185 +429,13 @@ get_div_label <- function(type, capitalize = FALSE, plural = FALSE) {
   }
 }
 
-# select BIN representatives
-# get_bin_reps <- function(
-#     bold.search.res,
-#     Nreps = 1,
-#     by.taxon = FALSE,
-#     enforce.scientific = FALSE,
-#     non.redundant.taxa = FALSE,
-#     criteria = list(vouchered = TRUE,
-#                     seq_length = c("COI_auto", "longest", "shortest", 658),
-#                     id_method = c("Morphology", "Morphology and sequence based",
-#                                   "Image based", "Image and sequence based",
-#                                   "Tree based", "BIN based", "BOLD ID Engine",
-#                                   "Other sequence based approach", "Other"),
-#                     inst = "Centre for Biodiversity Genomics",
-#                     coll_date = c("latest", "oldest"),
-#                     seq_date = c("latest", "oldest")),
-#     seed = NULL
-# ) {
-#   # Check parameters
-#   stopifnot("'Nreps' must be a single numeric value." = is.numeric(Nreps)  && length(Nreps) == 1,
-#             "'by.taxon' must be a single logical value." = is.logical(by.taxon) && length(by.taxon) == 1,
-#             "'non.redundant.taxa' must be a single logical value." = is.logical(non.redundant.taxa) && length(non.redundant.taxa) == 1,
-#             "'enforce.scientific' must be a single logical value." = is.logical(enforce.scientific) && length(enforce.scientific) == 1)
-#   if(!missing(criteria)) {
-#     if(length(criteria$seq_length) > 1) {
-#       stop("'seq_length' criterion must be a single value.")
-#     } else if(length(criteria$seq_length) == 1) {
-#       if(!any((criteria$seq_length %in% c("COI_auto", "longest", "shortest")),
-#               is.numeric(criteria$seq_length))) {
-#         stop("'seq_length' criterion must be one of 'COI_auto', 'longest', 'shortest', or a numeric value.")
-#       }
-#     }
-#     stopifnot("'vouchered' criterion must be a single logical value." =
-#                 length(criteria$vouchered) == 0 || is.logical(criteria$vouchered) && length(criteria$vouchered) == 1)
-#     if(length(criteria$coll_date) > 1) stop("'coll_date' criterion must be one of 'latest' or 'oldest'.")
-#     if(length(criteria$seq_date) > 1) stop("'seq_date' criterion must be one of 'latest' or 'oldest'.")
-#   } else {
-#     # Supply default criteria if param is omitted
-#     criteria = list(vouchered = TRUE,
-#                     seq_length = "COI_auto",
-#                     id_method = c("Morphology", "Morphology and sequence based",
-#                                   "Image based", "Image and sequence based",
-#                                   "Tree based", "BIN based", "BOLD ID Engine",
-#                                   "Other sequence based approach", "Other"),
-#                     inst = "Centre for Biodiversity Genomics",
-#                     coll_date = "latest",
-#                     seq_date = "latest")
-#   }
-#   # Define grouping columns
-#   select_by <- if(by.taxon) {
-#     c("bin_uri", "identification")
-#   } else {
-#     "bin_uri"
-#   }
-#   # Ensure Nreps is a whole number
-#   Nreps <- round(Nreps, 0)
-#   # Deduce specimen identifier
-#   id_col <- intersect(c("processid", "sampleid", "fieldid", "museumid", "record_id", "specimenid"),
-#                       colnames(bold.search.res))[[1]]
-#   # Randomize representative order (using random seed for pre-determined order if provided)
-#   if(!is.null(seed)) set.seed(seed)
-#   data <- as.data.table(bold.search.res)[sample(nrow(bold.search.res))]
-#   data <- unique(data[!is.na(bin_uri) & (bin_uri != "") & (marker_code == "COI-5P")], by = id_col)
-#   # Filter by identification if applicable
-#   if(by.taxon) {
-#     # Move interim names to the bottom (they may still be selected if they match other criteria)
-#     if(enforce.scientific) data <- data[order(bin_uri, grepl(re_int, identification, perl = TRUE))]
-#     if(enforce.scientific || non.redundant.taxa) {
-#       # Build a taxonomy lookup table with matching indices to be mutated (suppressing interim names if applicable)
-#       id_lookup <- data[, .SD, .SDcols = c("bin_uri", "identification", "identification_rank", ranks)]
-#       id_lookup[, c(ranks, if(enforce.scientific) c("identification", "identification_rank")) := {
-#         cleaned <- lapply(.SD, function(x) {
-#           fcase(enforce.scientific & grepl(re_int, x, perl = TRUE), NA_character_,
-#                 x == "", NA_character_,
-#                 grepl("^\\s$", x), NA_character_,
-#                 default = as.character(x))
-#         })
-#         if (enforce.scientific) {
-#           vals   <- do.call(cbind, cleaned)
-#           mask   <- !is.na(vals)
-#           idx    <- max.col(mask, ties.method = "last")
-#           all_na <- rowSums(mask) == 0L
-#           c(cleaned, list(
-#             ifelse(all_na, NA_character_, vals[cbind(seq_len(.N), idx)]),
-#             ifelse(all_na, NA_character_, ranks[idx])
-#           ))
-#         } else {
-#           cleaned
-#         }
-#       }, .SDcols = ranks]
-#     }
-#     if(enforce.scientific) {
-#       # Substitute cleaned identification for later rep selection
-#       data[, "id_clean" := id_lookup$identification]
-#       select_by <- c("bin_uri", "id_clean")
-#     }
-#   }
-#   # Build sequence of sort keys to apply to data table
-#   sort_sequence <- lapply(names(criteria), function(step) {
-#     if(step == "vouchered") {
-#       (grepl("(?i)GenBank", data$inst, perl=T) == criteria$vouchered)
-#     } else if(step == "seq_length") {
-#       
-#       seq_sort <- if(criteria$seq_length == "COI_auto") {
-#         # find the modal sequence length for each BIN
-#         mode_by_bin <- data[, .(mode = {
-#           t <- table(sapply(nuc_basecount, function(bp) (round((bp - 1) / 3) * 3) + 1))
-#           modal <- names(t)[t == max(t)]
-#           
-#           # in case of multiple modes, select the one nearest to 658bp
-#           as.numeric(unname(modal)[which.min(sapply(modal, function (m) abs(as.numeric(m) - 658)))])
-#         }), by = "bin_uri"]
-#         
-#         # output absolute difference between sequence length and modal length for BIN
-#         data[, .SD, .SDcols = c("bin_uri", "nuc_basecount")][mode_by_bin, on = "bin_uri"][, ({
-#           abs(nuc_basecount - mode)
-#         })]
-#         
-#       } else if(criteria$seq_length == "longest") {
-#         data[["nuc_basecount"]] * -1
-#       } else if(criteria$seq_length == "shortest") {
-#         data[["nuc_basecount"]]
-#       } else {
-#         abs(data[["nuc_basecount"]] - round(criteria$seq_length, 0))
-#       }
-#       
-#     } else if(step == "id_method") {
-#       factor(as.character(data$identification_method), levels = criteria$id_method)
-#     } else if(step == "inst") {
-#       factor(as.character(data$inst), levels = criteria$inst)
-#     } else if(step == "coll_date") {
-#       data$collection_date_start
-#     } else if(step == "seq_date") {
-#       data$sequence_upload_date
-#     }
-#   })
-#   # Apply sort keys in sequence to select and return representatives
-#   rep_idx <- data[do.call("order", sort_sequence), .I[seq_len(min(Nreps, .N))], by = select_by]$V1
-#   data <- data[rep_idx, ]
-#   if(by.taxon) {
-#     if(enforce.scientific || non.redundant.taxa) id_lookup <- id_lookup[rep_idx, ]
-#     if(non.redundant.taxa) {
-#       id_lookup_by_bin <- split(id_lookup, id_lookup$bin_uri)
-#       # Find and apply the indices of records with the lowest non-redundant identification in each BIN
-#       data <- data[id_lookup[, .I[({
-#         bin_taxa <- id_lookup_by_bin[[.BY$bin_uri]]
-#         cols_to_use <- c("identification", "identification_rank", ranks[sapply(ranks, function(rank) !all(is.na(bin_taxa[[rank]]) | bin_taxa[[rank]] == ""))])
-#         bin_taxa <- bin_taxa[, .SD, .SDcols = cols_to_use]
-#         ids_ranked <- unique(bin_taxa)
-#         ids_ranked[, id_count := mapply(
-#           function(rank, id) .SD[.SD[[rank]] == id, .N],
-#           as.character(identification_rank),
-#           as.character(identification))]
-#         data.table::setorder(ids_ranked, id_count)
-#         keep <- bin_taxa[identification %in% ids_ranked[id_count == 1, identification], which = TRUE]
-#         # If less than `Nreps` have lowest non-redundant ID, fill out the rest with the next-best IDs
-#         if(length(keep) < Nreps) {
-#           next_best <- unique(bin_taxa[identification %in% ids_ranked[id_count != 1, identification], identification])
-#           add <- bin_taxa[, .(identification, row = .I)][identification %in% next_best][
-#             , identification := factor(identification, levels = next_best)][
-#               order(identification)][
-#                 , head(row, Nreps - length(keep))]
-#           keep <- c(keep, add)
-#         }
-#         bin_taxa[, .I] %in% keep
-#       })], by = "bin_uri"]$V1]
-#     }
-#     # Remove cleaned ID column if added previously
-#     if(enforce.scientific) data[, "id_clean" := NULL]
-#   }
-#   return(data)
-# }
-
+# clean up stray ANSI character formatting
 clean_ansi <- function(x) {
   gsub("\033\\[[0-9;]*[mK]", "", x)
 }
 
 # wrapper to prepare BOLD fetch/search queries and prepare messages as notifications
-# (note: was intended to handle both fetch and search, but I haven't harmonized the two yet)
+# (note: initially intended to handle both fetch and search, but the two have not been harmonized)
 bold.fetch.shiny <- function (get_by,
                               query,
                               BCDM_only = FALSE,
@@ -702,7 +532,6 @@ get_query_hits <- function(data = NULL, query) {
 get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
   bins <- unique(as.character(df[["bin_uri"]][!empty(as.character(df[["bin_uri"]]))]))
   add_pids <- character()
-  
   if(length(bins) == 0) {
     showNotification("No BINs were found in the fetched data.", id = "bin_msg", duration=2, type = "message")
   } else if(is.null(dtpkg_parquet)) {
@@ -739,16 +568,14 @@ get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
         dplyr::anti_join(pids_tbl, by = "processid") |>
         dplyr::distinct(processid) |>
         dplyr::collect() |>
-        _$processid
+        (`[[`)("processid") 
     })
   }
-    
   if(length(add_pids) == 0) {
     showNotification(paste0("No additional BIN members found."), id = "bin_msg", type = "message")
   } else {
     showNotification(paste0(length(add_pids), " additional BIN members found."), id = "bin_msg", type = "message")
   }
-  
   return(add_pids)
 }
 
