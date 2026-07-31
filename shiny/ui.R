@@ -23,6 +23,19 @@ ui <- bslib::page_fillable(
           map.invalidateSize();
         }, 100);
       });
+      Shiny.addCustomMessageHandler('reset-dt', function(outputId) {
+        var tbl = $('#' + outputId).find('table.dataTable').first();
+        if (tbl.length === 0) return;
+        var dt = tbl.DataTable();
+        dt.order([]);
+        dt.search('');
+        dt.columns().search('');
+        var container = $(dt.table().container());
+        container.find('input').val('');
+        container.find('select').prop('selectedIndex', 0);
+        container.find('.glyphicon-remove-circle').css('display', 'none');
+        dt.draw();
+      });
     )"))
   ),
   useShinyjs(),
@@ -484,6 +497,7 @@ ui <- bslib::page_fillable(
           "Data",
           hidden(div(
             id = 'table_area',
+            actionLink("reset_tbl", "Reset filters"),
             DT::dataTableOutput("data_table") |> withSpinner(color="#aaaaaa", type=5, size=0.6)))
           )),
       hidden(div(id = "table_buttons",

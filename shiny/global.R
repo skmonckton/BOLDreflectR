@@ -647,6 +647,22 @@ column_js <- DT::JS("
                       return data;
                     }
                   ")
+reset_js <- DT::JS("
+  function(e, dt, node, config) {
+    dt.order([]);
+    dt.search('');
+    dt.columns().search('');
+  
+    $(dt.table().container()).find('input').val('');
+    $(dt.table().container()).find('select').prop('selectedIndex', 0);
+  
+    $(dt.table().container()).find('.dt-range').each(function(){
+      if (this.noUiSlider) this.noUiSlider.reset();
+    });
+  
+    dt.draw();
+  }
+")
 
 withInfProgress <- function(message, expr, env = parent.frame()) {
   notif_id <- showNotification(

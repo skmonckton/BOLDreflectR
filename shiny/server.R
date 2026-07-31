@@ -1732,6 +1732,10 @@ server <- function(input, output, session) {
       bslib::nav_select(id = "tabs", selected = "binrep_table")
     }
   })
+  
+  observeEvent(input$reset_tbl, {
+    session$sendCustomMessage("reset-dt", "data_table")
+  })
     
     # insert map tab when button is pressed (or jump to existing tab)
     observeEvent(input$map_btn, {
