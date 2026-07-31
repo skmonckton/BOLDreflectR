@@ -260,32 +260,34 @@ server <- function(input, output, session) {
     })
     
     # reactively adjust available diversity analysis options
-  observeEvent(input$div_presence, {
-    if(input$div_presence) {
-      updateCheckboxInput(inputId = "div_rare_by_site", value = FALSE)
-      updateSelectizeInput(inputId = "div_profile",
-                           choices = list("Rarefaction & extrapolation" = "rarefy",
-                                          "Beta diversity index" = "beta"),
-                           selected = input$div_profile[!input$div_profile %in% c("shannon", "preston")])
-    } else {
-      updateSelectizeInput(inputId = "div_profile",
-                           choices = list("Rarefaction & extrapolation" = "rarefy",
-                                          "Shannon diversity index" = "shannon",
-                                          "Preston plot" = "preston",
-                                          "Beta diversity index" = "beta"),
-                           selected = input$div_profile)
-    }
+  observeEvent(c(input$div_presence, input$div_site_type), {
+    allow <- list("Rarefaction & extrapolation" = "rarefy",
+                 "Shannon diversity index" = "shannon",
+                 "Preston plot" = "preston",
+                 "Beta diversity index" = "beta")
+
+    if(input$div_presence) allow <- allow[allow %in% c("rarefy", "beta")]
+    if(input$div_site_type %in% c("none", "taxa")) allow <- allow[allow %in% c("rarefy", "shannon")]
+    
+    updateSelectizeInput(inputId = "div_profile",
+                         choices = allow,
+                         selected = input$div_profile[input$div_profile %in% allow])
   }, ignoreInit = TRUE)
   observe({
     shinyjs::toggleElement(id = "div_grid_size", condition = (input$div_site_type == "grids"))
     shinyjs::toggleElement(id = "div_location_type", condition = (input$div_site_type == "locations"))
+    shinyjs::toggleElement(id = "div_higher_tax", condition = (input$div_site_type == "taxa"))
     shinyjs::toggleElement(id = "div_beta_type", condition = ("beta" %in% input$div_profile))
-    shinyjs::toggleElement(id = "div_rare_by_site", condition = ("rarefy" %in% input$div_profile) & (!input$div_presence))
+    shinyjs::toggleElement(id = "div_rare_by_site", condition = ("rarefy" %in% input$div_profile) & (!input$div_presence) & (input$div_site_type != "none"))
   })
   observe({
     req(filtered_data())
     data <- filtered_data()[input$data_table_rows_all, ]
     req(nrow(data) > 0)
+    fallback_count <- uniqueN(data[!all(empty(bin_uri), empty(species)), .(bin_uri, species)])
+    toggleElement(id = "div-analysis-opts", condition = (fallback_count >= 2) & (nrow(data) >= 10))
+    toggleElement(id = "div-analysis-msg", condition = (fallback_count < 2) | (nrow(data) < 10))
+    req((fallback_count >= 2) & (nrow(data) >= 10))
     site_types <- list(
       "Sites" = "site",
       "Sectors" = "sector",
@@ -293,32 +295,44 @@ server <- function(input, output, session) {
       "Provinces/States" = "province.state",
       "Countries/Oceans" = "country.ocean",
       "Ecoregions" = "ecoregion",
-      "Biomes" = "biome",
+      # "Biomes" = "biome",
       "Realms" = "realm"
     )
-    taxon_ranks <- c(
+    higher_ranks <- list("Orders" = "order",
+                         "Families" = "family",
+                         "Subfamilies" = "subfamily",
+                         "Tribes" = "tribe",
+                         "Genera" = "genus")
+    taxon_ranks <- list(
       "Species if known, BIN if not" = "bin_fallback",
       "BIN" = "bin_uri",
       "Species" = "species"
     )
-    site_counts <- sapply(site_types, function(x) uniqueN(data[[x]][!empty(data[[x]])]))
-    allow_sites <- setNames(
-      unname(site_types)[site_counts >= 2],
-      sapply(unlist(unname(c(site_types[site_counts >= 2]))), function(x) {
+    assemblages <- c(site_types, higher_ranks)
+    asssem_counts <- sapply(assemblages, function(x) uniqueN(data[[x]][!empty(data[[x]])]))
+    allow_assemblages <- setNames(
+      unname(assemblages)[asssem_counts >= 2],
+      sapply(unlist(unname(c(assemblages[asssem_counts >= 2]))), function(x) {
         val_count <- uniqueN(data[[x]][!empty(data[[x]])])
         paste0(
-          names(site_types)[which(site_types == x)],
+          names(assemblages)[which(assemblages == x)],
           " (n=", val_count, ")"
         )
       })
     )
     allow_tax <- names(which(unlist(data[, lapply(.SD, function(x) uniqueN(x[!empty(x)]) >= 2),
-      .SDcols = unlist(unname(taxon_ranks[taxon_ranks != "bin_fallback"]))
+                                         .SDcols = unlist(unname(taxon_ranks[taxon_ranks != "bin_fallback"]))
     ])))
-    if (any(c("bin_uri", "species") %in% allow_tax)) allow_tax <- c(allow_tax, "bin_fallback")
-    updateSelectizeInput(session, "div_location_type",
-      choices = allow_sites,
-      selected = unlist(allow_sites)[1]
+    if (all(c("bin_uri", "species") %in% allow_tax) | fallback_count >= 2) {
+      allow_tax <- c(allow_tax, "bin_fallback")
+    }
+    updateSelectInput(session, "div_location_type",
+                      choices = allow_assemblages[allow_assemblages %in% site_types],
+                      selected = unlist(allow_assemblages[allow_assemblages %in% site_types])[1]
+    )
+    updateSelectInput(session, "div_higher_tax",
+                      choices = allow_assemblages[allow_assemblages %in% higher_ranks],
+                      selected = unlist(allow_assemblages[allow_assemblages %in% higher_ranks])[1]
     )
     updateSelectInput(session, "div_rank", choices = taxon_ranks[taxon_ranks %in% allow_tax], selected = allow_tax[1])
   })
@@ -1348,73 +1362,92 @@ server <- function(input, output, session) {
     # replace any blank values with NA
     data.table::set(data, i = which(empty(data[[div_opts$taxon_rank]])),
                     j = div_opts$taxon_rank, value = NA_character_)
+    # if not counting BINs, replace missing BINs with a placeholder (otherwise bold.analyze.diversity drops these records)
+    if(div_opts$taxon_rank != "bin_uri") {
+      data.table::set(data, i = which(empty(data$bin_uri)),
+                      j = "bin_uri", value = "None")  
+    }
     # data for site-based analyses needs to be filtered to records with site filled in
-    if (input$div_site_type == "locations") {
-      input_opts$location_type <- isolate(input$div_location_type)
-      div_opts[["location_type"]] <- input_opts$location_type
+    if (div_opts$site_type %in% c("locations", "taxa")) {
+      input_opts$assemblage_type <- if(div_opts$site_type == "locations") {
+        setNames(isolate(input$div_location_type), div_opts$site_type)
+      } else {
+        setNames(isolate(input$div_higher_tax), div_opts$site_type)
+      }
+      div_opts$site_type <- gsub("taxa", "locations", div_opts$site_type)
+      div_opts[["location_type"]] <- unname(input_opts$assemblage_type)
       data.table::set(data, i = which(empty(data[[div_opts$location_type]])),
                       j = div_opts$location_type, value = NA_character_)
-      site_data <- data[!empty(get(div_opts$location_type)) & !empty(get(div_opts$taxon_rank))]
+      div_opts[["bold_df"]] <- data[!empty(get(div_opts$location_type)) & !empty(get(div_opts$taxon_rank))]
       site_label <- get_div_label(div_opts$location_type, capitalize = TRUE)
-    } else {
-      input_opts$location_type <- "grids"
+    } else if (div_opts$site_type == "grids") {
+      input_opts$assemblage_type <- c("grid_cells" = "grids")
       input_opts$gridsize <- input$div_grid_size * 1000
       div_opts[["gridsize"]] <- input_opts$gridsize
-      site_data <- data[!empty(coord) & !empty(get(div_opts$taxon_rank))]
+      div_opts[["bold_df"]] <- data[!empty(coord) & !empty(get(div_opts$taxon_rank))]
       site_label <- "Grid cell"
+    } else {
+      input_opts$assemblage_type <- c("none" = "none")
     }
-    div_opts[["bold_df"]] <- site_data
-    # initialize the profile using BOLDconnectR::bold.analyze.diversity()
-    # the minimal analysis option is the Preston abundance distribution, which also returns a community matrix
-    # the Preston abundance distribution analysis is from vegan::prestondistr()
-    withInfProgress(message = "Building community matrix...", {
-      div_profile <- do.call(bold.analyze.diversity, div_opts)
-      div_profile$input_opts <- input_opts
-      div_profile$comm_table <- data.table(Site = rownames(div_profile$comm.matrix), div_profile$comm.matrix)
-      names(div_profile$comm_table)[1] <- site_label
-      # if Preston plot is not wanted, remove it now
-      if (!"preston" %in% input$div_profile) {
-        div_profile[["preston.plot"]] <- NULL
-      }
-      if (input$div_site_type == "locations") {
-        div_profile$site_stats <- data[, .(N = .N, S = uniqueN(get(div_opts$taxon_rank), na.rm = TRUE)), by = eval(input_opts$location_type)]
-        data.table::setnames(div_profile$site_stats,
-                             old = input_opts$location_type,
-                             new = site_label)
-      } else {
-        div_profile$site_stats <- data.table(
-            site = rownames(div_profile$comm.matrix),
-            N = rowSums(div_profile$comm.matrix),
-            S = rowSums(div_profile$comm.matrix > 0)
-          )
-        data.table::setnames(div_profile$site_stats,
-                             old = "site",
-                             new = site_label)
-          
-        grids_wgs84 <- sf::st_transform(div_profile$grids.data, crs = 4326)
 
-        leaflet(grids_wgs84) %>%
-          addTiles() %>%  # OpenStreetMap base layer
-          addPolygons(
-            fillColor   = "#3A7D44",
-            fillOpacity = 0.3,
-            color       = "#1C2A1E",
-            weight      = 1,
-            label       = ~cell.id,
-            highlightOptions = highlightOptions(
-              fillOpacity = 0.6,
-              weight      = 2,
-              bringToFront = TRUE
+    if(input_opts$assemblage_type != "none") {
+      # initialize the profile using BOLDconnectR::bold.analyze.diversity()
+      # the minimal analysis option is the Preston abundance distribution, which also returns a community matrix
+      # the Preston abundance distribution analysis is from vegan::prestondistr()
+      withInfProgress(message = "Building community matrix...", {
+        div_profile <- do.call(bold.analyze.diversity, div_opts)
+        div_profile$input_opts <- input_opts
+        div_profile$comm_table <- data.table(Site = rownames(div_profile$comm.matrix), div_profile$comm.matrix)
+        names(div_profile$comm_table)[1] <- site_label
+        # if Preston plot is not wanted, remove it now
+        if (!"preston" %in% input$div_profile) {
+          div_profile[["preston.plot"]] <- NULL
+        }
+        if (div_opts$site_type == "locations") {
+          div_profile$site_stats <- data[, .(N = .N, S = uniqueN(get(div_opts$taxon_rank), na.rm = TRUE)), by = eval(unname(input_opts$assemblage_type))]
+          data.table::setnames(div_profile$site_stats,
+                               old = unname(input_opts$assemblage_type),
+                               new = site_label)
+        } else if (div_opts$site_type == "grids") {
+          div_profile$site_stats <- data.table(
+              site = rownames(div_profile$comm.matrix),
+              N = rowSums(div_profile$comm.matrix),
+              S = rowSums(div_profile$comm.matrix > 0)
             )
-          )
-      }
-    })
+          data.table::setnames(div_profile$site_stats,
+                               old = "site",
+                               new = site_label)
+            
+          grids_wgs84 <- sf::st_transform(div_profile$grids.data, crs = 4326)
+  
+          leaflet(grids_wgs84) %>%
+            addTiles() %>%  # OpenStreetMap base layer
+            addPolygons(
+              fillColor   = "#3A7D44",
+              fillOpacity = 0.3,
+              color       = "#1C2A1E",
+              weight      = 1,
+              label       = ~cell.id,
+              highlightOptions = highlightOptions(
+                fillOpacity = 0.6,
+                weight      = 2,
+                bringToFront = TRUE
+              )
+            )
+        }
+      })
+    } else {
+      div_profile <- list(input_opts = input_opts)
+    }
     # save basic statistics for later use
-    div_profile$site_counts <- list(N = rowSums(div_profile$comm.matrix),
-                                    S = rowSums(div_profile$comm.matrix > 0))
-    div_profile$counts <- list(sites = uniqueN(data[[site_col]], na.rm = TRUE),
-                               obs = nrow(data),
-                               taxa = uniqueN(data[[div_opts$taxon_rank]]), na.rm = TRUE)
+    div_profile$counts <- list()
+    if(input_opts$assemblage_type != "none") {
+      div_profile$site_counts <- list(N = rowSums(div_profile$comm.matrix),
+                                      S = rowSums(div_profile$comm.matrix > 0))
+      div_profile$counts$sites <-uniqueN(data[[site_col]], na.rm = TRUE)
+    }
+    div_profile$counts$obs <- nrow(data)
+    div_profile$counts$taxa <- uniqueN(data[[div_opts$taxon_rank]], na.rm = TRUE)
     # rarefaction & extrapolation using iNEXT 
     if ("rarefy" %in% input$div_profile) {
       withInfProgress(message = "Computing rarefaction...", {
@@ -1428,7 +1461,7 @@ server <- function(input, output, session) {
           )
         } else {
           # otherwise, perform individual-based rarefaction for entire dataset
-          total_counts <- table(data[[input$div_rank]])
+          total_counts <- table(data[[div_opts$taxon_rank]])
           total_counts <- setNames(as.numeric(total_counts), names(total_counts))
           inext_res <- iNEXT::iNEXT(
             x = list(Overall = total_counts),
@@ -1484,7 +1517,7 @@ server <- function(input, output, session) {
             inext_list
           )
           asy_est <- rbindlist(lapply(inext_res, function(x) x$AsyEst[x$AsyEst$Diversity == "Species richness", ]))[, !c("Diversity", "Observed", "s.e.")]
-          data.table::setnames(asy_est, new = c(site_label, "S_est", "95_CI_lower", "95_CI_upper"))
+          data.table::setnames(asy_est, new = c(site_label, "S_est", "LCL", "UCL"))
           div_profile$site_stats <- asy_est[div_profile$site_stats, on = site_label]
         } else {
           inext_res <- list(Overall = inext_res)
@@ -1492,6 +1525,7 @@ server <- function(input, output, session) {
       }
       div_profile$inext <- inext_res
     }
+    
     # beta diversity is computed with BAT::beta() via BOLDconnectR
     if ("beta" %in% input$div_profile) {
       withInfProgress(message = "Computing beta diversity...", {
@@ -1521,28 +1555,44 @@ server <- function(input, output, session) {
     }
     # Shannon index is computed with vegan::diversity() via BOLDconnectR
     if ("shannon" %in% input$div_profile) {
-      withInfProgress(message = "Computing Shannon indices...", {
-        keep <- div_profile$site_counts$S >= 2
-        n_dropped <- sum(!keep)
-        n_kept <- length(keep) - n_dropped
-        msg_text <- if (n_kept == 0) {
-          "None of the sites have sufficient species to compute Shannon index (min. 2)."
-        } else {
-          paste(n_dropped, "site(s) have insufficient species to compute Shannon index (min. 2).")
-        }
-        showNotification(msg_text, type = "warning", duration = 10)
-        if (n_kept > 0) {
-          div_profile$shannon_div <- round(BOLDconnectR:::shannon_div_profile(df = div_profile$comm.matrix), 2)
-          h_tab <- data.table(site = rownames(div_profile$shannon_div), div_profile$shannon_div)
-          data.table::setnames(h_tab, new = c(site_label, "H'"), skip_absent = TRUE)
-          div_profile$site_stats <- h_tab[div_profile$site_stats, on = site_label]
+      withInfProgress(message = paste0("Computing Shannon ", 
+                                       ifelse(input_opts$assemblage_type == "none", "index", "indices"),
+                                       "..."), {
+        n_sites <- 0
+        if(input_opts$assemblage_type != "none") {
+          keep <- div_profile$site_counts$S >= 2
+          n_dropped <- sum(!keep)
+          n_sites <- length(keep) - n_dropped
+          msg_text <- if (n_sites == 0) {
+            "None of the sites have sufficient species to compute Shannon index (min. 2)."
+          } else {
+            paste(n_dropped, "site(s) have insufficient species to compute Shannon index (min. 2).")
+          }
+          showNotification(msg_text, type = "warning", duration = 10)
+          if (n_sites > 0) {
+            div_profile$shannon_div <- round(BOLDconnectR:::shannon_div_profile(df = div_profile$comm.matrix), 2)
+            h_tab <- data.table(site = rownames(div_profile$shannon_div), div_profile$shannon_div)
+            data.table::setnames(h_tab, new = c(site_label, "H'"), skip_absent = TRUE)
+            div_profile$site_stats <- h_tab[div_profile$site_stats, on = site_label]
+          }
+        } 
+        if(n_sites == 0) {
+          total_counts <- table(data[[div_opts$taxon_rank]])
+          total_counts <- setNames(as.numeric(total_counts), names(total_counts))
+          div_profile$shannon_div <- round(BOLDconnectR:::shannon_div_profile(df = total_counts), 2)
         }
       })
     }
     # complete the site_stats table and save the div_profile object
-    data.table::setorder(div_profile$site_stats, na.last = TRUE)
-    cols <- c(names(div_profile$site_stats)[1], "N", "S", "S_est", "95_CI_lower", "95_CI_upper", "H'", "mean_beta")
-    div_profile$site_stats <- div_profile$site_stats[, .SD, .SDcols = intersect(cols, names(div_profile$site_stats))]
+    if(input_opts$assemblage_type != "none") {
+      data.table::setorder(div_profile$site_stats, na.last = TRUE)
+      cols <- c(names(div_profile$site_stats)[1], "N", "S", "S_est", "LCL", "UCL", "H'", "mean_beta")
+      div_profile$site_stats <- div_profile$site_stats[, .SD, .SDcols = intersect(cols, names(div_profile$site_stats))]
+      if(names(input_opts$assemblage_type) == "taxa") {
+        div_profile$comm.matrix <- NULL
+        div_profile$comm_table <- NULL
+      }
+    }
     outdata$div_profile <- div_profile
     if (!tab_status$div_profile) {
       bslib::nav_insert(
@@ -1975,13 +2025,13 @@ server <- function(input, output, session) {
     }
     div(
       class = "summary-strip",
-      chip(res$counts$sites, get_div_label(outdata$div_profile$input_opts$location_type, plural = TRUE)),
+      if(!is.null(res$counts$sites)) chip(res$counts$sites, get_div_label(unname(outdata$div_profile$input_opts$assemblage_type), plural = TRUE)),
       chip(res$counts$obs, "observations"),
       chip(res$counts$taxa, get_div_label(outdata$div_profile$input_opts$taxon_rank, plural = TRUE)),
       if (!is.null(res$inext)) bslib::tooltip(
         chip(asy_est, HTML("S<sub>est</sub>")),
         paste0("95% CI: ", round(res$asy_est$LCL, 1), '\u2013', round(res$asy_est$UCL, 1))),
-      if (!is.null(res$shannon_div)) chip(shannon_h, "mean H′"),
+      if (!is.null(res$shannon_div)) chip(shannon_h, paste0(ifelse(length(as.numeric(unlist(res$shannon_div))) > 1, "mean", ""), "H′")),
       if (!is.null(res$total.beta)) chip(total_b, "mean β")
     )
   })
@@ -2004,7 +2054,7 @@ server <- function(input, output, session) {
           plotlyOutput("plot_beta")
         )
       },
-      if (res$input_opts$location_type == "grids") {
+      if (res$input_opts$assemblage_type == "grids") {
         bslib::nav_panel("Grid cells",
                          value = "grid_map",
                          leafletOutput("grid_map")
@@ -2057,7 +2107,7 @@ server <- function(input, output, session) {
       extensions = DT_extensions,
       callback = callback_js,
       options = c(DT_options, list(paging = FALSE, searching = FALSE))) %>%
-      DT::formatRound(columns = intersect(c("S_est", "95_CI_lower", "95_CI_upper"), names(dt)), digits = 1) %>%
+      DT::formatRound(columns = intersect(c("S_est", "LCL", "UCL"), names(dt)), digits = 1) %>%
       DT::formatRound(columns = intersect("H′", names(dt)), digits = 2) %>%
       DT::formatRound(columns = intersect("mean_β", names(dt)), digits = 3),
     server = TRUE
@@ -2619,8 +2669,8 @@ server <- function(input, output, session) {
                  rbindlist(lapply(div()$inext, function(x) x$AsyEst))
                }
              },
-             shannon = data.table(div()$shannon_div, keep.rownames = div()$input_opts$location_type), 
-             beta_dists = data.table(as.matrix(div()$total.beta), keep.rownames = div()$input_opts$location_type),
+             shannon = data.table(div()$shannon_div, keep.rownames = unname(div()$input_opts$assemblage_type)), 
+             beta_dists = data.table(as.matrix(div()$total.beta), keep.rownames = unname(div()$input_opts$assemblage_type)),
              nmds_rds = div()$nmds.beta,
              nmds_scores = {
                df_nmds <- data.frame(

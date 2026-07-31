@@ -1,52 +1,58 @@
 re_int <- "\\.\\Z|\\S{2,}\\.\\S|[0-9]|\\s[A-Z]|[A-Z]\\Z|[A-Z]{2}|[a-z][A-Z]|_(?!(hn|sl|ss)\\Z)|%|\\?|!|\\[|\\]|\\{|\\}|\\(|\\)|,|\\s(?:aff|agg|cf|complex|group|grp|gr|gp|cmplx|pr|ms|cfr|nr|nsp|near|nomen|hybrid|voucher|form|from|ss|ssl|see|spp?|sample)\\.?(?:\\s|\\Z)"
 
-bold.fetch.plus <- function (get_by, identifiers, cols = NULL, BCDM_only = TRUE, 
-    export = NULL, na.rm = FALSE, filt_taxonomy = NULL, filt_geography = NULL, 
-    filt_latitude = NULL, filt_longitude = NULL, filt_shapefile = NULL, 
-    filt_institutes = NULL, filt_identified.by = NULL, filt_seq_source = NULL, 
-    filt_marker = NULL, filt_collection_period = NULL, filt_basecount = NULL, 
-    filt_altitude = NULL, filt_depth = NULL) 
-{
+bold.fetch.plus <- function(get_by, identifiers, cols = NULL, BCDM_only = TRUE,
+                            export = NULL, na.rm = FALSE, filt_taxonomy = NULL,
+                            filt_geography = NULL, filt_latitude = NULL, filt_longitude = NULL,
+                            filt_shapefile = NULL, filt_institutes = NULL,
+                            filt_identified.by = NULL, filt_seq_source = NULL,
+                            filt_marker = NULL, filt_collection_period = NULL,
+                            filt_basecount = NULL, filt_altitude = NULL, filt_depth = NULL) {
   stopifnot(nrow(identifiers) > 0)
-  
-  if(nchar(Sys.getenv("api_key")) == 0) {
-    message("No API key in memory; checking system keystore...")
-    suppressPackageStartupMessages(BOLDconnectR::bold.apikey(get_apikey()))
-    message("BOLD API key set. Proceeding with fetch...")
-  }
-  
-  input_data = data.frame(col1 = base::unique(identifiers))
+  input_data <- data.frame(col1 = base::unique(identifiers))
   names(input_data)[names(input_data) == "col1"] <- get_by
-  switch(get_by, processid = , sampleid = {
-    if (!nrow(input_data) > 0) stop("Please re-check the data provided in the identifiers argument.")
-    json.df = suppressPackageStartupMessages(BOLDconnectR:::fetch.bold.id(data.input = input_data, query_param = get_by))
-  }, dataset_codes = , project_codes = , bin_uris = {
-    if (!nrow(input_data) > 0) stop("Please re-check the data provided in the identifiers argument.")
-    tryCatch({
-      processids = suppressPackageStartupMessages(BOLDconnectR:::get.bin.dataset.project.pids(data.input = input_data, query_param = get_by))
-    }, error = function(msg) {
-      stop("No records were found matching the provided identifiers.")
-    })
-    processids = suppressPackageStartupMessages(BOLDconnectR:::get.bin.dataset.project.pids(data.input = input_data, query_param = get_by))
-    json.df = BOLDconnectR:::fetch.bold.id(data.input = processids, query_param = "processid")
-  }, stop("Input params can only be processid, sampleid, dataset_codes, project_codes, or bin_uris."))
-  if (BCDM_only) json.df = json.df[, intersect(names(json.df), BOLDconnectR::bold.fields.info()[["field"]])]
-  json.df = BOLDconnectR:::bold.fetch.filters(bold.df = json.df, taxon.name = filt_taxonomy,
-                                              location.name = filt_geography, latitude = filt_latitude,
-                                              longitude = filt_longitude, shapefile = filt_shapefile,
-                                              institutes = filt_institutes, identified.by = filt_identified.by,
-                                              seq.source = filt_seq_source, marker = filt_marker, collection.period = filt_collection_period,
-                                              basecount = filt_basecount, altitude = filt_altitude,
-                                              depth = filt_depth)
+  switch(get_by,
+    processid = ,
+    sampleid = {
+      if (!nrow(input_data) > 0) stop("Please re-check the data provided in the identifiers argument.")
+      json.df <- suppressPackageStartupMessages(BOLDconnectR:::fetch.bold.id(data.input = input_data, query_param = get_by))
+    },
+    dataset_codes = ,
+    project_codes = ,
+    bin_uris = {
+      if (!nrow(input_data) > 0) stop("Please re-check the data provided in the identifiers argument.")
+      tryCatch(
+        {
+          processids <- suppressPackageStartupMessages(BOLDconnectR:::get.bin.dataset.project.pids(data.input = input_data, query_param = get_by))
+        },
+        error = function(msg) {
+          stop("No records were found matching the provided identifiers.")
+        }
+      )
+      processids <- suppressPackageStartupMessages(BOLDconnectR:::get.bin.dataset.project.pids(data.input = input_data, query_param = get_by))
+      json.df <- BOLDconnectR:::fetch.bold.id(data.input = processids, query_param = "processid")
+    },
+    stop("Input params can only be processid, sampleid, dataset_codes, project_codes, or bin_uris.")
+  )
+  if (BCDM_only) json.df <- json.df[, intersect(names(json.df), BOLDconnectR::bold.fields.info()[["field"]])]
+  json.df <- BOLDconnectR:::bold.fetch.filters(
+    bold.df = json.df, taxon.name = filt_taxonomy,
+    location.name = filt_geography, latitude = filt_latitude,
+    longitude = filt_longitude, shapefile = filt_shapefile,
+    institutes = filt_institutes, identified.by = filt_identified.by,
+    seq.source = filt_seq_source, marker = filt_marker, collection.period = filt_collection_period,
+    basecount = filt_basecount, altitude = filt_altitude,
+    depth = filt_depth
+  )
   if (!is.null(cols)) {
-    bold_field_data = BOLDconnectR::bold.fields.info(print.output = F) %>%
+    bold_field_data <- BOLDconnectR::bold.fields.info(print.output = F) %>%
       dplyr::select(dplyr::all_of("field"))
-    if (!all(cols %in% bold_field_data[["field"]]))
+    if (!all(cols %in% bold_field_data[["field"]])) {
       stop("Names provided in the 'cols' argument must match with the names in the 'field' column that is available using the bold.fields.info function.")
-    json.df = json.df %>% dplyr::select(dplyr::all_of(cols))
+    }
+    json.df <- json.df %>% dplyr::select(dplyr::all_of(cols))
   }
   if (na.rm) {
-    json.df = tidyr::drop_na(json.df)
+    json.df <- tidyr::drop_na(json.df)
   }
   if (!is.null(export)) {
     if (!grepl("[/\\\\]", export)) {
@@ -54,220 +60,415 @@ bold.fetch.plus <- function (get_by, identifiers, cols = NULL, BCDM_only = TRUE,
     }
     file.type <- if (grepl("\\.csv$", export, ignore.case = TRUE)) {
       "csv"
-    }
-    else if (grepl("\\.tsv$", export, ignore.case = TRUE)) {
+    } else if (grepl("\\.tsv$", export, ignore.case = TRUE)) {
       "tsv"
-    }
-    else {
+    } else {
       stop("Unsupported file type. Please provide a valid '.csv' or '.tsv' filename.")
     }
-    switch(file.type, csv = {
-      utils::write.table(json.df, export, sep = ",", row.names = FALSE,
-                         quote = FALSE)
-    }, tsv = {
-      utils::write.table(json.df, export, sep = "\t", row.names = FALSE,
-                         quote = FALSE)
-    })
+    switch(file.type,
+      csv = {
+        utils::write.table(json.df, export,
+          sep = ",", row.names = FALSE,
+          quote = FALSE
+        )
+      },
+      tsv = {
+        utils::write.table(json.df, export,
+          sep = "\t", row.names = FALSE,
+          quote = FALSE
+        )
+      }
+    )
   }
-  json.df <- switch(get_by, processid = , sampleid = {
-    ids <- intersect(identifiers, json.df[[get_by]])
-    json.df[order(match(json.df[[get_by]], ids)), ]
-  }, bin_uris = {
-    ids <- intersect(identifiers, json.df$bin_uri)
-    json.df[order(match(json.df$bin_uri, ids)), ]
-  }, json.df)
+  json.df <- switch(get_by,
+    processid = ,
+    sampleid = {
+      ids <- intersect(identifiers, json.df[[get_by]])
+      json.df[order(match(json.df[[get_by]], ids)), ]
+    },
+    bin_uris = {
+      ids <- intersect(identifiers, json.df$bin_uri)
+      json.df[order(match(json.df$bin_uri, ids)), ]
+    },
+    json.df
+  )
   return(json.df)
 }
 
-empty <- function (x) 
-{
-    (is.na(x) | (x == ""))
-}
-
-get_bin_consensus <- function(
-    df,
-    ranks = c("kingdom", "phylum", "class", "order", "family", "subfamily", "tribe", "genus", "species", "subspecies"),
-    threshold = 1.0,
-    min_ids = 2,
-    enforce_scientific = TRUE,
-    groups = "bin_uri",
-    discord_format = c("list", "text")) {
-  
-  stopifnot("One or more provided `ranks` is/are missing from `df`." = all(ranks %in% names(df)),
-            "Provided `groups` column is missing from `df`." = (groups %in% names(df)),
-            "`threshold` value(s) must be one or more real numbers (i.e. doubles) between 0 and 1." = is.double(unlist(threshold)) & all(unlist(threshold) >= 0) & all(unlist(threshold) <= 1),
-            "`threshold` must be either a single number, a vector of unnamed numbers equal in length to `ranks`, or a named list or vector of numbers with names corresponding to ranks." = ((length(threshold) == 1) | (length(threshold) == length(ranks)) | (!is.null(names(threshold)))),
-            "`min_ids` value(s) must be one or more whole numbers greater than zero." = is.numeric(unlist(min_ids)) & all(unlist(min_ids) > 0) & all(unlist(min_ids) %% 1 == 0),
-            "`min_ids` must be either a single number, a vector of unnamed numbers equal in length to `ranks`, or a named list or vector of numbers with names corresponding to ranks." = ((length(min_ids) == 1) | (length(min_ids) == length(ranks)) | (!is.null(names(min_ids)))),
-            '`discord_format` must be one of "list" or "text".' = all(discord_format %in% c("list", "text")))
-  
-  # Parse threshold & min_ids parameters and align them with ranks
-  parse_param_vector <- function(param) {
-    if((length(param) != 1) | !is.null(names(param))) {
-      if(is.null(names(param))) {
-        param <- unlist(unname(param))
-      } else {
-        named <- as.list(param[(names(param) %in% ranks) & (!duplicated(param))])
-        default <- ifelse("default" %in% names(param), param[["default"]], max(unlist(param)))
-        if((!length(named) %in% c(0, length(ranks))) & (!"default" %in% names(param))) {
-          warning(paste0("Only some ranks found among `",substitute(param),"` values, with no default given; highest value applied to all unspecified ranks."))
-        }
-        param <- rep(default, length(ranks))
-        for(r in names(named)) param[match(r, ranks)] <- named[[r]]
-      }
-    } else {
-      param <- rep(unlist(param), length(ranks))
-    }
-    return(param)
+bold.full.search.step1 <- function(taxonomy = NULL,
+                                   geography = NULL,
+                                   marker = NULL,
+                                   marker_min_length = NULL,
+                                   marker_max_length = NULL,
+                                   collection_start_date = NULL,
+                                   collection_end_date = NULL,
+                                   institutes = NULL) {
+  # URLs
+  url_step_1 <- "https://data.boldsystems.org/api/search/terms"
+  url_step_2 <- "https://data.boldsystems.org/api/search/records?include_public=true"
+  # Set up API key
+  if (nchar(Sys.getenv("api_key")) == 0) {
+    message("No API key in memory; checking system keystore...")
+    suppressPackageStartupMessages(BOLDconnectR::bold.apikey(get_apikey()))
+    message("BOLD API key set. Proceeding with fetch...")
   }
-  
-  threshold <- parse_param_vector(threshold)
-  min_ids <- parse_param_vector(min_ids)
-  
-  # Create a copy of the data to avoid mutating by reference
-  dt <- as.data.table(copy(df))
-  
-  # Replace NA in taxonomy columns with empty values (if ignoring non-scientific names, replace those too)
-  dt[, (ranks) := lapply(.SD, function(x) data.table::fcase(enforce_scientific & grepl(re_int, x, perl = TRUE), "",
-                                                            is.na(x), "",
-                                                            grepl("^\\s$", x), "",
-                                                            default = as.character(x))), .SDcols = ranks]
-  
-  # Convert data table to matrix for faster row access
-  mat <- as.matrix(dt[, c(groups,ranks), with = FALSE])
-  
-  # Replace trailing "" with NA so that they are not counted as alternative names
-  for (i in seq_len(nrow(mat))) {
-    row_vals <- mat[i, ]
-    non_blank_idx <- which(row_vals != "")
-    if (length(non_blank_idx) > 0) {
-      last <- max(non_blank_idx)
-      if (last < ncol(mat)) {
-        mat[i, (last + 1):ncol(mat)] <- NA_character_
-      }
-    } else {
-      mat[i, ] <- NA_character_  # Entire row is blank
-    }
+  apikey <- Sys.getenv("api_key")
+  # Colors for printing the progress on the console
+  green_col <- "\033[32m"
+  red_col <- "\033[31m"
+  reset_col <- "\033[0m"
+  # Making a list of collection_dates for JSON input
+  if (!is.null(collection_start_date) || !is.null(collection_end_date)) {
+    # One of the dates (start or end) are not specified then default of 2000-01-01 for start and 2075-01-01 for end are used. In case the user specifies the values, the defaults are overwritten
+    collection_start_date <- ifelse(is.null(collection_start_date), as.Date("2000-01-01"), collection_start_date)
+    collection_end_date <- ifelse(is.null(collection_end_date), as.Date("2075-01-01"), collection_end_date)
+    collection_date <- list(
+      min = as.Date(collection_start_date),
+      max = as.Date(collection_end_date)
+    )
+  } else {
+    collection_date <- NULL
   }
-  
-  # Convert back to data.table and restore column names
-  dt <- as.data.table(mat)
-  setnames(dt, c(groups,ranks))
-  
-  # Generate summary of consensus by BIN
-  consensus <- dt[!is.na(get(groups)), do.call(get_consistent_taxon, list(.SD, ranks, threshold, min_ids)), by = groups, .SDcols = ranks]
-  
-  # Convert discordant_ids to text if appropriate
-  if(discord_format[1] == "text"){
-    data.table::set(consensus,
-                    j = "discordant_ids",
-                    value = sapply(consensus[["discordant_ids"]], function(x) {
-                      if (length(x) == 0) return("")
-                      sort(x, decreasing = TRUE)
-                      pairs <- paste0(names(x), " (", formatC(as.numeric(x), format = "f", digits = 2), ")")
-                      paste(pairs, collapse = ", ")
-                    })
+  # If the marker is not specified but user inputs min and max length. The function stops
+  if (is.null(marker) && (!is.null(marker_min_length) || !is.null(marker_max_length))) {
+    stop("marker lengths provided without specifying the marker")
+  } else if (!is.null(marker)) {
+    # If marker is specified but the min and max lengths are not specified then default of 5 and 2000 are used. In case the user specifies the values, the defaults are overwritten
+    marker_min_length <- ifelse(is.null(marker_min_length), 5, marker_min_length)
+    marker_max_length <- ifelse(is.null(marker_max_length), 2000, marker_max_length)
+    # the marker list is then compiled in accordance with the JSON requirements of the API
+    marker_final <- setNames(
+      list(list(
+        min = marker_min_length,
+        max = marker_max_length
+      )),
+      marker
+    )
+    # The final data list to input
+    data_list <- list(
+      tax = taxonomy,
+      geo = geography,
+      marker = marker_final,
+      collection_date = collection_date,
+      inst = institutes
+    )
+  } else {
+    # In case marker is not specified at all
+    data_list <- list(
+      tax = taxonomy,
+      geo = geography,
+      collection_date = collection_date,
+      inst = institutes
     )
   }
-  
-  return(consensus)
-  
-}
+  # To select all the non null arguments from the data_list. This has been added especially for the other input parameters since marker part is covered above
+  null_args <- sapply(
+    data_list,
+    is.null
+  )
+  # Selecting the non null arguments
+  non_null_args <- data_list[!null_args]
+  # If condition to check if the input arguments is/are list/s
+  if (any(!sapply(non_null_args, is.list))) {
+    stop("Input data must be a list.")
+  }
+  # The final list is then used to compile a JSON that is used by the API.
+  # This is packaged into a function to be re-called in case some terms are not found.
+  try_args <- function(non_null_args) {
+    json_output <- jsonlite::toJSON(non_null_args,
+      auto_unbox = TRUE,
+      pretty = TRUE
+    )
+    # Creating a temp file (Since the API takes a file as an input)
+    temp_file_step1 <- tempfile()
+    # writing the JSON data to the temp file
+    writeLines(
+      json_output,
+      temp_file_step1
+    )
+    # Initating download print in the console
+    message(paste0(red_col, "Searching for records matching query", reset_col))
+    # STEP1:  This json output will used for the first POST call
+    step1 <- tryCatch(
+      {
+        result <- httr::POST(
+          url = url_step_1,
+          httr::add_headers(
+            "accept" = "application/json",
+            "api-key" = apikey,
+            "Content-Type" = "multipart/form-data"
+          ),
+          body = list(
+            input_file = httr::upload_file(temp_file_step1),
+            type = "application/json"
+          )
+        )
+        httr::stop_for_status(result)
+        result
+      },
+      error = function(e) {
+        stop(paste(
+          "Search failed.\nDetails:",
+          e$message
+        ))
+      }
+    )
+    # Extracting the text from the output
+    suppressMessages(json_content_step1 <- httr::content(step1, "text"))
+    jsonlite::fromJSON(json_content_step1)
+  }
+  json_content_step1_text <- try_args(non_null_args)
+  # Condition to check if the search query terms have issues (non availability,misspellings etc)
+  # This will re-attempt the query with missing terms removed, so that a single unavailable or misspelled term doesn't nullify the entire search
+  if (any(names(json_content_step1_text) == "detail")) {
+    all_found <- FALSE
+    while (all_found == FALSE) {
+      resp_detail <- json_content_step1_text$detail
+      if (!is.null(resp_detail) && grepl("^ERROR: fields not found", resp_detail)) {
+        for (field in names(non_null_args)[names(non_null_args) %in% c("tax", "geo", "inst")]) {
+          not_found <- regmatches(resp_detail, gregexec(paste0(field, "='(.*?)'"), resp_detail, perl = TRUE))[[1]]
+          if (length(not_found > 1)) {
+            not_found <- not_found[2, ]
 
-get_bin_discordance <- function(bold_df) {
-  
-  ranks <- c("kingdom", "phylum", "class", "order", "family", "subfamily", "tribe", "genus", "species", "subspecies")
-  
-  count_ne <- function(x, out = c("N", "vals", "recs")) {
-    if(out == "recs") return(length(x[x != "" & !is.na(x)]))
-    uvals <- unique(x[x != "" & !is.na(x)])
-    if(out == "N") return(length(uvals))
-    if(out == "vals") {
-      if(length(uvals) == 0) return("")
-      return(paste0(sort(uvals), collapse = ","))
+            non_null_args[[field]] <- if (length(not_found) == length(non_null_args[[field]])) {
+              NULL
+            } else {
+              non_null_args[[field]][!non_null_args[[field]] %in% not_found]
+            }
+          }
+        }
+        if (length(non_null_args) == 0) {
+          return(NULL)
+        } else {
+          json_content_step1_text <- try_args(non_null_args)
+        }
+      } else {
+        all_found <- TRUE
+      }
     }
   }
-  
-  data <- as.data.table(bold_df)[!is.na(bold_df[["bin_uri"]])]
-  
-  summary <- data[, .(record_count = .N,
-                      min_rank = as.factor(ranks[min(match(get("identification_rank"), ranks))]),
-                      max_rank = as.factor(ranks[max(match(get("identification_rank"), ranks))]),
-                      distinct_countries = count_ne(get("country.ocean"), "N"),
-                      distinct_taxa = count_ne(get("identification"), "N"),
-                      distinct_phylum = count_ne(get("phylum"), "N"),
-                      distinct_class = count_ne(get("class"), "N"),
-                      distinct_orders = count_ne(get("order"), "N"),
-                      distinct_families = count_ne(get("family"), "N"),
-                      distinct_subfamilies = count_ne(get("subfamily"), "N"),
-                      distinct_tribes = count_ne(get("tribe"), "N"),
-                      distinct_genera = count_ne(get("genus"), "N"),
-                      distinct_species = count_ne(get("species"), "N"),
-                      distinct_subspecies = count_ne(get("subspecies"), "N"),
-                      country_list = count_ne(get("country.ocean"), "vals"),
-                      phylum_list = count_ne(get("phylum"), "vals"),
-                      class_list = count_ne(get("class"), "vals"),
-                      oder_list = count_ne(get("order"), "vals"),
-                      family_list = count_ne(get("family"), "vals"),
-                      subfamily_list = count_ne(get("subfamily"), "vals"),
-                      tribe_list = count_ne(get("tribe"), "vals"),
-                      genera_list = count_ne(get("genus"), "vals"),
-                      species_list = count_ne(get("species"), "vals"),
-                      subspecies_list = count_ne(get("subspecies"), "vals"),
-                      recs_with_phylum_info = count_ne(get("phylum"), "recs"),
-                      recs_with_class_info = count_ne(get("class"), "recs"),
-                      recs_with_order_info = count_ne(get("order"), "recs"),
-                      recs_with_family_info = count_ne(get("family"), "recs"),
-                      recs_with_subfamily_info = count_ne(get("subfamily"), "recs"),
-                      recs_with_tribe_info = count_ne(get("tribe"), "recs"),
-                      recs_with_genus_info = count_ne(get("genus"), "recs"),
-                      recs_with_species_info = count_ne(get("species"), "recs"),
-                      recs_with_subspecies_info = count_ne(get("subspecies"), "recs")), by = "bin_uri"]
+  if (any(names(json_content_step1_text) == "collection_date")) {
+    # Unbox is used here in order to match the JSON format required for the step2 input (the output has dates in arrays while the input requires  the collection_date to be an object with min and max values)
+    json_content_step1_text$collection_date$min <- jsonlite::unbox(json_content_step1_text$collection_date$min)
+    json_content_step1_text$collection_date$max <- jsonlite::unbox(json_content_step1_text$collection_date$max)
+    json_content_step1_clean_json <- jsonlite::toJSON(json_content_step1_text,
+      pretty = TRUE
+    )
+  } else {
+    json_content_step1_clean_json <- jsonlite::toJSON(json_content_step1_text,
+      pretty = TRUE
+    )
+  }
+  # Converting the text to JSON for step2
+  json_content_step1_clean_json <- jsonlite::toJSON(json_content_step1_text, pretty = TRUE)
+  # Creating a temp file (Since the API takes a file as an input)
+  temp_file_step2 <- tempfile()
+  # writing the JSON data to the temp file
+  writeLines(
+    json_content_step1_clean_json,
+    temp_file_step2
+  )
+  # STEP2: Uploading the clean JSON to get a search query id
+  step2 <- tryCatch(
+    {
+      result <- httr::POST(
+        url = url_step_2,
+        httr::add_headers(
+          "accept" = "application/json",
+          "api-key" = apikey,
+          "Content-Type" = "multipart/form-data"
+        ),
+        body = list(
+          input_file = httr::upload_file(temp_file_step2),
+          type = "application/json"
+        )
+      )
+      httr::stop_for_status(result)
+      result
+    },
+    error = function(e) {
+      warning("No results found using provided search terms.")
+      return(NULL)
+    }
+  )
+  # Data API token is generated
+  suppressMessages(json_content_step2_text1 <- httr::content(step2, "text"))
+  json_content_step2_text2 <- jsonlite::fromJSON(json_content_step2_text1)
+  # If condition added in case the search query combination does not yield any result
+  if (any(names(json_content_step2_text2) == "detail")) {
+    print(cat("\n", json_content_step2_text2$detail, "\n"))
+    return(NULL)
+  }
+  message(paste0(green_col, paste0("Found ", json_content_step2_text2$num_of_accessible, " accessible records"), reset_col))
+  # warn if there are more records than could be retrieved by API
+  if (json_content_step2_text2$num_of_records >= json_content_step2_text2$limit) {
+    message(paste0(red_col, paste0("Maximum search limit of ", json_content_step2_text2$limit, " was reached. Additional matches may exist in BOLD."), reset_col))
+  }
+  return(json_content_step2_text2)
 }
 
+bold.full.search.step2 <- function(json_content_step2_text2) {
+  # Set up API key
+  if (nchar(Sys.getenv("api_key")) == 0) {
+    message("No API key in memory; checking system keystore...")
+    suppressPackageStartupMessages(BOLDconnectR::bold.apikey(get_apikey()))
+    message("BOLD API key set. Proceeding with fetch...")
+  }
+  apikey <- Sys.getenv("api_key")
+  # Colors for printing the progress on the console
+  green_col <- "\033[32m"
+  red_col <- "\033[31m"
+  reset_col <- "\033[0m"
+  message(paste0(red_col, paste0("Downloading record ids"), reset_col))
+  # STEP3: The token is used to make a GET call to get list of ids based on the search
+  ids_download <- paste("https://data.boldsystems.org/api/sets/retrieve/",
+    json_content_step2_text2$token,
+    "?",
+    "filter=str:marker_code:*",
+    sep = ""
+  )
+  step3 <- tryCatch(
+    {
+      result <- httr::GET(
+        url = ids_download,
+        httr::add_headers(
+          "accept" = "application/json",
+          "api-key" = apikey
+        )
+      )
+      httr::stop_for_status(result)
+      result
+    },
+    error = function(e) {
+      stop(paste("Download failed.\nDetails:", e$message))
+    }
+  )
+  suppressMessages(json_content_step3_text1 <- httr::content(
+    step3,
+    "text"
+  ))
+  downloaded_ids <- jsonlite::fromJSON(json_content_step3_text1)
+  downloaded_ids_clean <- as.character(unname(unlist(downloaded_ids$records)))
+  downloaded_ids_fordf <- gsub("\\..*", "", downloaded_ids_clean)
+  downloaded_markers_df <- ifelse(grepl("\\.", downloaded_ids_clean),
+    gsub(".*\\.", "", downloaded_ids_clean),
+    NA
+  )
+  # The id vector will be converted to a dataframe so that bold.fetch.ids can be used here internally. Here the column name 'processid' is hard coded since the output of full search API is always a processid
+  input_data <- data.frame(
+    processid = downloaded_ids_fordf,
+    marker_code = downloaded_markers_df
+  )
+  if (!is.null(input_data)) message(paste0(green_col, "Download complete.\n", reset_col))
+  invisible(input_data)
+}
+
+empty <- function(x) {
+  (is.na(x) | (x == ""))
+}
+
+tstcode <- function() {
+  tryCatch(
+    {
+      Sys.setenv(GITHUB_PAT = key_get(service = "tctools-GH-PAT"))
+      tryCatch(
+        {
+          tmpfile <- tempfile()
+          content(httr::GET(
+            "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
+            add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
+          ), "raw") |> writeBin(tmpfile)
+          return(tmpfile)
+          # tmpfilepath <- "C:/Users/Spencer Monckton/Desktop/Scripts/CBG-taxonomy/Code/bfr_test_func.R"
+          # return(tmpfilepath)
+        },
+        error = function(e) {
+          showNotification(paste0("Error accessing test functions: ", e$message), type = "error")
+        }
+      )
+    },
+    error = function(e) {
+      showModal(
+        modalDialog(
+          title = "Test user access",
+          textInput("testkey", "Please input your access token:"),
+          footer = tagList(
+            div(),
+            div(
+              id = "modal_confirm",
+              actionButton("testkey_confirm", "Confirm"),
+              modalButton("Cancel")
+            )
+          ),
+          easyClose = TRUE
+        )
+      )
+    }
+  )
+}
+
+tstjs <- tags$script(HTML(
+  "(function() {
+    const cbgbtn = document.querySelector('#info_icon');
+    let ct = 0;
+    cbgbtn.addEventListener('click', () => {
+      ct++;
+      if (ct === 5) {
+        Shiny.setInputValue('tston', Date.now(), {priority: 'event'});
+        ct = 0;
+      }
+    });
+  })();"
+))
+
 get_portal_bin_stats <- function(bins, shiny = FALSE) {
-  
   # set delay interval according to API rate limits
   wait <- 3
-  
   # function to run taxonomy query (seemingly most accurate count of public records from portal API)
   get_public_count <- function(bin) {
     req <- httr::RETRY("GET",
-                       url = paste0("https://portal.boldsystems.org/api/summary?query=bin:uri:", bin, "&fields=marker_code&reduce_operation=count"),
-                       httr::add_headers('accept' = 'application/json'), body = FALSE,
-                       times = 5,
-                       pause_min = wait,
-                       pause_base = wait,
-                       pause_cap = 10,
-                       quiet = TRUE,
-                       terminate_on = 200,
-                       terminate_on_success	= FALSE)
-    if(req$status_code != 200) { return(NA) }
+      url = paste0("https://portal.boldsystems.org/api/summary?query=bin:uri:", bin, "&fields=marker_code&reduce_operation=count"),
+      httr::add_headers("accept" = "application/json"), body = FALSE,
+      times = 5,
+      pause_min = wait,
+      pause_base = wait,
+      pause_cap = 10,
+      quiet = TRUE,
+      terminate_on = 200,
+      terminate_on_success = FALSE
+    )
+    if (req$status_code != 200) {
+      return(NA)
+    }
     json_preprocess <- suppressMessages(suppressWarnings(httr::content(req, "text")))
     count <- jsonlite::fromJSON(json_preprocess)$marker_code[["COI-5P"]]
     ifelse(is.null(count), 0, count)
   }
-  
   # function to get summary by BIN
   bin_query <- function(bin) {
     url <- paste0("https://portal.boldsystems.org/api/ancillary?collection=barcodeclusters&key=barcodecluster.uri&values=", bin)
-    req <- httr::RETRY("GET", url=url, httr::add_headers('accept' = 'application/json'), body = FALSE,
-                       times = 5,
-                       pause_min = wait,
-                       pause_base = wait,
-                       pause_cap = 10,
-                       quiet = TRUE,
-                       terminate_on = 200,
-                       terminate_on_success	= FALSE)
-    if(req$status_code != 200) { return(list()) }
-    json_preprocess <- suppressMessages(suppressWarnings(httr::content(req,"text")))
+    req <- httr::RETRY("GET",
+      url = url, httr::add_headers("accept" = "application/json"), body = FALSE,
+      times = 5,
+      pause_min = wait,
+      pause_base = wait,
+      pause_cap = 10,
+      quiet = TRUE,
+      terminate_on = 200,
+      terminate_on_success = FALSE
+    )
+    if (req$status_code != 200) {
+      return(list())
+    }
+    json_preprocess <- suppressMessages(suppressWarnings(httr::content(req, "text")))
     resp <- jsonlite::fromJSON(json_preprocess)
-    if(length(resp) == 0) { return(list())}
+    if (length(resp) == 0) {
+      return(list())
+    }
     Sys.sleep(wait)
     resp[["marker_code.count"]] <- get_public_count(bin)
     return(resp)
   }
-  
   # assemble the table
   pbtype <- ifelse(shiny, "shiny", "txt")
   opi <- pbapply::pboptions(type = pbtype, title = "Retrieving BIN stats from BOLD Portal API", label = "")
@@ -276,101 +477,21 @@ get_portal_bin_stats <- function(bins, shiny = FALSE) {
     bin_query(bin)
   }), fill = TRUE)
   pbapply::pboptions(opi)
-  
-  if(!is.null(bin_resp) && nrow(bin_resp) > 0) {
+  # return results, warn about failures
+  if (!is.null(bin_resp) && nrow(bin_resp) > 0) {
     failed <- length(bins) - nrow(bin_resp[!is.na(bin_resp[["record_count"]]), ])
-    if(failed > 0) warning(paste0("Portal stats retrieval timed out for ", failed, " BINs."))
-    bin_resp[, .(bin_uri = bin_resp[["barcodecluster.uri"]],
-                 member_count = bin_resp[["record_count"]],
-                 private_members = bin_resp[["record_count"]] - bin_resp[["marker_code.count"]],
-                 public_members = bin_resp[["marker_code.count"]],
-                 avg_dist = bin_resp[["barcodecluster.avgdist"]],
-                 max_dist = bin_resp[["barcodecluster.maxdist"]],
-                 nn_dist = bin_resp[["barcodecluster.nn_dist"]],
-                 nn_bin_uri = bin_resp[["nearestneighbour.uri"]])]
+    if (failed > 0) warning(paste0("Portal stats retrieval timed out for ", failed, " BINs."))
+    bin_resp[, .(
+      bin_uri = bin_resp[["barcodecluster.uri"]],
+      member_count = bin_resp[["record_count"]],
+      private_members = bin_resp[["record_count"]] - bin_resp[["marker_code.count"]],
+      public_members = bin_resp[["marker_code.count"]],
+      avg_dist = bin_resp[["barcodecluster.avgdist"]],
+      max_dist = bin_resp[["barcodecluster.maxdist"]],
+      nn_dist = bin_resp[["barcodecluster.nn_dist"]],
+      nn_bin_uri = bin_resp[["nearestneighbour.uri"]]
+    )]
   } else {
     warning("Portal stats retrieval failed for all requested BINs.")
   }
-  
 }
-
-get_apikey <- function () 
-{
-    keystore <- switch(Sys.info()["sysname"], Windows = "Windows Credential Manager", 
-        macOS = "macOS Keychain", Linux = "Linux Secret Service")
-    tryCatch({
-        keyring::key_get("BOLD-API-key")
-    }, error = function(msg) {
-        stop(paste0("Error retrieving API key from system's credential store (", 
-            keystore, ")."))
-    })
-}
-
-get_consistent_taxon <- function (sub_dt, ranks = c("kingdom", "phylum", "class", "order", 
-    "family", "subfamily", "tribe", "genus", "species", "subspecies"), 
-    threshold = 1, min_ids = 2) 
-{
-    id_hier <- sapply(ranks, function(x) NULL)
-    concordant = FALSE
-    rank_set <- ranks
-    if (any(min_ids > nrow(sub_dt))) {
-        for (i in seq_along(min_ids)) min_ids[[i]] <- nrow(sub_dt)
-    }
-    if (length(threshold) == 1) {
-        threshold <- rep(threshold, length(ranks))
-    }
-    if (length(min_ids) == 1) {
-        min_ids <- rep(min_ids, length(ranks))
-    }
-    result <- list(member_count = nrow(sub_dt), concordant_rank = NA_character_, 
-        concordant_id = NA_character_, concordant_id_count = 0L, 
-        discordant_rank = NA_character_, discordant_ids = list(), 
-        discordant_id_count = 0L)
-    for (rank_col in rev(ranks)) {
-        rank_threshold <- threshold[which(ranks == rank_col)]
-        rank_min_ids <- min_ids[which(ranks == rank_col)]
-        vals <- sub_dt[[rank_col]]
-        filtered <- table(vals[!is.na(vals)])
-        name_vals <- proportions(filtered)
-        props <- proportions(filtered)[(proportions(filtered) >= 
-            rank_threshold) & (filtered >= rank_min_ids)]
-        names(name_vals) <- sub("^$", "<None>", names(name_vals))
-        if ((length(props) != 1) & (length(unique(filtered)) > 
-            0)) {
-            concordant <- FALSE
-            if (id_hier[rank_col] != "") {
-                rank_set <- ranks[0:(which(ranks == rank_col) - 
-                  1)]
-                id_hier <- id_hier[rank_set]
-            }
-            if (length(name_vals) > 1) {
-                result$discordant_rank <- rank_col
-                result$discordant_ids <- list(stats::setNames(as.vector(name_vals), 
-                  names(name_vals)))
-                result$discordant_id_count <- sum(filtered)
-            }
-        }
-        else if ((length(props) == 1) && (names(props)[1] != 
-            "")) {
-            if (!concordant) {
-                result$concordant_rank <- rank_col
-                result$concordant_id <- names(props)[1]
-                result$concordant_id_count <- unname(filtered[names(props)[1]])
-            }
-            concordant <- TRUE
-            if (is.null(id_hier[[rank_col]]) || is.na(id_hier[[rank_col]]) || 
-                is.na(names(props)[1]) || (names(props)[1] != 
-                id_hier[[rank_col]])) {
-                rank_set <- ranks[0:which(ranks == rank_col)]
-                id_hier <- as.list(sub_dt[get(rank_col) == names(props)[1], 
-                  .SD, .SDcols = rank_set][1])
-            }
-        }
-    }
-    for (r in setdiff(ranks, names(id_hier))) {
-        id_hier[r] = NA_character_
-    }
-    result[ranks] <- id_hier
-    return(result)
-}
-
