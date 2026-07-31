@@ -352,9 +352,9 @@ server <- function(input, output, session) {
       }
       updateSelectizeInput(session,"filt_opt",
                            choices = filter_options(include_verbatim),
-                           selected = NULL)
+                           selected = try(user_config$settings$col_set, silent = TRUE))
       updateSelectizeInput(session, "filt_seq",
-                           choices = outdata$markers,
+                           choices = try(user_config$settings$filt_seq, silent = TRUE),
                            selected = NULL)
     }
     
@@ -370,8 +370,8 @@ server <- function(input, output, session) {
       for(t in names(tab_status)[names(tab_status) != "data"]) bslib::nav_remove(id="tabs", target = t, session)
       for(i in seq_along(reactiveValuesToList(tab_status))) tab_status[[names(tab_status)[i]]] <- FALSE
       bslib::update_switch("include_binmates", value = FALSE)
-      bslib::update_switch("include_nts", value = FALSE)
-      bslib::update_switch("collapse_mrkrs", value = FALSE)
+      bslib::update_switch("include_nts", value = isTRUE(user_config$settings$include_nts))
+      bslib::update_switch("collapse_mrkrs", value = isTRUE(user_config$settings$collapse_mrkrs))
       updateCheckboxInput(inputId = "bc_portal_stats", value = FALSE)
     }
     
@@ -992,37 +992,79 @@ server <- function(input, output, session) {
     # modal logic for settings panel
   observeEvent(input$settings, {
     header_opt <- isolate(user_config$settings$fasta_head)
+    avail_opts <- config$fieldsets$bcdm[match(c(header_opt,
+                                                setdiff(names(config$fasta_ex), c(header_opt, "nuc"))),
+                                              config$fieldsets$bcdm)]
     showModal(
       modalDialog(
         title = "Settings",
-        passwordInput( 
-          "api_key_def",
-          div(h3("BOLD API key"),
-              bslib::tooltip(
-                icon("circle-question"),
-                paste0("The API key is saved to your system's credential store (",keystore,")."))
+        tagList(
+          passwordInput( 
+            "api_key_def",
+            div(h3("BOLD API key"),
+                bslib::tooltip(
+                  icon("circle-question"),
+                  paste0("The API key is saved to your system's credential store (", keystore, ")."))
+            ),
+            value = tryCatch({
+              key_get("BOLD.apikey")
+            }, error = function(e){
+              ""
+            })
           ),
-          value = tryCatch({
-            key_get("BOLD.apikey")
-          }, error = function(e){
-            ""
-          })
-        ),
-        inputGroup(title = "FASTA output",
-                   groupId = "fasta_def",
-                   selectizeInput("fasta_head_def",
-                                  "Header labels:",
-                                  choices = c(config$bcdmnames[match(header_opt, config$bcdmnames)], setdiff(config$bcdmnames, header_opt)),
-                                  multiple = TRUE,
-                                  options = list(plugins = list("drag_drop")),
-                                  selected = if(is.null(header_opt)) {
-                                    c("processid", "marker_code")
-                                  } else {
-                                    header_opt
-                                  }
-                   ),
-                   HTML('<span style="margin-bottom: .125rem;">Example:</span>'),
-                   verbatimTextOutput("fasta_head_ex")
+          inputGroup(title = "FASTA output",
+                     groupId = "fasta_def",
+                     selectizeInput("fasta_head_def",
+                                    "Header labels:",
+                                    choices = avail_opts,
+                                    multiple = TRUE,
+                                    options = list(plugins = list("drag_drop")),
+                                    selected = if(is.null(header_opt)) {
+                                      c("processid", "marker_code")
+                                    } else {
+                                      header_opt
+                                    }
+                     ),
+                     HTML('<span style="margin-bottom:0.125rem;">Example:</span>'),
+                     verbatimTextOutput("fasta_head_ex")
+          ),
+          inputGroup(title = "Default options",
+                     groupId = "customize_defaults",
+                     selectizeInput("filt_opt_def",
+                                    tagList(div("Columns to show:"),
+                                            actionLink(
+                                              "save_filter_def",
+                                              icon("bookmark"))),
+                                    choices = filter_options(),
+                                    selected = try(user_config$settings$col_set, silent = TRUE),
+                                    multiple = TRUE,
+                                    options = list(plugins = list("drag_drop"))
+                     ),
+                     selectizeInput("filt_seq_def",
+                                    "Filter by marker:",
+                                    choices = list("COI-5P" = "COI-5P",
+                                                   "COI-3P" = "COI-3P",
+                                                   "28S" = "28S",
+                                                   "28S-D2-D3" = "28S-D2-D3",
+                                                   "18S" = "18S",
+                                                   "18S-5P" = "18S-5P"),
+                                    selected = user_config$settings$filt_seq,
+                                    multiple = TRUE
+                     ),
+                     bslib::input_switch(
+                       "collapse_mrkrs_def",
+                       "Collapse multiple markers into single rows",
+                       value = isTRUE(user_config$settings$collapse_mrkrs)
+                     ),
+                     bslib::input_switch(
+                       "include_nts_def",
+                       div("Show NTS records in fetched data",
+                           bslib::tooltip(
+                             icon("circle-question"),
+                             "Shows or hides non-target sequence records within existing results (i.e., NTS records matching initial query terms).")),
+                       value = isTRUE(user_config$settings$include_nts)
+                     )
+          )
         ),
         footer = tagList(
           div(),
@@ -1038,15 +1080,35 @@ server <- function(input, output, session) {
     removeModal()
     key <- trimws(gsub('"', "", isolate(input$api_key_def)))
     validate_apikey(key)
-    header_opt <- isolate(input$fasta_head_def)
-    user_config$settings$fasta_head <<- header_opt
-    save_user_config()
-    updateSelectizeInput(inputId = "fasta_head_def",
-                         selected = header_opt)
+    save_settings <- list(
+      fasta_head = isolate(input$fasta_head_def),
+      col_set = isolate(input$filt_opt_def),
+      filt_seq = isolate(input$filt_seq_def),
+      collapse_mrkrs = isolate(input$collapse_mrkrs_def),
+      include_nts = isolate(input$include_nts_def)
+    )
+    save_user_config(save_settings)
+    updateSelectizeInput(inputId = "fasta_head_def", selected = save_settings$fasta_head)
+    updateSelectizeInput(inputId = "filt_opt_def", selected = save_settings$col_set)
+    updateSelectizeInput(inputId = "filt_seq_def", selected = save_settings$filt_seq)
+    bslib::update_switch(id = "collapse_mrkrs_def", value = save_settings$collapse_mrkrs)
+    bslib::update_switch(id = "include_nts_def", value = save_settings$include_nts)
+    if(is.null(outdata$data)) {
+      updateSelectizeInput(inputId = "filt_opt", selected = save_settings$col_set)
+      updateSelectizeInput(inputId = "filt_seq", selected = save_settings$filt_seq)
+      bslib::update_switch(id = "collapse_mrkrs", value = save_settings$collapse_mrkrs)
+      bslib::update_switch(id = "include_nts", value = save_settings$include_nts)
+    }
   })
 
     # modal logic for saving custom field sets
     observeEvent(input$save_filter_set, {
+      save_col_set()
+    })
+    observeEvent(input$save_filter_def, {
+      save_col_set()
+    })
+    save_col_set <- function() {
       showModal(
         modalDialog(
           title = "Saved column sets",
@@ -1060,9 +1122,9 @@ server <- function(input, output, session) {
           textInput(
             "save_filter_name", 
             tagList(span("Save current column selection as:"),
-                bslib::tooltip(
-                  icon("circle-question"),
-                  "Using the name of an existing preset will update/overwrite it.")),
+                    bslib::tooltip(
+                      icon("circle-question"),
+                      "Using the name of an existing preset will update/overwrite it.")),
             width = "100%"),
           footer = tagList(
             div(),
@@ -1071,7 +1133,7 @@ server <- function(input, output, session) {
                 modalButton("Cancel"))),
           easyClose = TRUE)
       )
-    })
+    }
     
     # field set save logic
     observeEvent(input$save_filter_btn, {

@@ -45,7 +45,11 @@ map_colours <- colorRampPalette(c("#9e0142","#d53e4f","#f46d43","#fdae61",
                                   "#66c2a5","#3288bd","#5e4fa2"), alpha = TRUE)(11)
 
 # function to save user options
-save_user_config <- function() {
+save_user_config <- function(save_settings) {
+  user_settings <- isolate(user_config$settings)
+  new_settings <- c(user_settings[!names(user_settings) %in% names(save_settings)],
+                    save_settings)
+  user_config$settings <<- new_settings
   write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
 }
 
@@ -149,12 +153,12 @@ cb <- function(df, header=TRUE, sep="\t", na="", max.size=(200*1000)){
   showNotification("Copied to clipboard.", type="message", id="copy_msg")
 }
 
-# assemble FASTA and copy to clipboard
+# assemble FASTA (with optional copy to clipboard)
 clip_fasta <- function(bold_df,
                        cols_for_fas_names = NULL,
                        collapse_mrkrs = NULL,
                        to_cb = TRUE) {
-  
+  # header definition
   cols_for_fas_names <- if (!is.null(cols_for_fas_names)) {
     cols_for_fas_names
   } else if (!is.null(user_config$settings$fasta_head)) {
@@ -162,12 +166,12 @@ clip_fasta <- function(bold_df,
   } else {
     c("processid", "marker_code")
   }
-  
+  # add marker code to distinguish between sequences for any process IDs with multiple markers
   if (any(duplicated(bold_df$processid)) && !any(c("marker_code", "record_id") %in% cols_for_fas_names)) {
     showNotification("Some records have multiple markers. Output FASTA will include marker in headers.", duration = 6, type = "warning")
     cols_for_fas_names <- c(cols_for_fas_names, "marker_code")
   }
-  
+  # assemble FASTA (conditional logic depending on whether input data is marker-collapsed)
   clip_fas <- if((!"nuc" %in% names(bold_df)) || (nrow(bold_df[!empty(nuc)]) == 0)) {
     if(!is.null(collapse_mrkrs)) {
       showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
@@ -185,16 +189,13 @@ clip_fasta <- function(bold_df,
       NULL
     }
   } else {
-    
     showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
     paste0(">",
            bold_df[!empty(nuc), do.call(paste, c(.SD, sep = "|")), .SDcols = c(cols_for_fas_names)],
            "\n",
            bold_df[!empty(nuc), nuc])
   }
-  
-  
-  
+  # handle FASTA output
   if(is.null(clip_fas)) {
     showNotification(paste0("No sequences to copy."), id="copy_msg", type = "error")  
   } else if (to_cb) {
@@ -664,6 +665,7 @@ reset_js <- DT::JS("
   }
 ")
 
+# add indeterminate progress bar to notification
 withInfProgress <- function(message, expr, env = parent.frame()) {
   notif_id <- showNotification(
     HTML(paste0(

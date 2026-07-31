@@ -234,18 +234,20 @@ ui <- bslib::page_fillable(
                                  actionLink(
                                    "save_filter_set",
                                    icon("bookmark"))),
-                         filter_options(),
+                         choices = filter_options(),
+                         selected = try(user_config$settings$col_set, silent = TRUE),
                          multiple = TRUE,
                          options = list(plugins = list("drag_drop"))
           ),
           selectizeInput("filt_seq",
                          "Filter by marker:",
-                         list("COI-5P" = "COI-5P", 
+                         choices = list("COI-5P" = "COI-5P", 
                               "COI-3P" = "COI-3P",
                               "28S" = "28S",
                               "28S-D2-D3" = "28S-D2-D3",
                               "18S" = "18S",
                               "18S-5P" = "18S-5P"),
+                         selected = try(user_config$settings$filt_seq, silent = TRUE),
                          multiple = TRUE
           ),
           div(class="form-group shiny-input-container",
@@ -267,11 +269,13 @@ ui <- bslib::page_fillable(
             div("Show NTS records in fetched data",
                 bslib::tooltip(
                   icon("circle-question"),
-                  "Shows or hides non-target sequence records within existing results (i.e., NTS records matching initial query terms)."))
+                  "Shows or hides non-target sequence records within existing results (i.e., NTS records matching initial query terms).")),
+            value = isTRUE(user_config$settings$include_nts)
           )),
           bslib::input_switch(
             "collapse_mrkrs",
-            "Collapse multiple markers into single rows"
+            "Collapse multiple markers into single rows",
+            value = isTRUE(user_config$settings$collapse_mrkrs)
           )
         ),  
         bslib::accordion_panel(
