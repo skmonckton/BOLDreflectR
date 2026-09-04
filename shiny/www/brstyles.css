@@ -213,7 +213,8 @@ a#del_filter_btn {
 }
 
 .file-input-wrapper .action-button {
-  padding: 4px 8px;
+  height: 100%;
+  padding: 6px 8px;
 }
 
 #data_source .nav-link {

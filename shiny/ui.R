@@ -84,7 +84,7 @@ ui <- bslib::page_fillable(
                                            div("Identifiers:",
                                                bslib::tooltip(
                                                  icon("circle-question"),
-                                                 paste0("Comma-separated or one per line."),
+                                                 "Comma-separated or one per line.",
                                                  id = "query_tip"))
                                          ))), 
                         bslib::nav_panel(value="search_opts",
@@ -103,7 +103,7 @@ ui <- bslib::page_fillable(
                                            div("Geography:",
                                                bslib::tooltip(
                                                  icon("circle-question"),
-                                                 HTML("Country, ocean, province, state, region, sector, realm*, biome*, or ecoregion*. Comma-separated or one term per line, no quotes.<br><span style=\"font-size: 0.7rem;\">*As defined by RESOLVE; case-sensitive, spaces replaced by underscores.</span>"),
+                                                 HTML("Country, ocean, province, state, region, sector, realm*, biome*, or ecoregion*. One term per line, no quotes needed.<br><span style=\"font-size: 0.7rem;\">*As defined by RESOLVE; case-sensitive, spaces replaced by underscores.</span>"),
                                                  id = "geo_search_tip"))
                                          ),
                                          div(class="form-group shiny-input-container marker-select",
@@ -139,7 +139,7 @@ ui <- bslib::page_fillable(
                                            "search_inst", 
                                            div("Institutes:",
                                                bslib::tooltip(icon("circle-question"),
-                                                              "Institute where physical specimen is stored. Comma-separated or one per line, no quotes."))
+                                                              "Institute where physical specimen is stored. One per line, no quotes needed."))
                                          ))),
                         bslib::nav_panel(value = "source-local",
                                          "Local data",
@@ -152,21 +152,20 @@ ui <- bslib::page_fillable(
                                                                         choices = stats::setNames(datapkgs$path, datapkgs$id)),
                                                             actionButton("datapackage_btn", "Add/Edit...")))),
                                          inputGroup(title = "Search terms:",
-                                                    tipTxt = "Comma-separated or one term per line, no quotes.",
                                                     groupId = "node_source_terms",
-                                                    textAreaInput("node_id_list", "Process IDs and/or sample IDs:"),
-                                                    textAreaInput("node_bin_list", "BINs:"),
-                                                    textAreaInput("node_recset_list", "Project and/or dataset codes:"),
-                                                    textAreaInput("node_tax", "Taxonomy:"),
-                                                    textAreaInput("node_geo", "Geography:"),
+                                                    textAreaInput("node_id_list", div("Process IDs and/or sample IDs:", bslib::tooltip(icon("circle-question"), "Comma-separated or one per line."))),
+                                                    textAreaInput("node_bin_list", div("BINs:", bslib::tooltip(icon("circle-question"), "Comma-separated or one per line."))),
+                                                    textAreaInput("node_recset_list", div("Project and/or dataset codes:", bslib::tooltip(icon("circle-question"), "Comma-separated or one per line."))),
+                                                    textAreaInput("node_tax", div("Taxonomy:", bslib::tooltip(icon("circle-question"), "Comma-separated or one per line."))),
+                                                    textAreaInput("node_geo", div("Geography:", bslib::tooltip(icon("circle-question"), "Country, ocean, province, state, region, sector, or site. One term per line, no quotes needed."))),
                                                     bslib::accordion(
                                                       id = "more_opts",
                                                       bslib::accordion_panel(
                                                         "Additional fields",
-                                                        textAreaInput("node_ider_list", "Identified by:"),
-                                                        textAreaInput("node_biogeo_list", "Biome, realm, or ecoregion:"),
-                                                        textAreaInput("node_inst_list", "Institutes:"),
-                                                        textAreaInput("node_seqinst_list", "Sequence run sites:")))),
+                                                        textAreaInput("node_ider_list", div("Identified by:", bslib::tooltip(icon("circle-question"), "Comma-separated or one per line."))),
+                                                        textAreaInput("node_biogeo_list", div("Biome, realm, or ecoregion:", bslib::tooltip(icon("circle-question"), "Biogeographic realm, biome, or ecoregion (as defined by RESOLVE; case-sensitive, spaces replaced by underscores). One term per line, no quotes needed."))),
+                                                        textAreaInput("node_inst_list", div("Institutes:", bslib::tooltip(icon("circle-question"), "Institute where physical specimen is stored. One term per line, no quotes needed."))),
+                                                        textAreaInput("node_seqinst_list", div("Sequence run sites:", bslib::tooltip(icon("circle-question"), "Institute where sequencing was performed, or database from which the sequence was retrieved. One term per line, no quotes needed.")))))),
                                          inputGroup(title = "Markers:",
                                                     groupId = "node_markers",
                                                     groupClass = "marker-select",
@@ -484,7 +483,7 @@ ui <- bslib::page_fillable(
                                                                           "Image and sequence based", "Other sequence based approach", "Other"),
                                                            selected = "Morphology",
                                                            multiple = TRUE),
-                             "bin_rep_inst" = selectizeInput("bin_rep_inst_opt", "Preferred institution(s)",
+                             "bin_rep_inst" = selectizeInput("bin_rep_inst_opt", "Preferred institute(s)",
                                                              choices = list("Centre for Biodiversity Genomics"),
                                                              selected = "Centre for Biodiversity Genomics",
                                                              multiple = TRUE),

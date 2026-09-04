@@ -440,11 +440,11 @@ server <- function(input, output, session) {
       bins = split_query(input$node_bin_list),
       dataset.projects = split_query(input$node_recset_list),
       taxonomy = split_query(input$node_tax),
-      geography = split_query(input$node_geo),
+      geography = split_query(input$node_geo, sep = "\n"),
       identified.by = split_query(input$node_ider_list),
-      biogeo.cat = split_query(input$node_biogeo_list),
-      institutes = split_query(input$node_inst_list),
-      seq.source = split_query(input$node_seqinst_list),
+      biogeo.cat = split_query(input$node_biogeo_list, sep = "\n"),
+      institutes = split_query(input$node_inst_list, sep = "\n"),
+      seq.source = split_query(input$node_seqinst_list, sep = "\n"),
       bounding.box = c(input$node_lon_min, input$node_lon_max, input$node_lat_min, input$node_lat_max),
       marker = sapply(1:n_node_markers, function(m) input[[paste0("node_seq_marker_", m)]]),
       basecount = setNames(
@@ -508,7 +508,9 @@ server <- function(input, output, session) {
                 if (grepl("^The search has", notif_txt)) {
                   num_records <<- as.numeric(regmatches(notif_txt, gregexpr("(?<=has )[0-9,]+(?= records)", notif_txt, perl = TRUE))[[1]][1])
                 }
-                showNotification(notif_txt, id = "fetch_msg", duration = NULL, type = "message")
+                if (!grepl("shared_home", notif_txt)) {
+                  showNotification(notif_txt, id = "fetch_msg", duration = NULL, type = "message")
+                }
               }
             )
             fetch_params$node_dtpkg <- input$datapackage_id
@@ -529,13 +531,13 @@ server <- function(input, output, session) {
             showNotification("Searching for matching records...", id = "fetch_msg", duration = NULL, type = "message")
             search_query <- list(
               taxonomy = split_query(input$search_tax, list = TRUE),
-              geography = split_query(input$search_geo, list = TRUE),
+              geography = split_query(input$search_geo, list = TRUE, sep = "\n"),
               marker = input$seq_marker[input$seq_marker != ""],
               marker_min_length = input$seq_min[!is.na(input$seq_min)],
               marker_max_length = input$seq_max[!is.na(input$seq_max)],
               collection_start_date = input$search_dates[1][!is.na(input$search_dates[1])],
               collection_end_date = input$search_dates[2][!is.na(input$search_dates[1])],
-              institutes = split_query(input$search_inst, list = TRUE)
+              institutes = split_query(input$search_inst, list = TRUE, sep = "\n")
             )
             fetch_params$query <- search_query[sapply(search_query, length) > 0]
             search_token <- do.call(bold.full.search.step1, search_query[sapply(search_query, length) > 0])
@@ -1496,6 +1498,7 @@ server <- function(input, output, session) {
 
   # compute diversity profile
   observeEvent(input$div_compute_btn, {
+    
     req(outdata$data)
     outdata$div_profile <- NULL
     data <- unique(filtered_data()[input$data_table_rows_all, ], by = outdata$id_field)
@@ -1525,7 +1528,7 @@ server <- function(input, output, session) {
       unid_bins <- unique(data[, if (all(empty(species))) .SD, by = bin_uri]$bin_uri)
       if (length(unid_bins) > 0) {
         withInfProgress(message = "Assigning fallback BIN-based names...", {
-          unid_bin_tax <- BOLD.NODE::get_bin_consensus(data[bin_uri %in% unid_bins], min.ids = 1)
+          unid_bin_tax <- BOLDNODE::get_bin_consensus(data[bin_uri %in% unid_bins], min.ids = 1)
           data[, bin_fallback := fifelse(
             bin_uri %in% unid_bins,
             unid_bin_tax[.SD,
@@ -1869,7 +1872,7 @@ server <- function(input, output, session) {
     # outdata$bin_consensus <- NULL
     data <- filtered_data()[input$data_table_rows_all, ][!empty(bin_uri)]
     withInfProgress(message = "Computing consensus BIN taxonomy...", {
-      bin_consensus <- BOLD.NODE::get_bin_consensus(data,
+      bin_consensus <- BOLDNODE::get_bin_consensus(data,
         threshold = as.double(unlist(unname(input$bc_threshold))),
         min.ids = unlist(unname(input$bc_minids)),
         enforce.scientific = input$bc_enforcesci,
@@ -2011,7 +2014,7 @@ server <- function(input, output, session) {
 
       tryCatch(
         {
-          outdata$bin_reps <- BOLD.NODE::get_bin_reps(
+          outdata$bin_reps <- BOLDNODE::get_bin_reps(
             convert_factor_char(outdata$data[processid %in% filtered_data()[input$data_table_rows_all, processid]],
               to_factor = FALSE, copy = TRUE
             ),

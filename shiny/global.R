@@ -1,5 +1,5 @@
 library(BOLDconnectR)
-library(BOLD.NODE)
+library(BOLDNODE)
 library(data.table)
 library(httr)
 library(keyring)
@@ -131,7 +131,7 @@ update_datapackages <- function() {
   return(datapkgs)
 }
 
-# keep list of BOLD.NODE data packages in memory
+# keep list of BOLDNODE data packages in memory
 datapkgs <- update_datapackages()
 
 # copy table to clipboard
@@ -210,11 +210,11 @@ clip_fasta <- function(bold_df,
 }
 
 # split and clean query terms
-split_query <- function(query_input, list = FALSE) {
+split_query <- function(query_input, list = FALSE, sep = c("\n", ",")) {
   if(query_input == "") {
     NULL
   } else {
-    terms <- trimws(strsplit(query_input, "\n|,")[[1]])
+    terms <- trimws(strsplit(query_input, paste(sep, collapse = "|"))[[1]])
     terms <- unique(terms[!empty(terms)])
     if(list == TRUE) {
       as.list(terms)
@@ -560,7 +560,7 @@ get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
   } else {
     withInfProgress(paste0("Searching data package for additional BIN members from ", length(bins), " BINs..."), {
       current_pids <- unique(df[["processid"]])
-      pkg_data <- BOLD.NODE:::import_parquet_data(dtpkg_parquet)
+      pkg_data <- BOLDNODE:::import_parquet_data(dtpkg_parquet)
       bins_tbl <- dbplyr::copy_inline(pkg_data$src$con, dplyr::tibble(bin_uri = bins))
       pids_tbl <- dbplyr::copy_inline(pkg_data$src$con, dplyr::tibble(processid = current_pids))
       add_pids <- pkg_data |>
