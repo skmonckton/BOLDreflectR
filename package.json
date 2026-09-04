@@ -20,6 +20,7 @@
     "url": "https://github.com/skmonckton/BOLDreflectR"
   },
   "dependencies": {
+    "electron-context-menu": "^5.0.0",
     "electron-squirrel-startup": "^1.0.1",
     "node-fetch": "^3.3.2"
   },

@@ -12,6 +12,7 @@ const ServerUtils = require("./server-utils"); // 추가
 const AppState = require("./app-state");
 const WindowManager = require("./window-manager");
 const [, gitOwner, gitRepo] = new URL(require('../package.json').repository.url).pathname.split('/');
+const contextMenu = require('electron-context-menu');
 
 // Initialize global state
 let appState;
@@ -232,6 +233,35 @@ app.on("ready", async () => {
 
   session.defaultSession.setPermissionRequestHandler((_1, _2, callback) => {
     callback(false);
+  });
+
+  // Initialize the context menu (for additional options, see: https://github.com/sindresorhus/electron-context-menu)
+  contextMenu.default({
+      showSearchWithGoogle: false,
+      showSelectAll: false,
+      showCopyImage: true,
+      showSaveImageAs: true,
+      showInspectElement: false,
+      showCopyLink: false, 
+      // Custom actions
+      prepend: (defaultActions, parameters) => [
+        // There is a known issue with electron-context-menu's 'Copy Link' action - this resolves it (comment out to disable)
+        {
+          label: 'Copy Link',
+          visible: parameters.linkURL.length > 0,
+          click: () => {
+            require('electron').clipboard.writeText(parameters.linkURL);
+          }
+        },
+        // Option to copy link text
+        {
+          label: 'Copy Link Text',
+          visible: !!(parameters.linkText && parameters.linkText.length > 0),
+          click: () => {
+            require('electron').clipboard.writeText(parameters.linkText);
+          }
+        }
+      ]
   });
 
   // Use WindowManager for window and splash screen creation

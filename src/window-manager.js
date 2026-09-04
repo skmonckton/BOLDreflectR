@@ -14,6 +14,7 @@ function createWindow(appState, shinyUrl) {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
+        spellcheck: false
       },
     });
 
