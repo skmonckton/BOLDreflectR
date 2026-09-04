@@ -217,8 +217,10 @@ bold.full.search.step1 <- function(taxonomy = NULL,
     suppressMessages(json_content_step1 <- httr::content(step1, "text"))
     jsonlite::fromJSON(json_content_step1)
   }
+  # Keep initial search arguments
+  query_args <- non_null_args
   json_content_step1_text <- try_args(non_null_args)
-  # Condition to check if the search query terms have issues (non availability,misspellings etc)
+  # Condition to check if the search query terms have issues (non availability, misspellings etc)
   # This will re-attempt the query with missing terms removed, so that a single unavailable or misspelled term doesn't nullify the entire search
   if (any(names(json_content_step1_text) == "detail")) {
     all_found <- FALSE
@@ -237,7 +239,10 @@ bold.full.search.step1 <- function(taxonomy = NULL,
             }
           }
         }
-        if (length(non_null_args) == 0) {
+        # For any of tax, geo, inst, if all terms are missing, the search should be interrupted
+        if (any(c("tax", "geo", "inst") %in% setdiff(names(query_args), names(non_null_args)))) {
+          return(NULL)
+        } else if (length(non_null_args) == 0) {
           return(NULL)
         } else {
           json_content_step1_text <- try_args(non_null_args)
