@@ -35,6 +35,11 @@ h3 {
   margin-bottom: auto;
 }
 
+.modal-dialog:has(#info_icon) {
+  width: min(1000px, 90vw);
+  max-width: 90vw;
+}
+
 .modal-header {
   padding-bottom: 1rem;
 }
@@ -44,8 +49,13 @@ h3 {
   padding-bottom: 0;
 }
 
-.modal-body:not(:has(#api_key_def)) div {
+.modal-body:not(:has(#api_key_def)) div:not(.citation) {
   margin-bottom: 1rem;
+}
+
+.citation {
+  padding-left: 1.2rem;
+  text-indent: -1.2rem;
 }
 
 .modal-body:has(#api_key_def) .form-group.shiny-input-container {
@@ -439,7 +449,7 @@ input[type=number] {
 }
 
 #query_params .nav-link[data-value="source-local"]::after {
-  content: "BOLD.NODE";
+  content: "BOLDNODE";
   background-color: #E0760560;
 }
 
@@ -459,7 +469,7 @@ input[type=number] {
 }
 
 #query_params .nav-link.active[data-value="source-local"]::after {
-  content: "BOLD.NODE";
+  content: "BOLDNODE";
   background-color: #ffffff;
   color: #E07605;
 }
@@ -1109,8 +1119,25 @@ th:hover .col-copy-btn {
   visibility: visible;
 }
 
-.col-copy-btn:hover {
+#cite-copy-btn {
+  background-color: unset;
+  border: none;
+  padding: 0;
+  color: #404040;
+  margin-left: 0.5rem;
+}
+
+.col-copy-btn:hover,
+#cite-copy-btn:hover {
   color: #007bc2;
+}
+
+#cite-copy-btn:hover i::after {
+  content: "Copy all";
+  position: absolute;
+  font-family: var(--bs-body-font-family);
+  margin-left: 0.25rem;
+  font-size: 0.9rem;
 }
 
 .tabbable,

@@ -1132,13 +1132,20 @@ server <- function(input, output, session) {
           '<div style="font-size:1.2rem; font-weight:bold; margin-bottom:0.2rem;">v%s</div>\n',
           '<div style="font-size:0.85rem;">© 2026 Spencer K. Monckton – MIT License</div>\n',
           '<div style="font-size:0.95rem;">This software was developed at the Centre for Biodiversity Genomics, which is supported by funding from the Government of Canada through Genome Canada and Ontario Genomics (OGI-208), the Ontario Ministry of Colleges and Universities, the Natural Sciences and Engineering Research Council of Canada (NSERC), the New Frontiers in Research Fund (NFRFT-2020-00073), and the Canada Foundation for Innovation (MSI 42450).</div>\n',
-          '<div style="margin-bottom:0.8rem; font-weight:500;">If you use this software, please cite it as below:</div>\n',
-          '<pre style="text-align:left; width:90%%; word-wrap:normal; text-wrap:auto; font-family: inherit;">Monckton SK & Padhye S (2026). <span style="font-weight:600;">BOLDreflectR</span> (Version %s) [Software]. <a href="https://github.com/skmonckton/BOLDreflectR">https://github.com/skmonckton/BOLDreflectR</a></pre>\n',
-          '<div style="margin-bottom:0.8rem;">Users are strongly encouraged to cite data retrieved from the BOLD database as follows:</div>\n',
-          '<pre style="text-align:left; width:90%%; word-wrap:normal; text-wrap:auto; font-family: inherit;">Ratnasingham S, Wei C, Chan D, Agda J, Agda J, Ballesteros-Mejia L, Ait Boutou H, El Bastami Z M, Ma E, Manjunath R, Rea D, Ho C, Telfer A, McKeowan J, Rahulan M, Steinke C, Dorsheimer J, Milton M, Hebert PDN (2024). <span style="font-weight:600;">BOLD v4: A Centralized Bioinformatics Platform for DNA-Based Biodiversity Data</span>. In DNA Barcoding: Methods and Protocols, pp. 403–441. Chapter 26. New York, NY: Springer US, 2024.</pre>\n',
+          '<div style="margin-bottom:0.8rem; font-weight:500; width:90%%; position:relative;">If you use this software, please cite it as below:<button id="cite-copy-btn"><i class="far fa-copy"></i></button></div>\n',
+          '<pre style="text-align:left; width:90%%; word-wrap:normal; text-wrap:auto; font-family: inherit;"><div class="citation">%s</div></pre>\n',
+          '<div style="margin-bottom:0.8rem;">For data retrieval, please also cite <span style="font-weight:500;">BOLDconnectR</span> and/or <span style="font-weight:500;">BOLDNODE</span> as applicable:</div>\n',
+          '<pre style="text-align:left; width:90%%; word-wrap:normal; text-wrap:auto; font-family: inherit;"><div class="citation" style="margin-bottom:0.8rem;">%s</div><div class="citation">%s</div></pre>\n',
+          '<div style="margin-bottom:0.8rem;">Users are also strongly encouraged to cite any data from the BOLD database as follows:</div>\n',
+          '<pre style="text-align:left; width:90%%; word-wrap:normal; text-wrap:auto; font-family: inherit;"><div class="citation">%s</div></pre>\n',
           "</div>"
-        ), ver, ver)),
+        ), ver, citations[1], citations[2], citations[3], citations[4])),
         tstjs,
+        tags$script(HTML(r"(
+          document.getElementById('cite-copy-btn').onclick = function() {
+            Shiny.setInputValue('cite_clicked', Math.random());
+          };
+        )")),
         footer = "",
         size = "l",
         easyClose = TRUE
@@ -2835,6 +2842,11 @@ server <- function(input, output, session) {
     vals <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ][[col_index + 1]]
     vals[vals == "NA"] <- ""
     cb(vals, header = FALSE)
+  })
+  
+  # copy logic for app citation
+  observeEvent(input$cite_clicked, {
+    cb(gsub("<.*?>", "", citations), header = FALSE)
   })
 
   # download (save) logic

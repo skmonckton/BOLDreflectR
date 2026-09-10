@@ -43,6 +43,12 @@ map_colours <- colorRampPalette(c("#9e0142","#d53e4f","#f46d43","#fdae61",
                                   "#fee08b","#ffffbf","#e6f598","#abdda4",
                                   "#66c2a5","#3288bd","#5e4fa2"), alpha = TRUE)(11)
 
+# citations for app
+citations <- c(HTML(sprintf('Monckton SK & Padhye S (2026). <span style="font-weight:600;">BOLDreflectR</span> (Version %s) [Software]. <a href="https://github.com/skmonckton/BOLDreflectR">https://github.com/skmonckton/BOLDreflectR</a>', ver)),
+               HTML(sprintf('Padhye S, Ballesteros-Mejia L, Agda T, Agda J, Ratnasingham S (2026). <span style="font-weight:600;">BOLDconnectR</span>: Retrieve, Transform and Analyze the Barcode of Life Data Systems Data. R package version %s. <a href="https://doi.org/10.32614/CRAN.package.BOLDconnectR">https://doi.org/10.32614/CRAN.package.BOLDconnectR</a>', packageVersion("BOLDconnectR"))),
+               HTML(sprintf('Padhye S & Monckton SK (2026). <span style="font-weight:600;">BOLDNODE</span>: Search and Explore BOLD Data Packages Efficiently. R package version %s. <a href="https://doi.org/10.32614/CRAN.package.BOLDNODE">https://doi.org/10.32614/CRAN.package.BOLDNODE</a>', packageVersion("BOLDNODE"))),
+               HTML('Ratnasingham S, Wei C, Chan D, Agda J, Agda J, Ballesteros-Mejia L, Ait Boutou H, El Bastami Z M, Ma E, Manjunath R, Rea D, Ho C, Telfer A, McKeowan J, Rahulan M, Steinke C, Dorsheimer J, Milton M, Hebert PDN (2024). <span style="font-weight:600;">BOLD v4: A Centralized Bioinformatics Platform for DNA-Based Biodiversity Data</span>. In DNA Barcoding: Methods and Protocols, pp. 403–441. Chapter 26. New York, NY: Springer US, 2024.'))
+
 # function to save user options
 save_user_config <- function(save_settings) {
   user_settings <- isolate(user_config$settings)
@@ -601,7 +607,7 @@ callback_js <- DT::JS("
     ")
 header_js <- DT::JS("
   function(thead, data, start, end, display) {
-    window.copyCol=  function(i) {
+    window.copyCol =  function(i) {
       Shiny.setInputValue('col_copy_clicked', { col: i }, { priority: 'event' });
     }
     $(thead).find('th').each(function(i) {
