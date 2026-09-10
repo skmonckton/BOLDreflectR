@@ -57,10 +57,10 @@ jobs:
           body: |
             <img height="60" alt="BOLDreflectR" src="https://github.com/skmonckton/BOLDreflectR/raw/main/shiny/www/reflectR-name.png" />
 
-            **BOLDreflectR** is a graphical user interface for [BOLDconnectR](https://doi.org/10.32614/CRAN.package.BOLDconnectR) allowing basic exploration and analysis of data from BOLD.
+            **BOLDreflectR** is a graphical user interface for [BOLDconnectR](https://doi.org/10.32614/CRAN.package.BOLDconnectR), [BOLDNODE](https://doi.org/10.32614/CRAN.package.BOLDNODE), and BOLD's data APIs, allowing retrieval, exploration, and analysis of DNA barcode data.
 
             ### Installation
-            **Windows**: Download and install from the provided `.exe` file.
+            **Windows**: Download and install from the provided `.exe` file. When warned by Windows, you will need to click 'More info', and then 'Run anyway'.
 
             **macOS**: Download and open the provided `.dmg` file, then drag and drop to your applications folder. To run the app you may need to override Apple's security settings, either by following [Apple's suggested method](https://support.apple.com/en-gb/guide/mac-help/mh40616/mac) or by running the following code in the terminal: `xattr -d com.apple.quarantine /Applications/BOLDreflectR.app`.
 
