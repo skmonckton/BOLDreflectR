@@ -377,7 +377,7 @@ input[type=number] {
   position: relative;
 }
 
-#optpanels:has(#api_key.input_visible) #query_params:not(:has(.nav-link.active[data-value="source-local"])) {
+#optpanels:has(#api_key.input_visible) #query_type:not(:has(.nav-link.active[data-value="source-local"])) {
   margin-bottom: 5.9rem;
   position: relative;
 }
@@ -392,22 +392,22 @@ input[type=number] {
   top: 5.5rem;
 }
 
-#query_params {
+#query_type {
   gap: 0.4rem;
 }
 
-#query_params .nav-item {
+#query_type .nav-item {
   position: relative;
   display: flex;
   margin-top: 1.8rem;
   flex-grow: 1;
 }
 
-#query_params .nav-item:has([data-value = "source-local"]) {
+#query_type .nav-item:has([data-value = "source-local"]) {
   flex-grow: 1.5;
 }
 
-#query_params .nav-item:first-child:before {
+#query_type .nav-item:first-child:before {
   content:"Method:";
   align-content: center;
   position: absolute;
@@ -416,20 +416,20 @@ input[type=number] {
   line-height: 1.2;
 }
 
-#query_params .nav-link,
+#query_type .nav-link,
 #node_add_marker,
 #node_del_marker {
   border: 1px #007bc260 solid;
   padding: 3px 10px;
 }
 
-#query_params .nav-link {
+#query_type .nav-link {
   position: relative;
   padding: 16px 8px 1px 8px;
   width: 100%;
 }
 
-#query_params .nav-link::after {
+#query_type .nav-link::after {
   position: absolute;
   display: block;
   width: 100%;
@@ -443,32 +443,32 @@ input[type=number] {
   color: #ffffff;
 }
 
-#query_params .nav-link.active::after {
+#query_type .nav-link.active::after {
   background-color: #ffffff;
   color: #007bc2;
 }
 
-#query_params .nav-link[data-value="source-local"]::after {
+#query_type .nav-link[data-value="source-local"]::after {
   content: "BOLDNODE";
   background-color: #E0760560;
 }
 
-#query_params .nav-link[data-value="source-local"]:hover {
+#query_type .nav-link[data-value="source-local"]:hover {
   border-color: #E07605;
 }
 
-#query_params .nav-link[data-value="source-local"] {
+#query_type .nav-link[data-value="source-local"] {
   color: #E07605;
   border-color: #E0760560;
 }
 
-#query_params .nav-link.active[data-value="source-local"] {
+#query_type .nav-link.active[data-value="source-local"] {
   background-color: #F78E1E;
   border-color: #E07605;
   color: #FFFFFF;
 }
 
-#query_params .nav-link.active[data-value="source-local"]::after {
+#query_type .nav-link.active[data-value="source-local"]::after {
   content: "BOLDNODE";
   background-color: #ffffff;
   color: #E07605;
@@ -479,11 +479,11 @@ input[type=number] {
     margin: 0.1rem 0.4rem 0 0;
 }
 
-#query_params {
+#query_type {
   margin-bottom: 1rem;
 }
 
-#query_params .nav-link:hover {
+#query_type .nav-link:hover {
   border-color: #007bc2;
 }
 
@@ -1247,6 +1247,22 @@ th:hover .col-copy-btn {
 
 #table_buttons .btn {
   padding: 10px 15px;
+  white-space: nowrap;
+}
+
+/* tabs without buttons (tab_buttons handler in ui.R): contents hidden, not the bar, which shinyjs::show() would set to block */
+#table_buttons.bar-empty {
+  margin-top: 0;
+}
+#table_buttons.bar-empty > * {
+  display: none !important;
+}
+
+/* button row group labels (e.g. "Data:", "Tree:") */
+#table_buttons .bar-label {
+  font-weight: 600;
+  margin: 0 4px 0 12px;
+  white-space: nowrap;
 }
 
 #save_dtpkg .action-label {

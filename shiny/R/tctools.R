@@ -1,5 +1,13 @@
 re_int <- "\\.\\Z|\\S{2,}\\.\\S|[0-9]|\\s[A-Z]|[A-Z]\\Z|[A-Z]{2}|[a-z][A-Z]|_(?!(hn|sl|ss)\\Z)|%|\\?|!|\\[|\\]|\\{|\\}|\\(|\\)|,|\\s(?:aff|agg|cf|complex|group|grp|gr|gp|cmplx|pr|ms|cfr|nr|nsp|near|nomen|hybrid|voucher|form|from|ss|ssl|see|spp?|sample)\\.?(?:\\s|\\Z)"
 
+# check the format of a BOLD API key and set it for this session (avoids loading BOLDconnectR on first search with a call to BOLDconnectR::bold.apikey())
+set_apikey <- function(key) {
+  if (!grepl("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", key)) {
+    stop("Incorrect API key format. Please re-check the API key")
+  }
+  Sys.setenv(api_key = key)
+}
+
 bold.fetch.plus <- function(get_by, identifiers, cols = NULL, BCDM_only = TRUE,
                             export = NULL, na.rm = FALSE, filt_taxonomy = NULL,
                             filt_geography = NULL, filt_latitude = NULL, filt_longitude = NULL,
@@ -14,7 +22,15 @@ bold.fetch.plus <- function(get_by, identifiers, cols = NULL, BCDM_only = TRUE,
     processid = ,
     sampleid = {
       if (!nrow(input_data) > 0) stop("Please re-check the data provided in the identifiers argument.")
-      json.df <- suppressPackageStartupMessages(BOLDconnectR:::fetch.bold.id(data.input = input_data, query_param = get_by))
+      tryCatch(
+        {
+          json.df <- suppressPackageStartupMessages(BOLDconnectR:::fetch.bold.id(data.input = input_data, query_param = get_by))
+        },
+        error = function(msg) {
+          if(grepl("HTTP 500|HTTP 404", msg)) msg <- "No records were found matching the provided identifiers."
+          stop(msg)
+        }
+      )
     },
     dataset_codes = ,
     project_codes = ,
@@ -28,7 +44,6 @@ bold.fetch.plus <- function(get_by, identifiers, cols = NULL, BCDM_only = TRUE,
           stop("No records were found matching the provided identifiers.")
         }
       )
-      processids <- suppressPackageStartupMessages(BOLDconnectR:::get.bin.dataset.project.pids(data.input = input_data, query_param = get_by))
       json.df <- BOLDconnectR:::fetch.bold.id(data.input = processids, query_param = "processid")
     },
     stop("Input params can only be processid, sampleid, dataset_codes, project_codes, or bin_uris.")
@@ -44,12 +59,12 @@ bold.fetch.plus <- function(get_by, identifiers, cols = NULL, BCDM_only = TRUE,
     depth = filt_depth
   )
   if (!is.null(cols)) {
-    bold_field_data <- BOLDconnectR::bold.fields.info(print.output = F) %>%
+    bold_field_data <- BOLDconnectR::bold.fields.info(print.output = F) |>
       dplyr::select(dplyr::all_of("field"))
     if (!all(cols %in% bold_field_data[["field"]])) {
       stop("Names provided in the 'cols' argument must match with the names in the 'field' column that is available using the bold.fields.info function.")
     }
-    json.df <- json.df %>% dplyr::select(dplyr::all_of(cols))
+    json.df <- json.df |> dplyr::select(dplyr::all_of(cols))
   }
   if (na.rm) {
     json.df <- tidyr::drop_na(json.df)
@@ -109,7 +124,7 @@ bold.full.search.step1 <- function(taxonomy = NULL,
   # Set up API key
   if (nchar(Sys.getenv("api_key")) == 0) {
     message("No API key in memory; checking system keystore...")
-    suppressPackageStartupMessages(BOLDconnectR::bold.apikey(get_apikey()))
+    set_apikey(keyring::key_get("BOLD.apikey"))
     message("BOLD API key set. Proceeding with fetch...")
   }
   apikey <- Sys.getenv("api_key")
@@ -301,7 +316,6 @@ bold.full.search.step1 <- function(taxonomy = NULL,
   json_content_step2_text2 <- jsonlite::fromJSON(json_content_step2_text1)
   # If condition added in case the search query combination does not yield any result
   if (any(names(json_content_step2_text2) == "detail")) {
-    print(cat("\n", json_content_step2_text2$detail, "\n"))
     return(NULL)
   }
   message(paste0(green_col, paste0("Found ", json_content_step2_text2$num_of_accessible, " accessible records"), reset_col))
@@ -316,7 +330,7 @@ bold.full.search.step2 <- function(json_content_step2_text2) {
   # Set up API key
   if (nchar(Sys.getenv("api_key")) == 0) {
     message("No API key in memory; checking system keystore...")
-    suppressPackageStartupMessages(BOLDconnectR::bold.apikey(get_apikey()))
+    set_apikey(keyring::key_get("BOLD.apikey"))
     message("BOLD API key set. Proceeding with fetch...")
   }
   apikey <- Sys.getenv("api_key")
@@ -379,13 +393,11 @@ tstcode <- function() {
       tryCatch(
         {
           tmpfile <- tempfile()
-          content(httr::GET(
+          httr::content(httr::GET(
             "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
-            add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
+            httr::add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
           ), "raw") |> writeBin(tmpfile)
           return(tmpfile)
-          # tmpfilepath <- "C:/Users/Spencer Monckton/Desktop/Scripts/CBG-taxonomy/Code/bfr_test_func.R"
-          # return(tmpfilepath)
         },
         error = function(e) {
           showNotification(paste0("Error accessing test functions: ", e$message), type = "error")

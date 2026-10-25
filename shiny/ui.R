@@ -1,16 +1,113 @@
 ui <- bslib::page_fillable(
   title = "BOLDreflectR",
   tags$head(
-    tags$link(rel = "stylesheet", type = "text/css", href = "brstyles.css"),
+    # uses asset_url() to load a fresh copy instead of cached
+    tags$link(rel = "stylesheet", type = "text/css", href = asset_url("brstyles.css")),
+    tags$link(rel = "stylesheet", type = "text/css", href = asset_url("viewers.css")),
+    tags$script(src = asset_url("viewer-common.js")),
+    tags$script(src = asset_url("alignment-viewer.js")),
+    tags$script(src = asset_url("tree-viewer.js")),
     tags$script(HTML(r"(
-      $(document).on('blur', '.single-marker .shiny-input-number', function() {
-        Shiny.setInputValue('last_blurred', this.id, {priority: 'event'});
-      });
+      // while the server is busy with a long task (> 0.5 s), block buttons, links and Ctrl+Enter that enqueue more (tabs, scrolling, viewing data still work)
+      (function() {
+        var timer = null, busy = false;
+        var ACTIONS = '.action-button, .shiny-download-link, .easy-button-button';
+        function setBusy(on) { busy = on; document.body.classList.toggle('app-busy', on); }
+        $(document).on('shiny:busy', function() {
+          clearTimeout(timer);
+          timer = setTimeout(function() { setBusy(true); }, 500);
+        });
+        $(document).on('shiny:idle', function() {
+          clearTimeout(timer);
+          setBusy(false);
+        });
+        // only clicks by the user; app's "phantom clicks" (e.g. starting a PDF download) are allowed
+        document.addEventListener('click', function(e) {
+          if (busy && e.isTrusted && e.target.closest && e.target.closest(ACTIONS)) { e.preventDefault(); e.stopPropagation(); }
+        }, true);
+        document.addEventListener('keydown', function(e) {
+          if (busy && e.ctrlKey && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
+        }, true);
+      })();
+      // bottom bar shows the current tab's buttons (tab_data in server.R); done here so it changes as soon as the tab does
+      (function() {
+        var map = {}, all = [], inputs = {};
+        function update() {
+          var b = map[inputs.tabs] || [];
+          if (!Array.isArray(b)) b = b[inputs[b.nav]] || [];
+          b = [].concat(b);
+          all.forEach(function(id) { $('#' + id).removeClass('shinyjs-hide').toggle(b.indexOf(id) >= 0); });
+          $('#table_buttons').toggleClass('bar-empty', b.length === 0);
+        }
+        Shiny.addCustomMessageHandler('tab_buttons', function(m) { map = m.tabs; all = [].concat(m.all); update(); });
+        $(document).on('shiny:inputchanged', function(e) {
+          if (e.name === 'tabs' || e.name === 'div_nav') { inputs[e.name] = e.value; update(); }
+        });
+      })();
+      // Ctrl+Enter starts data retrieval with 'change' event triggered to use latest value of field
       $(document).on('keydown', 'div[data-value=fetchdata] div.tabbable input, div[data-value=fetchdata] div.tabbable textarea', function(e) {
           if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            $(this).trigger('change');
             Shiny.setInputValue('fetch_ctrl_enter', Math.random(), {priority: 'event'});
           }
-        }); 
+        });
+      // sequence length range validation: when a value changes, keep it within the limits and to the correct side of its partner
+      $(document).on('change', '.single-marker input[type=number]', function() {
+        var v = parseFloat(this.value);
+        if (isNaN(v)) return;
+        var isMin = /_min/.test(this.id);
+        var partner = document.getElementById(isMin ? this.id.replace('_min', '_max') : this.id.replace('_max', '_min'));
+        var lo = this.min === '' ? -Infinity : parseFloat(this.min);
+        var hi = this.max === '' ? Infinity : parseFloat(this.max);
+        var fixed = Math.round(Math.min(Math.max(v, lo), hi));
+        var p = partner ? parseFloat(partner.value) : NaN;
+        if (!isNaN(p)) fixed = isMin ? Math.min(fixed, p) : Math.max(fixed, p);
+        if (fixed !== v) {
+          this.value = fixed;
+          $(this).trigger('change');
+        }
+      });
+      // coordinate range validation: slider value is used for search, number boxes are kept in sync with it by the browser
+      (function() {
+        var limits = {lon: 180, lat: 90};
+        function parts(axis) {
+          var slider = $('#node_' + axis + '_range');
+          return {slider: slider, ion: slider.data('ionRangeSlider'),
+                  min: document.getElementById('node_' + axis + '_min'), max: document.getElementById('node_' + axis + '_max')};
+        }
+        // full range is dimmed, since it is ignored in the search
+        function dim(axis, from, to) {
+          $('.coord-range:has(#node_' + axis + '_range)').toggleClass('dim-input', from <= -limits[axis] && to >= limits[axis]);
+        }
+        function fromSlider(axis) {
+          var p = parts(axis);
+          if (!p.ion) return;
+          p.min.value = p.ion.result.from;
+          p.max.value = p.ion.result.to;
+          dim(axis, p.ion.result.from, p.ion.result.to);
+        }
+        function fromBoxes(axis, editedMin) {
+          var p = parts(axis);
+          if (!p.ion) return;
+          var clamp = function(x, fallback) { x = parseFloat(x); return isNaN(x) ? fallback : Math.min(Math.max(x, -limits[axis]), limits[axis]); };
+          var from = clamp(p.min.value, -limits[axis]), to = clamp(p.max.value, limits[axis]);
+          if (from > to) { if (editedMin) from = to; else to = from; }
+          p.min.value = from;
+          p.max.value = to;
+          p.ion.update({from: from, to: to});
+          p.slider.trigger('change');
+          dim(axis, from, to);
+        }
+        ['lon', 'lat'].forEach(function(axis) {
+          $(document).on('change', '#node_' + axis + '_range', function() { fromSlider(axis); });
+          $(document).on('change', '#node_' + axis + '_min', function() { fromBoxes(axis, true); });
+          $(document).on('change', '#node_' + axis + '_max', function() { fromBoxes(axis, false); });
+        });
+        $(document).on('shiny:sessioninitialized', function() {
+          setTimeout(function() { fromSlider('lon'); fromSlider('lat'); }, 0);
+        });
+      })();
       Shiny.addCustomMessageHandler("initLookupMap", function(data) {
         window.mapBySID = {};
         data.forEach(function(row) {
@@ -19,9 +116,33 @@ ui <- bslib::page_fillable(
       });
       Shiny.addCustomMessageHandler("resize_map", function(mapId) {
         setTimeout(function() {
-          var map = HTMLWidgets.find(mapId).getMap();
-          map.invalidateSize();
+          var widget = HTMLWidgets.find(mapId);
+          var map = widget && widget.getMap();
+          if (map) map.invalidateSize();
         }, 100);
+      });
+      Shiny.addCustomMessageHandler("open_path", function(path) {
+        if (!(window.electronAPI && window.electronAPI.openPath)) return;
+        window.electronAPI.openPath(path).then(function(err) {
+          if (err) Shiny.setInputValue('open_path_error', err, {priority: 'event'});
+        });
+      });
+      // copy text to the clipboard (sent by cb() in global.R); outside the desktop app, the browser clipboard is used (only on secure origins such as localhost)
+      Shiny.addCustomMessageHandler("copy_text", function(text) {
+        var copy = (window.electronAPI && window.electronAPI.copyText)
+          ? window.electronAPI.copyText(text)
+          : (navigator.clipboard
+              ? navigator.clipboard.writeText(text)
+              : Promise.reject(new Error('the browser clipboard is not available here')));
+        copy.catch(function(err) {
+          Shiny.setInputValue('clipboard_error', String(err), {priority: 'event'});
+        });
+      });
+      Shiny.addCustomMessageHandler("choose_file", function(opts) {
+        if (!(window.electronAPI && window.electronAPI.openFile)) return;
+        window.electronAPI.openFile({title: opts.title, filters: opts.filters}).then(function(path) {
+          if (path) Shiny.setInputValue(opts.inputId, path, {priority: 'event'});
+        });
       });
       Shiny.addCustomMessageHandler('reset-dt', function(outputId) {
         var tbl = $('#' + outputId).find('table.dataTable').first();
@@ -66,7 +187,7 @@ ui <- bslib::page_fillable(
                           )
                       ),
                       bslib::navset_pill(
-                        id="query_params",
+                        id="query_type",
                         bslib::nav_panel(value="fetch_opts",
                                          "Fetch",
                                          inputGroup(title = "Parameters:",
@@ -236,7 +357,7 @@ ui <- bslib::page_fillable(
                          choices = filter_options(),
                          selected = try(user_config$settings$col_set, silent = TRUE),
                          multiple = TRUE,
-                         options = list(plugins = list("drag_drop"))
+                         options = list(plugins = list("drag_drop", "remove_button"))
           ),
           selectizeInput("filt_seq",
                          "Filter by marker:",
@@ -247,7 +368,8 @@ ui <- bslib::page_fillable(
                               "18S" = "18S",
                               "18S-5P" = "18S-5P"),
                          selected = try(user_config$settings$filt_seq, silent = TRUE),
-                         multiple = TRUE
+                         multiple = TRUE,
+                         options = list(plugins = list("remove_button"))
           ),
           div(class="form-group shiny-input-container",
               actionButton(
@@ -327,6 +449,54 @@ ui <- bslib::page_fillable(
           value="analyze",
           "Analyze",
           icon = bsicons::bs_icon("graph-up"),
+          inputGroup(title = "Sequence alignment",
+                     groupId = "aln-opts",
+                     alignment_options("aln"),
+                     div(actionButton("aln_btn", "Align"))),
+          inputGroup(title = "Neighbour-joining tree",
+                     groupId = "tree-opts",
+                     # marker is set to match alignment marker and disabled while "Use current alignment" is checked
+                     alignment_marker_input("tree"),
+                     selectInput("tree_model", "Distance model:",
+                                 list("Kimura 2-parameter (K2P)" = "K80",
+                                      "p-distance" = "raw",
+                                      "Tamura-Nei (TN93)" = "TN93")),
+                     conditionalPanel("!input.tree_from_aln", alignment_method_inputs("tree")),
+                     # disabled and unchecked while there is no alignment; also unchecked automatically when the filtered records change
+                     checkboxInput("tree_from_aln",
+                                   div("Use current alignment",
+                                       bslib::tooltip(
+                                         icon("circle-question"),
+                                         "Build the tree using the alignment from the Alignment tab, including any manual edits.")),
+                                   value = FALSE),
+                     # shown once BIN reps have been selected (server.R)
+                     hidden(div(id = "tree_bin_reps_wrap",
+                                checkboxInput("tree_bin_reps",
+                                              div("BIN representatives only",
+                                                  bslib::tooltip(
+                                                    icon("circle-question"),
+                                                    "Build the tree from the records in the BIN reps tab (plus its table filters). With 'Use current alignment' checked, their sequences are taken from the existing alignment.")),
+                                              value = FALSE))),
+                     checkboxInput("tree_collapse",
+                                   div("Collapse identical sequences",
+                                       bslib::tooltip(
+                                         icon("circle-question"),
+                                         "Build the tree from unique sequences only, then add identical sequences back as zero-length tips. Much faster for large datasets (e.g. 5,800 COI barcodes: about 1 minute instead of 9), but approximate, because NJ gives some weight to every copy; arrangement of tips may differ slightly.")),
+                                   value = FALSE),
+                     checkboxInput("tree_midpoint", "Midpoint root", value = TRUE),
+                     # tip labels and colours can be changed after the tree is built (server.R)
+                     tree_label_input("tree_labels",
+                                      div("Tip labels:",
+                                          bslib::tooltip(
+                                            icon("circle-question"),
+                                            "Labels can also be modified on the live tree after it is built. Default tip labels can be changed in Settings."))),
+                     selectInput("tree_colour",
+                                 div("Colour by:",
+                                     bslib::tooltip(
+                                       icon("circle-question"),
+                                       "Colour tip labels (and uniform clusters) by one of the label fields; tips without a value are grey (colours are reused after 64 values). Can also be modified on the live tree after it is built.")),
+                                 choices = c("None" = "none")),
+                     div(actionButton("tree_btn", "Build tree"))),
           inputGroup(title = tagList("Diversity profile", actionLink("div_profile_info", icon("circle-info"))),
                      groupId = "div-analysis",
                      div(id = "div-analysis-opts",
@@ -363,7 +533,8 @@ ui <- bslib::page_fillable(
                                            "Preston plot" = "preston",
                                            "Beta diversity index" = "beta"),
                                       selected = c("rarefy", "shannon", "preston", "beta"),
-                                      multiple = TRUE),
+                                      multiple = TRUE,
+                                      options = list(plugins = list("remove_button"))),
                        checkboxInput("div_rare_by_site", 
                                      div("Perform rarefaction for all sites",
                                          bslib::tooltip(
@@ -482,11 +653,13 @@ ui <- bslib::page_fillable(
                                                                           "Morphology and sequence based", "Image based",
                                                                           "Image and sequence based", "Other sequence based approach", "Other"),
                                                            selected = "Morphology",
-                                                           multiple = TRUE),
+                                                           multiple = TRUE,
+                                                           options = list(plugins = list("remove_button"))),
                              "bin_rep_inst" = selectizeInput("bin_rep_inst_opt", "Preferred institute(s)",
                                                              choices = list("Centre for Biodiversity Genomics"),
                                                              selected = "Centre for Biodiversity Genomics",
-                                                             multiple = TRUE),
+                                                             multiple = TRUE,
+                                                             options = list(plugins = list("remove_button"))),
                              "bin_rep_date" = selectInput("bin_rep_date_opt", "Collection date", choices = list("latest", "oldest")),
                              "bin_rep_up" = selectInput("bin_rep_up_opt", "Sequence upload date", choices = list("latest", "oldest"))
                            )
@@ -516,19 +689,34 @@ ui <- bslib::page_fillable(
             actionLink("reset_tbl", "Reset filters"),
             DT::dataTableOutput("data_table") |> withSpinner(color="#aaaaaa", type=5, size=0.6)))
           )),
+      # button row with copy buttons on the left, save buttons on the right; buttons for each tab listed in tab_data (server.R)
       hidden(div(id = "table_buttons",
                  class="testclass",
                  div(id = "copy_buttons",
                      actionButton("copy_fasta", "Copy FASTA", icon = icon("copy")),
                      downloadButton("save_fasta", "Save FASTA"),
-                     actionButton("copy_table", "Copy table", icon = icon("copy"))),
+                     actionButton("copy_table", "Copy table", icon = icon("copy")),
+                     # alignment viewer buttons (these call the viewer in www/alignment-viewer.js)
+                     hidden(actionButton("aln_copy_sel", "Copy selected", icon = icon("copy"),
+                                         onclick = "BRAlignmentViewer.call('copySelection')")),
+                     hidden(actionButton("aln_copy_all", "Copy alignment", icon = icon("copy"),
+                                         onclick = "BRAlignmentViewer.call('copyAll')"))),
                  div(id = "save_buttons",
                      actionButton("save_dtpkg", "", icon = bsicons::bs_icon("database-fill-add")),
+                     # group labels used for tree tab
+                     hidden(span(id = "btn_label_data", class = "bar-label", "Data:")),
                      downloadButton("save_tsv", "TSV"),
                      downloadButton("save_csv", "CSV"),
                      downloadButton("save_xlsx", "XLSX"),
-                     actionButton("open_xlsx", "Open XLSX", icon = icon("file-excel"))))
-      ),
+                     actionButton("open_xlsx", "Open XLSX", icon = icon("file-excel")),
+                     hidden(actionButton("aln_save", "Save FASTA", icon = icon("download"),
+                                         onclick = "BRAlignmentViewer.call('saveFasta')")),
+                     # tree PDF download creates the PDF first, then uses the always-hidden 'tree_pdf_dl' button to download the finished file
+                     hidden(span(id = "btn_label_tree", class = "bar-label", "Tree:")),
+                     hidden(actionButton("tree_pdf", "PDF", icon = icon("download"))),
+                     hidden(downloadButton("tree_pdf_dl", "")),
+                     hidden(downloadButton("tree_newick", "Newick")))
+      )),
     width = 9))
   )
 )

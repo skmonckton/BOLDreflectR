@@ -216,7 +216,7 @@ app.on("ready", async () => {
   await appState.init(); // find a free port (in case of other running Shiny apps)
 
   // Clear electron cache (avoids loading app with cached styles from a previous version)
-  await session.defaultSession.clearCache();
+  const cacheClearing = session.defaultSession.clearCache();
 
   // Set a content security policy
   session.defaultSession.webRequest.onHeadersReceived((_, callback) => {
@@ -265,8 +265,8 @@ app.on("ready", async () => {
   });
 
   // Use WindowManager for window and splash screen creation
-  const createWindow = (shinyUrl) =>
-    WindowManager.createWindow(appState, shinyUrl);
+  const createWindow = (shinyUrl, bounds) =>
+    WindowManager.createWindow(appState, shinyUrl, bounds);
   const createLoadingSplashScreen = () =>
     WindowManager.createLoadingSplashScreen(appState);
   const createErrorScreen = () => WindowManager.createErrorScreen(appState);
@@ -314,6 +314,7 @@ app.on("ready", async () => {
     notifyIfUpdates();
   }
 
+  await cacheClearing;
   try {
     await tryStartWebserver(
       0,
@@ -321,7 +322,8 @@ app.on("ready", async () => {
       onErrorStartup,
       onErrorLater,
       (url) => {
-        createWindow(url);
+        const splashBounds = appState.loadingSplashScreen.getBounds();
+        createWindow(url, splashBounds);
         appState.loadingSplashScreen.destroy();
         appState.setLoadingSplashScreen(null);
         appState.mainWindow.show();

@@ -4,7 +4,7 @@ const { name } = require("./package.json");
 
 module.exports = {
   packagerConfig: {
-    icon: "assets/icon",
+    icon: "./assets/icon",
     quiet: false,
     ignore: [
       /^\/dev/,
@@ -34,6 +34,7 @@ module.exports = {
       platforms: ["win32"],
       config: {
         setupIcon: "assets/icon.ico",
+        iconUrl: "https://raw.githubusercontent.com/skmonckton/BOLDreflectR/refs/heads/main/assets/icon.ico",
         loadingGif: "assets/install-spinner.gif"
       }
     },

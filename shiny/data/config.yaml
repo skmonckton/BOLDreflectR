@@ -482,7 +482,7 @@ queryterms:
     fields: marker_code
   identified.by:
     name: Identified by
-    fields: identified.by
+    fields: identified_by
   biogeo.cat:
     name: Geography
     fields:
@@ -863,3 +863,20 @@ fasta_ex:
   ecoregion: Okanogan_dry_forests
   biome: Temperate_Conifer_Forest_simplify-0.001_buffered-0.018
   realm: Nearctic
+# default user settings (Settings panel), used for any setting not yet saved in the user's user_config.yaml
+settings:
+  fasta_head:
+  - processid
+  - marker_code
+  col_set: ~
+  filt_seq: ~
+  collapse_mrkrs: no
+  include_nts: no
+  max_seqs: 2000
+  tree_labels:
+  - identification
+  - tip_number
+  - processid
+  - bin_uri
+  pdf_tips: 90
+  tree_incomparable: drop

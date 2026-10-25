@@ -4,11 +4,13 @@ const ErrorHandler = require("./error-handler");
 const path = require("path");
 
 // Create the main window for the Shiny app
-function createWindow(appState, shinyUrl) {
+function createWindow(appState, shinyUrl, bounds) {
   return ErrorHandler.handleSyncError("createWindow", () => {
     const mainWindow = new BrowserWindow({
-      width: appState.config.mainWindow.width,
-      height: appState.config.mainWindow.height,
+      width:  bounds ? bounds.width  : appState.config.mainWindow.width,
+      height: bounds ? bounds.height : appState.config.mainWindow.height,
+      x:      bounds ? bounds.x      : undefined,
+      y:      bounds ? bounds.y      : undefined,
       show: false,
       autoHideMenuBar: true,
       webPreferences: {
