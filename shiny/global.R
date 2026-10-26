@@ -245,6 +245,30 @@ copy_text_native <- function(text, max.size = 200 * 1000, os = Sys.info()[["sysn
 
 config <- read_yaml("data/config.yaml", readLines.warn=FALSE)
 
+# labels for fields from config (fields not listed keep their own names)
+field_labels <- unlist(config$fieldsets$all)
+field_label <- function(fields) {
+  labels <- names(field_labels)[match(fields, field_labels)]
+  ifelse(is.na(labels), fields, labels)
+}
+# choices for select inputs (verbatim fields last)
+field_choices <- function(fields) {
+  labels <- field_label(fields)
+  o <- order(startsWith(labels, "Verbatim"))
+  stats::setNames(as.list(fields[o]), labels[o])
+}
+
+# summary options: common fields first, then the rest
+summarize_by_choices <- function(fields = unlist(config$fieldsets$bcdm)) {
+  common <- c("identification", "bin_uri", "id_date_parsed", "country.ocean")
+  list(
+    "Taxonomy" = list("Taxonomic summary" = "tax_summary"),
+    "Unique values - selected fields" = c(field_choices(common[1:3]), list("Projects" = "projects", "Datasets" = "datasets"),
+                                          field_choices(common[4])),
+    "Unique values - all fields" = field_choices(setdiff(fields, c(common, "project_code", "bold_recordset_code_arr", "pre_md5hash")))
+  )
+}
+
 # initialize user_config file in user data directory
 user_config <- if(file.exists(file.path(user_data_path,"user_config.yaml"))) {
   read_yaml(file.path(user_data_path,"user_config.yaml"))
@@ -316,23 +340,24 @@ alignment_method_inputs <- function(prefix) {
 }
 alignment_options <- function(prefix) tagList(alignment_marker_input(prefix), alignment_method_inputs(prefix))
 
-# fields for tree tip labels (sequences, coordinates, array/list fields excluded; parsed fields added)
-tree_label_common <- c("Process ID" = "processid", "Sample ID" = "sampleid", "Tip number" = "tip_number",
-                       "BIN" = "bin_uri", "Sequence length" = "nuc_basecount",
-                       "Country/ocean" = "country.ocean", "Province/state" = "province.state")
-tree_label_fields <- list(
-  "Commonly used fields" = tree_label_common,
-  "Other fields" = c(
-    unlist(config$fieldsets$bcdm)[!unlist(config$fieldsets$bcdm) %in%
-      c(tree_label_common, "marker_code", "nuc", "coord", "coord_accuracy", "primers_forward", "primers_reverse", "bold_recordset_code_arr")],
-    "Project code" = "project_code", "Identification date" = "id_date_parsed", "Latitude" = "lat", "Longitude" = "lon")
-)
-tree_label_names <- stats::setNames(names(unlist(unname(tree_label_fields))), unlist(unname(tree_label_fields)))
+# fields for tree tip labels
+tree_label_common <- c("processid", "sampleid", "tip_number", "bin_uri", "nuc_basecount", "country.ocean", "province.state")
+tree_label_names <- c(tip_number = "Tip number", stats::setNames(names(field_labels), field_labels))
+tree_label_other <- unlist(field_choices(setdiff(field_labels, c(
+  tree_label_common, "marker_code", "nuc", "coord", "coord_accuracy", "primers_forward", "primers_reverse",
+  "bold_recordset_code_arr", "location.verbatim_gps_accuracy", "location.verbatim_elev_accuracy",
+  "location.verbatim_depth_accuracy"))), use.names = FALSE)
+# when data is available, only fields that have at least one value are offered
+tree_label_fields <- function(filled = NULL) {
+  keep <- function(f) if (is.null(filled)) f else f[f %in% c("tip_number", filled)]
+  groups <- list("Commonly used fields" = keep(tree_label_common), "Other fields" = keep(tree_label_other))
+  lapply(groups[lengths(groups) > 0], function(f) stats::setNames(as.list(f), tree_label_names[f]))
+}
 
 # tip label input starts with the saved default
 # note: selectize shows preselected items in option order, so the chosen order is passed through selectize's `items` option
 tree_label_input <- function(id, label) {
-  selectizeInput(id, label, choices = tree_label_fields, selected = user_config$settings$tree_labels, multiple = TRUE,
+  selectizeInput(id, label, choices = tree_label_fields(), selected = user_config$settings$tree_labels, multiple = TRUE,
                  options = list(plugins = list("drag_drop", "remove_button"), items = as.list(user_config$settings$tree_labels)))
 }
 
@@ -376,7 +401,7 @@ filter_options <- function(include_verbatim = TRUE) {
          "Parsed fields" = list("Identification date" = "parsed|id_date_parsed",
                                 "Project code" = "parsed|project_code",
                                 "Latitude & longitude" = "parsed|lat|lon"),
-         "All fields" = config$fieldsets$all)
+         "All fields" = field_choices(field_labels))
   } else {
     list("Default" = list("BCDM fields" = "bcdm",
                           "BCDM and parsed fields" = "all"),
@@ -390,7 +415,7 @@ filter_options <- function(include_verbatim = TRUE) {
          "Parsed fields" = list("Identification date" = "parsed|id_date_parsed",
                                 "Project code" = "parsed|project_code",
                                 "Latitude & longitude" = "parsed|lat|lon"),
-         "All fields" = intersect(config$fieldsets$all, c(config$fieldsets$bcdm, config$fieldsets$parsed)))
+         "All fields" = field_choices(intersect(field_labels, unlist(c(config$fieldsets$bcdm, config$fieldsets$parsed)))))
   }
   
 } 
@@ -982,71 +1007,52 @@ order_by_query <- function(data, query) {
   data[row_order]
 }
 
-# check for search terms in retrieved data
-get_query_hits <- function(data = NULL, query) {
-  
-  search_terms <- query[names(config$queryterms)[names(config$queryterms) %in% names(query)]]
+# counts for the overview
+overview_counts <- function(data) {
+  col <- function(name) if (name %in% names(data)) as.character(data[[name]]) else rep(NA_character_, nrow(data))
+  n_unique <- function(x) data.table::uniqueN(x[!empty(x)])
+  pid <- col("processid")
+  bin <- col("bin_uri")
+  species <- col("species")
+  bp <- suppressWarnings(as.numeric(col("nuc_basecount")))
+  seqs <- data.table(marker = col("marker_code"), bp = bp)[!is.na(bp) & bp > 0]
+  seqs[empty(marker), marker := "(no marker)"]
+  list(
+    specimens = n_unique(pid),
+    sequences = nrow(seqs),
+    markers = seqs[, .(sequences = .N, min_bp = min(bp), max_bp = max(bp)), by = marker][order(-sequences)],
+    specimens_with_bins = n_unique(pid[!empty(bin)]),
+    bins = n_unique(bin),
+    species = n_unique(species),
+    species_with_bins = n_unique(species[!empty(bin)]),
+    institutions = n_unique(col("inst"))
+  )
+}
 
-  query_dt <- rbindlist(lapply(names(search_terms), function(field) {
-    data.table(field = field, term = unlist(search_terms[[field]]), found = "NOT FOUND", count = 0)
-  }), fill = TRUE)
-  
-  qfields <- unique(query_dt$field)
-  subheads <- list()
-  tables <- list()
-  
-  for(qfield in qfields) {
-    search_cols <- config$queryterms[[qfield]]$fields
-    qterms <- unique(query_dt[field == qfield, .(term)])
-    
-    lookup_dt <- if(all(search_cols == "bold_recordset_code_arr")) { 
-      data[, .(bold_recordset_code_arr = unique(trimws(trimws(unlist(strsplit(bold_recordset_code_arr, ",")))))), by = .I]  
-    } else {
-      data
-    }
-    
-    matched_terms <- unique(unlist(lapply(search_cols, function(col) {
-      lookup_dt[qterms, on = setNames("term", col), nomatch = NULL][[col]]
-    })))
-    
-    counts_long <- unique(rbindlist(lapply(search_cols, function(col) {
-      count <- lookup_dt[qterms, on = setNames("term", col), .N, by = .EACHI]
-      setnames(count, 1, "term") 
-      return(count)
-    }), fill = TRUE))
-    total_counts <- counts_long[, .(N = sum(N)), by = "term"]
-    total_counts [, field := qfield]
-    
-    query_dt[field == qfield, found := fifelse(term %in% matched_terms, "FOUND", "NOT FOUND")]
-    query_dt[total_counts, on = .(field, term), count := count + i.N]
-    
-    subheads[[qfield]] <- paste0(config$queryterms[[qfield]]$name, ":")
-    tables[[qfield]] <- query_dt[field == qfield, .(term, found, count)]
-  }
-  
-  report <- do.call(tagList, lapply(qfields, function(qfield) {
-    tagList(div(class = "hit_rep_heading", subheads[[qfield]]), 
-            DT::renderDataTable(DT::datatable({
-              tables[[qfield]]
-            },
-            rownames = FALSE,
-            options = list(
-              dom = 'ft',
-              autoWidth = FALSE,
-              paging = FALSE,
-              columnDefs = list(
-                list(className = 'dt-left', width = '20rem', targets = 0), 
-                list(className = 'dt-center', width = '6rem', targets = c(1, 2)
-                )))) |>
-              DT::formatStyle(
-                'found',
-                color = DT::styleEqual(c("FOUND", "NOT FOUND"), c('#33691e', '#c62828')),
-                fontWeight = "500"
-              )))
+# counts of records for each term in query
+query_term_hits <- function(data, query) {
+  qfields <- setdiff(intersect(names(query), names(config$queryterms)), "marker")
+  rbindlist(lapply(qfields, function(qfield) {
+    terms <- unique(trimws(as.character(unlist(query[[qfield]]))))
+    terms <- terms[nzchar(terms)]
+    if (length(terms) == 0) return(NULL)
+    # every searched value of each record
+    values <- rbindlist(lapply(intersect(config$queryterms[[qfield]]$fields, names(data)), function(col) {
+      v <- as.character(data[[col]])
+      if (col == "bold_recordset_code_arr") {
+        v <- strsplit(v, ",", fixed = TRUE)
+        data.table(row = rep(seq_along(v), lengths(v)), value = unlist(v))
+      } else {
+        data.table(row = seq_along(v), value = v)
+      }
     }))
-  
-  list(hits_dt = query_dt,
-       report = report)
+    hits <- if (nrow(values) > 0) unique(values[, .(row, value = tolower(trimws(value)))])[, .(records = .N), by = value] else
+      data.table(value = character(), records = integer())
+    out <- data.table(search = config$queryterms[[qfield]]$name, term = terms,
+                      records = hits$records[match(tolower(terms), hits$value, nomatch = NA)])[is.na(records), records := 0L]
+    out[, found := fifelse(records > 0, "FOUND", "NOT FOUND")]
+    setcolorder(out, c("search", "term", "found", "records"))
+  }))
 }
 
 # retrieve BIN mates

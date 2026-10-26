@@ -1,9 +1,6 @@
 fieldsets:
-  min:
-  - processid
-  - sampleid
-  - bin_uri
-  bcdm:
+  # every field, in display order, with the label shown for it in menus, inputs and labels (tables keep field names)
+  all:
     Process ID: processid
     Sample ID: sampleid
     Field ID: fieldid
@@ -15,7 +12,13 @@ fieldsets:
     BIN created date: bin_created_date
     Collection code: collection_code
     Institution: inst
+    Verbatim collection code: specimendetails.verbatim_collectioncode
+    Verbatim institution: specimendetails.verbatim_depository
     Taxon ID: taxid
+    Taxon: identification
+    Taxon authorship: species_reference
+    ID rank: identification_rank
+    Numeric ID rank: tax_rank.numerical_posit
     Kingdom: kingdom
     Phylum: phylum
     Class: class
@@ -26,182 +29,11 @@ fieldsets:
     Genus: genus
     Species: species
     Subspecies: subspecies
-    Taxon authorship: species_reference
-    Identification: identification
     ID method: identification_method
-    ID rank: identification_rank
     Identifier: identified_by
     Identifier email: identifier_email
     Taxonomy notes: taxonomy_notes
-    Sex: sex
-    Reproduction: reproduction
-    Life stage: life_stage
-    Extra info: short_note
-    Specimen notes: notes
-    Voucher type: voucher_type
-    Tissue type: tissue_type
-    External resource link: specimen_linkout
-    Associated specimens: associated_specimens
-    Associated taxa: associated_taxa
-    Collector(s): collectors
-    Collection date (start): collection_date_start
-    Collection date (end): collection_date_end
-    Collection event: collection_event_id
-    Collection time: collection_time
-    Collection notes: collection_notes
-    Geography ID: geoid
-    Country: country.ocean
-    Country code: country_iso
-    Province/state: province.state
-    Region: region
-    Sector: sector
-    Site: site
-    Site code: site_code
-    Coordinates: coord
-    GPS accuracy: coord_accuracy
-    GPS source: coord_source
-    Elevation: elev
-    Elevation accuracy: elev_accuracy
-    Depth: depth
-    Depth accuracy: depth_accuracy
-    Habitat: habitat
-    Sampling protocol: sampling_protocol
-    Sequence: nuc
-    Base count: nuc_basecount
-    INSDC accession: insdc_acs
-    Funding source: funding_src
-    Marker: marker_code
-    Primer (F): primers_forward
-    Primer (R): primers_reverse
-    Sequencing site: sequence_run_site
-    Sequence uploaded: sequence_upload_date
-    Project/dataset code(s): bold_recordset_code_arr
-    Ecoregion: ecoregion
-    Biome: biome
-    Realm: realm
-    Sovereignty: sovereign_inst
-  all:
-  - processid
-  - sampleid
-  - fieldid
-  - museumid
-  - record_id
-  - specimenid
-  - processid_minted_date
-  - bin_uri
-  - bin_created_date
-  - collection_code
-  - inst
-  - specimendetails.verbatim_collectioncode
-  - specimendetails.verbatim_depository
-  - taxid
-  - identification
-  - species_reference
-  - identification_rank
-  - tax_rank.numerical_posit
-  - kingdom
-  - phylum
-  - class
-  - order
-  - family
-  - subfamily
-  - tribe
-  - genus
-  - species
-  - subspecies
-  - identification_method
-  - identified_by
-  - identifier_email
-  - taxonomy_notes
-  - specimendetails.verbatim_kingdom
-  - specimendetails.verbatim_phylum
-  - specimendetails.verbatim_class
-  - specimendetails.verbatim_order
-  - specimendetails.verbatim_family
-  - specimendetails.verbatim_subfamily
-  - specimendetails.verbatim_tribe
-  - specimendetails.verbatim_genus
-  - specimendetails.verbatim_species
-  - specimendetails.verbatim_subspecies
-  - specimendetails.verbatim_species_reference
-  - specimendetails.verbatim_identification_method
-  - specimendetails.verbatim_identifier
-  - sex
-  - reproduction
-  - life_stage
-  - short_note
-  - notes
-  - voucher_type
-  - specimendetails.verbatim_vouchertype
-  - tissue_type
-  - specimendetails.verbatim_tissuetype
-  - specimen_linkout
-  - associated_specimens
-  - specimendetails.verbatim_associated_specimens
-  - associated_taxa
-  - specimendetails.verbatim_associated_taxa
-  - collectors
-  - collection_date_start
-  - collection_date_end
-  - specimendetails.verbatim_collectiondate
-  - specimendetails.verbatim_collectiondate_start
-  - specimendetails.verbatim_collectiondate_end
-  - collection_event_id
-  - collection_time
-  - collection_notes
-  - geoid
-  - country.ocean
-  - country_iso
-  - province.state
-  - geopol_denorm.country_iso3
-  - location.verbatim_country
-  - location.verbatim_country_iso_alpha3
-  - location.verbatim_province
-  - region
-  - sector
-  - site
-  - site_code
-  - coord
-  - lat
-  - lon
-  - coord_accuracy
-  - coord_source
-  - elev
-  - elev_accuracy
-  - depth
-  - depth_accuracy
-  - location.verbatim_elev
-  - location.verbatim_depth
-  - location.verbatim_coord
-  - location.verbatim_gps_source
-  - location.verbatim_gps_accuracy
-  - location.verbatim_elev_accuracy
-  - location.verbatim_depth_accuracy
-  - habitat
-  - specimendetails.verbatim_habitat
-  - sampling_protocol
-  - specimendetails.verbatim_sampling_protocol
-  - nuc
-  - nuc_basecount
-  - insdc_acs
-  - funding_src
-  - marker_code
-  - primers_forward
-  - primers_reverse
-  - sequence_run_site
-  - sequence_upload_date
-  - project_code
-  - bold_recordset_code_arr
-  - ecoregion
-  - biome
-  - realm
-  - sovereign_inst
-  nonbcdm:
-    Latitude: lat
-    Longitude: lon
-    Verbatim collection code: specimendetails.verbatim_collectioncode
-    Verbatim institution: specimendetails.verbatim_depository
-    Numeric ID rank: tax_rank.numerical_posit
+    Identification date: id_date_parsed
     Verbatim kingdom: specimendetails.verbatim_kingdom
     Verbatim phylum: specimendetails.verbatim_phylum
     Verbatim class: specimendetails.verbatim_class
@@ -215,17 +47,50 @@ fieldsets:
     Verbatim taxon authorship: specimendetails.verbatim_species_reference
     Verbatim identification method: specimendetails.verbatim_identification_method
     Verbatim identifier: specimendetails.verbatim_identifier
+    Sex: sex
+    Reproduction: reproduction
+    Life stage: life_stage
+    Extra info: short_note
+    Specimen notes: notes
+    Voucher type: voucher_type
     Verbatim voucher type: specimendetails.verbatim_vouchertype
+    Tissue type: tissue_type
     Verbatim tissue type: specimendetails.verbatim_tissuetype
+    External resource link: specimen_linkout
+    Associated specimens: associated_specimens
     Verbatim associated specimens: specimendetails.verbatim_associated_specimens
+    Associated taxa: associated_taxa
     Verbatim associated taxa: specimendetails.verbatim_associated_taxa
+    Collector(s): collectors
+    Collection date (start): collection_date_start
+    Collection date (end): collection_date_end
     Verbatim collection date: specimendetails.verbatim_collectiondate
     Verbatim collection date (start): specimendetails.verbatim_collectiondate_start
     Verbatim collection date (end): specimendetails.verbatim_collectiondate_end
-    Country code (ISO): geopol_denorm.country_iso3
+    Collection event: collection_event_id
+    Collection time: collection_time
+    Collection notes: collection_notes
+    Geography ID: geoid
+    Country/Ocean: country.ocean
+    Country code: country_iso
+    Province/State: province.state
+    Country code (ISO alpha-3): geopol_denorm.country_iso3
     Verbatim country/ocean: location.verbatim_country
-    Verbatim country code (ISO): location.verbatim_country_iso_alpha3
+    Verbatim country code (ISO alpha-3): location.verbatim_country_iso_alpha3
     Verbatim province/state: location.verbatim_province
+    Region: region
+    Sector: sector
+    Site: site
+    Site code: site_code
+    Coordinates: coord
+    Latitude: lat
+    Longitude: lon
+    GPS accuracy: coord_accuracy
+    GPS source: coord_source
+    Elevation: elev
+    Elevation accuracy: elev_accuracy
+    Depth: depth
+    Depth accuracy: depth_accuracy
     Verbatim elevation: location.verbatim_elev
     Verbatim depth: location.verbatim_depth
     Verbatim coordinates: location.verbatim_coord
@@ -233,9 +98,107 @@ fieldsets:
     Verbatim GPS accuracy: location.verbatim_gps_accuracy
     Verbatim elevation accuracy: location.verbatim_elev_accuracy
     Verbatim depth accuracy: location.verbatim_depth_accuracy
+    Habitat: habitat
     Verbatim habitat: specimendetails.verbatim_habitat
+    Sampling protocol: sampling_protocol
     Verbatim sampling protocol: specimendetails.verbatim_sampling_protocol
+    Sequence: nuc
+    Sequence length: nuc_basecount
+    INSDC accession: insdc_acs
+    Funding source: funding_src
+    Marker: marker_code
+    Primer (F): primers_forward
+    Primer (R): primers_reverse
+    Sequencing site: sequence_run_site
+    Sequence uploaded: sequence_upload_date
     Project code: project_code
+    Project/dataset code(s): bold_recordset_code_arr
+    Ecoregion: ecoregion
+    Biome: biome
+    Realm: realm
+    Sovereignty: sovereign_inst
+  # field sets: lists of field names
+  min:
+  - processid
+  - sampleid
+  - bin_uri
+  bcdm:
+  - processid
+  - sampleid
+  - fieldid
+  - museumid
+  - record_id
+  - specimenid
+  - processid_minted_date
+  - bin_uri
+  - bin_created_date
+  - collection_code
+  - inst
+  - taxid
+  - kingdom
+  - phylum
+  - class
+  - order
+  - family
+  - subfamily
+  - tribe
+  - genus
+  - species
+  - subspecies
+  - species_reference
+  - identification
+  - identification_method
+  - identification_rank
+  - identified_by
+  - identifier_email
+  - taxonomy_notes
+  - sex
+  - reproduction
+  - life_stage
+  - short_note
+  - notes
+  - voucher_type
+  - tissue_type
+  - specimen_linkout
+  - associated_specimens
+  - associated_taxa
+  - collectors
+  - collection_date_start
+  - collection_date_end
+  - collection_event_id
+  - collection_time
+  - collection_notes
+  - geoid
+  - country.ocean
+  - country_iso
+  - province.state
+  - region
+  - sector
+  - site
+  - site_code
+  - coord
+  - coord_accuracy
+  - coord_source
+  - elev
+  - elev_accuracy
+  - depth
+  - depth_accuracy
+  - habitat
+  - sampling_protocol
+  - nuc
+  - nuc_basecount
+  - insdc_acs
+  - funding_src
+  - marker_code
+  - primers_forward
+  - primers_reverse
+  - sequence_run_site
+  - sequence_upload_date
+  - bold_recordset_code_arr
+  - ecoregion
+  - biome
+  - realm
+  - sovereign_inst
   recset: 
   - project_code
   - bold_recordset_code_arr

@@ -103,7 +103,6 @@ server <- function(input, output, session) {
 
   init_outdata <- list(
     data = NULL,
-    hits = NULL,
     binmates = NULL,
     markers = NULL,
     filt_seq = NULL,
@@ -120,8 +119,8 @@ server <- function(input, output, session) {
 
   # keep track of output tabs
   tab_status <- reactiveValues(
+    overview = FALSE,
     data = FALSE,
-    qhits_tab = FALSE,
     summary = FALSE,
     bin_reps = FALSE,
     consensus_tab = FALSE,
@@ -701,6 +700,14 @@ server <- function(input, output, session) {
     outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if (anyNA(data$marker_code)) "ZZZ"))))
     outdata$data <- data
     outdata$query_info <- pending_query_info
+    if (!tab_status$overview) {
+      bslib::nav_insert(
+        "tabs",
+        target = "data", position = "before", select = FALSE,
+        bslib::nav_panel(id = "overview", value = "overview", "Overview", uiOutput("overview"))
+      )
+      tab_status$overview <- TRUE
+    }
 
     shinyjs::show("table_buttons")
     bslib::accordion_panel_close(id = "optpanels", values = "fetchdata")
@@ -873,27 +880,7 @@ server <- function(input, output, session) {
   # keep summary analysis options updated according to available fields
   observeEvent(outdata$data, {
     req(outdata$data)
-    updateSelectInput(session,
-      "ana_opt",
-      choices = list(
-        "Taxonomy" = list(
-          "Taxonomic summary" = "tax_summary"
-        ),
-        "Unique values - selected fields" = list(
-          "Taxon" = "identification",
-          "BIN" = "bin_uri",
-          "Identification dates (parsed)" = "id_date_parsed",
-          "Projects" = "projects",
-          "Datasets" = "datasets",
-          "Country" = "country.ocean"
-        ),
-        "Unique values - all fields" = as.list(
-          names(outdata$data)[
-            !names(outdata$data) %in% c("identification", "bin_uri", "country.ocean", "id_date_parsed", "project_code")
-          ]
-        )
-      )
-    )
+    updateSelectInput(session, "ana_opt", choices = summarize_by_choices(names(outdata$data)))
   })
 
   user_datapkgs <- reactiveVal(datapkgs)
@@ -1197,7 +1184,7 @@ server <- function(input, output, session) {
     if (is.null(outdata$data) || !isTRUE(input$collapse_mrkrs)) {
       return(character(0))
     }
-    setdiff(names(collapsed_data()), c(config$fieldsets$all, config$fieldsets$parsed))
+    setdiff(names(collapsed_data()), c(field_labels, unlist(config$fieldsets$parsed)))
   })
 
   # reactive object for user-selected fields/column filters
@@ -1295,13 +1282,8 @@ server <- function(input, output, session) {
   # (col_set: optional column selection to show instead of the saved default, e.g. after saving a new column set)
   show_settings_modal <- function(col_set = NULL) {
     header_opt <- isolate(user_config$settings$fasta_head)
-    avail_opts <- config$fieldsets$bcdm[match(
-      c(
-        header_opt,
-        setdiff(names(config$fasta_ex), c(header_opt, "nuc"))
-      ),
-      config$fieldsets$bcdm
-    )]
+    avail_opts <- field_choices(intersect(c(header_opt, setdiff(names(config$fasta_ex), c(header_opt, "nuc"))),
+                                          unlist(config$fieldsets$bcdm)))
     showModal(
       modalDialog(
         title = "Settings",
@@ -1764,26 +1746,66 @@ server <- function(input, output, session) {
     }
   })
 
-  # compute query coverage report
-  observeEvent(input$query_hits_btn, {
+  # overview tab: counts from fetched data and hit report for query terms (hits exclude additional BIN members)
+  binmates_added <- reactive({
+    if (isTRUE(fetch_params$binmates_fetched)) outdata$data$processid %in% outdata$binmates else rep(FALSE, nrow(outdata$data))
+  })
+  term_hits <- reactive({
+    req(outdata$data)
+    query_term_hits(outdata$data[!binmates_added()], fetch_params$query)
+  })
+
+  output$overview <- renderUI({
     req(nrow(outdata$data) > 0)
-    hits <- get_query_hits(data = outdata$data, query = fetch_params$query)
-    outdata$hits <- hits$hits_dt
-    if (!tab_status$qhits_tab) {
-      bslib::nav_insert(
-        "tabs",
-        target = tab_monitor("ins_target", "qhits_tab"), select = TRUE,
-        bslib::nav_panel(
-          id = "qhits_tab",
-          value = "qhits_tab",
-          "Hit report",
-          hits$report
-        )
-      )
-      tab_status$qhits_tab <- TRUE
-    } else {
-      bslib::nav_select(id = "tabs", selected = "qhits_tab")
+    s <- overview_counts(outdata$data)
+    hits <- term_hits()
+    num <- function(x) format(x, big.mark = ",", scientific = FALSE)
+    count <- function(label, value, class = NULL) {
+      tagList(div(class = c("count-label", class), label), div(class = c("count-value", class), num(value)))
     }
+    div(
+      class = "overview",
+      h3("Data source"),
+      p(outdata$query_info$source),
+      h3("Search results"),
+      div(
+        class = "overview-counts",
+        count("Specimens:", s$specimens),
+        count("Sequences:", s$sequences),
+        lapply(seq_len(nrow(s$markers)), function(i) with(s$markers[i], tagList(
+          div(class = "count-label marker", paste0(marker, ":")),
+          div(class = "count-value marker", num(sequences)),
+          div(class = "count-range", sprintf("(%s bp)", if (min_bp == max_bp) num(min_bp) else paste0(num(min_bp), "–", num(max_bp))))
+        ))),
+        count("Specimens with BINs:", s$specimens_with_bins),
+        count("BINs:", s$bins),
+        count("Species:", s$species),
+        count("Species with BINs:", s$species_with_bins),
+        count("Institutions:", s$institutions)
+      ),
+      if (any(binmates_added())) {
+        p(class = "overview-note", sprintf("Includes %s records of additional BIN members.", num(sum(binmates_added()))))
+      },
+      if (nrow(hits) > 0) tagList(
+        h3("Search terms"),
+        lapply(unique(hits$search), function(srch) tagList(
+          div(class = "hit_rep_heading", paste0(srch, ":")),
+          DT::datatable(hits[search == srch, .(term, found, records)],
+            rownames = FALSE, colnames = c("Term", "Found", "Records"),
+            options = list(
+              dom = "ft",
+              autoWidth = FALSE,
+              paging = FALSE,
+              columnDefs = list(
+                list(className = "dt-left", width = "20rem", targets = 0),
+                list(className = "dt-center", width = "6rem", targets = c(1, 2))
+              )
+            )
+          ) |>
+            DT::formatStyle("found", color = DT::styleEqual(c("FOUND", "NOT FOUND"), c("#33691e", "#c62828")), fontWeight = "500")
+        ))
+      )
+    )
   })
 
   # display diversity profile info
@@ -2717,6 +2739,13 @@ server <- function(input, output, session) {
     out[order(tree_order)]
   })
 
+  # tip label options: fields with at least one value in the data
+  observeEvent(outdata$data, {
+    filled <- names(outdata$data)[vapply(outdata$data, function(x) any(!empty(x)), logical(1))]
+    updateSelectizeInput(session, "tree_labels", choices = tree_label_fields(filled),
+                         selected = intersect(isolate(input$tree_labels), c("tip_number", filled)))
+  })
+
   # options to colourize tree follow the chosen label fields (except tip number)
   observeEvent(input$tree_labels, {
     fields <- setdiff(input$tree_labels, "tip_number")
@@ -2858,16 +2887,12 @@ server <- function(input, output, session) {
         radius = 9,
         opacity = 0.3,
         fillOpacity = 0.7,
-        popup = paste0(
-          '<span class="tag">Sample ID:</span><span class="value"><a href="https://bench.boldsystems.org/index.php/MAS_DataRetrieval_OpenSpecimen?selectedrecordid=', utils::URLencode(as.character(data$processid), reserved = TRUE), '" target="_blank">', esc(data$sampleid), "</a></span>",
-          '<span class="tag">Process ID:</span><span class="value">', esc(data$processid), "</span>",
-          '<span class="tag">Identification:</span><span class="value">', esc(data$identification), "</span>",
-          '<span class="tag">Country:</span><span class="value">', esc(data$country.ocean), "</span>",
-          '<span class="tag">Province/State:</span><span class="value">', esc(data$province.state), "</span>",
-          '<span class="tag">Region:</span><span class="value">', esc(data$region), "</span>",
-          '<span class="tag">Sector:</span><span class="value">', esc(data$sector), "</span>",
-          '<span class="tag">Site:</span><span class="value">', esc(data$site), "</span>"
-        ),
+        popup = do.call(paste0, c(
+          list('<span class="tag">', field_label("sampleid"), ':</span><span class="value"><a href="https://bench.boldsystems.org/index.php/MAS_DataRetrieval_OpenSpecimen?selectedrecordid=', utils::URLencode(as.character(data$processid), reserved = TRUE), '" target="_blank">', esc(data$sampleid), "</a></span>"),
+          lapply(c("processid", "identification", "country.ocean", "province.state", "region", "sector", "site"), function(f) {
+            paste0('<span class="tag">', field_label(f), ':</span><span class="value">', esc(data[[f]]), "</span>")
+          })
+        )),
         clusterOptions = if (clustered) leaflet::markerClusterOptions() else NULL
       )
   }
@@ -3475,12 +3500,12 @@ server <- function(input, output, session) {
         current_rows = reactive(input$data_table_rows_all),
         buttons = c("copy_fasta", "save_fasta", "save_dtpkg", table_saves)
       ),
-    qhits_tab =
+    overview =
       list(
-        basename = reactive("query_hit_report_"),
-        output = reactive(outdata$hits),
-        current_rows = reactive(outdata$hits[, .I]),
-        buttons = table_saves
+        basename = reactive("search_terms_"),
+        output = term_hits,
+        current_rows = reactive(seq_len(nrow(term_hits()))),
+        buttons = c("copy_table", table_saves)
       ),
     summary =
       list(

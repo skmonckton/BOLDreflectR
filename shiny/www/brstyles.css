@@ -881,36 +881,90 @@ div#table_area:has(input[type="search"]:not(:placeholder-shown)) a#reset_tbl {
 }
 
 a#reset_tbl:hover {
-  color: #007bc2
+  color: #007bc2;
   border-bottom: #007bc2 solid 1px;
 }
 
-.tab-pane[data-value="qhits_tab"] {
+.tab-pane[data-value="overview"] {
   height: 100%;
   max-height: calc(100vh - (1.5 * 0.95em) - 7.75rem - 4px);
   overflow-y: scroll
 }
 
-.tab-pane[data-value="qhits_tab"] .datatables {
+.overview .overview-counts {
+  display: grid;
+  grid-template-columns: max-content max-content max-content;
+  column-gap: 2rem;
+  row-gap: 0.2rem;
+  margin: 0 0.5rem;
+}
+
+.overview .count-label {
+  grid-column: 1;
+}
+
+.overview .count-value {
+  font-weight: 700;
+  text-align: right;
+}
+
+.overview .count-label.marker {
+  padding-left: 1.2rem;
+}
+
+.overview .count-value.marker {
+  font-weight: 400;
+}
+
+.overview .overview-note {
+  margin: 0.75rem 0.5rem 0;
+  font-style: italic;
+}
+
+.overview h3 {
+  font-size: 1.2rem;
+  font-weight: 500;
+  margin: 1.5rem 0 0.5rem 0.5rem;
+}
+
+.overview p {
+  margin: 0 0.5rem;
+}
+
+.tab-pane[data-value="overview"] .datatables {
   position: relative;
 }
 
-.tab-pane[data-value="qhits_tab"] .dataTables_wrapper {
+.tab-pane[data-value="overview"] .dataTables_wrapper {
   max-height: 50vh;
   overflow-y: scroll;
   margin-bottom: 1.5rem;
 }
 
-.tab-pane[data-value="qhits_tab"] .datatables .dataTables_filter label {
+.tab-pane[data-value="overview"] .datatables .dataTables_filter label {
   position: absolute;
   left: calc(32rem - 4rem - 78px);
   top: -2.5rem;
   font-size: 0.9rem;
 }
 
-.tab-pane[data-value="qhits_tab"] .datatables .dataTables_wrapper .table thead > tr th,
-.tab-pane[data-value="qhits_tab"] .datatables .dataTables_wrapper .table tbody > tr td {
+.tab-pane[data-value="overview"] .datatables .dataTables_wrapper .table thead > tr th,
+.tab-pane[data-value="overview"] .datatables .dataTables_wrapper .table tbody > tr td {
   border-right: none;
+}
+
+.hit_rep_heading {
+  font-size: 1.1rem;
+  width: fit-content;
+  border-bottom: 2px solid #404040;
+  margin: 1rem 0.5rem 0.5rem 0.5rem;
+  padding-bottom: 0.1rem;
+}
+
+.hit_rep_heading:after {
+  content: "";
+  display: inline-block;
+  width: 0.25rem;
 }
 
 .tab-pane[data-value="div_profile"] .nav-link {
@@ -1013,20 +1067,6 @@ a#reset_tbl:hover {
 
 .stat-chip .chip-val {
   font-weight: 700;
-}
-
-.hit_rep_heading {
-  font-size: 1.2rem;
-  width: fit-content;
-  border-bottom: 0.15rem solid black;
-  margin: 1rem 0.5rem 0.5rem 0.5rem;
-  padding: 0 0 0.25rem 0.2rem;
-}
-
-.hit_rep_heading:after {
-  content: "";
-  display: inline-block;
-  width: 1.2rem;
 }
 
 .dtfh-floatingparent.dtfh-floatingparenthead {

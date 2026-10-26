@@ -418,33 +418,11 @@ ui <- bslib::page_fillable(
                      groupId = "sum-opts",
                      selectInput("ana_opt",
                                  "Summarize by:",
-                                 list(
-                                   "Taxonomy" = list(
-                                     "Taxonomic summary" = "tax_summary"),
-                                   "Unique values - selected fields" = list(
-                                     "Taxon" = "identification",
-                                     "BIN" = "bin_uri",
-                                     "Identification dates (parsed)" = "id_date_parsed",
-                                     "Projects" = "projects",
-                                     "Datasets" = "datasets",
-                                     "Country" = "country.ocean"),
-                                   "Unique values - all fields" = config$fieldsets$bcdm[!config$fieldsets$bcdm %in% c("identification","bin_uri","country.ocean","bold_recordset_code_arr")]
-                                 ), multiple = FALSE),
+                                 summarize_by_choices(), multiple = FALSE),
                      div(class="form-group shiny-input-container",
                          actionButton(
                            "ana_btn",
                            "Generate"))),
-          inputGroup(title = "Query hit report",
-                     groupId = "qhits-opts",
-                     div(class="form-group",
-                         "Generate a report of query terms that were found or not:",
-                         bslib::tooltip(
-                           icon("circle-question"),
-                           HTML("This reflects the original query only, not additional BIN members."))),
-                     div(actionButton(
-                       "query_hits_btn",
-                       "Generate"
-                     ))),
           inputGroup(title = "Distribution map",
                      groupId = "map-opts",
                      div(class="form-group",
