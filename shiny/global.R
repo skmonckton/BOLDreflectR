@@ -852,16 +852,16 @@ list_recordsets <- function(data, set_type, list_by) {
 summarize_table <- function(data, sum_type, list_by) {
   if (sum_type %in% c("projects","datasets")){
     list_recordsets(data, sum_type, list_by)
-  } else if (sum_type == "tax_summary") { 
-    by_id <- unique(setorderv(unique(data, by = list_by)[, .(identification, .N), by = ranks], ranks))
+  } else if (sum_type == "tax_summary") {
+    # each taxon counts its own records and those of all descendants (empty ranks are skipped)
+    taxa <- unique(data, by = list_by)[, ..ranks]
+    taxa[, (ranks) := lapply(.SD, function(x) { x <- as.character(x); x[empty(x)] <- NA_character_; x })]
     tax_count <- rbindlist(lapply(seq_along(ranks), function(i) {
-      r <- ranks[i]
-      by_rank <- by_id[, .(count = sum(N)), by = eval(ranks[seq_len(i)])]
-      by_rank[get(r) %in% data$identification]
+      taxa[!is.na(get(ranks[i])), .(rank = ranks[i], count = .N), by = c(ranks[seq_len(i)])]
     }), fill = TRUE)
-    tax_count[, (ranks) := lapply(.SD, as.character), .SDcols = ranks]
     tax_count[, taxon := fcoalesce(.SD), .SDcols = rev(ranks)]
-    setorderv(tax_count, ranks)[, .SD, .SDcols = c("taxon", ranks, "count")]
+    # parents first (missing lower ranks sort first)
+    setorderv(tax_count, ranks, na.last = FALSE)[, .SD, .SDcols = c("taxon", "rank", ranks, "count")]
   } else if (is.null(sum_type)) {
     data
   } else {
@@ -877,6 +877,32 @@ summarize_table <- function(data, sum_type, list_by) {
                                      }
                                  }), .SDcols = char_cols][, .(count = .N), by = sum_type]
   }
+}
+
+# taxonomic summary shown as a collapsible tree (collapsing and search are handled in www/tax-tree.js)
+tax_tree <- function(tax_count) {
+  depth <- rowSums(!is.na(tax_count[, ..ranks]))
+  has_children <- c(depth[-1] > depth[-length(depth)], FALSE)
+  rows <- sprintf(
+    '<div class="tax-row%s" data-depth="%d" data-name="%s" style="padding-left: %.1frem"><span class="tax-toggle"></span><span class="tax-name rank-%s">%s</span><span class="tax-rank">%s</span><span class="tax-count">%s</span></div>',
+    ifelse(has_children, " has-children", ""), depth, htmltools::htmlEscape(tolower(tax_count$taxon), attribute = TRUE),
+    (depth - 1) * 1.25, tax_count$rank, htmltools::htmlEscape(tax_count$taxon), tax_count$rank,
+    format(tax_count$count, big.mark = ",", trim = TRUE)
+  )
+  div(
+    class = "tax-tree",
+    div(
+      class = "tax-toolbar",
+      tags$button(type = "button", class = "btn btn-default btn-sm", `data-tax-action` = "expand",
+                  icon("square-plus"), "Expand all"),
+      tags$button(type = "button", class = "btn btn-default btn-sm", `data-tax-action` = "collapse",
+                  icon("square-minus"), "Collapse all"),
+      span(class = "tax-status", paste(format(nrow(tax_count), big.mark = ","), "taxa")),
+      tags$input(type = "search", class = "tax-search form-control", placeholder = "Search taxa",
+                 title = "Shows matching taxa with their parents and descendants")
+    ),
+    div(class = "tax-rows", HTML(paste(rows, collapse = "")))
+  )
 }
 
 # extract identification dates from taxonomy_notes

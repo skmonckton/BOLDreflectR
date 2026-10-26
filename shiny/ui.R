@@ -7,6 +7,7 @@ ui <- bslib::page_fillable(
     tags$script(src = asset_url("viewer-common.js")),
     tags$script(src = asset_url("alignment-viewer.js")),
     tags$script(src = asset_url("tree-viewer.js")),
+    tags$script(src = asset_url("tax-tree.js")),
     tags$script(HTML(r"(
       // while the server is busy with a long task (> 0.5 s), block buttons, links and Ctrl+Enter that enqueue more (tabs, scrolling, viewing data still work)
       (function() {

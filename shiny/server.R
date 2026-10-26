@@ -108,6 +108,7 @@ server <- function(input, output, session) {
     filt_seq = NULL,
     filt_seq_idx = NULL,
     summary = NULL,
+    summary_type = NULL,
     bin_reps = NULL,
     div_profile = NULL,
     bin_consensus = NULL,
@@ -1726,6 +1727,8 @@ server <- function(input, output, session) {
     withInfProgress(message = "Generating summary...", {
       outdata$summary <- summarize_table(shown_data(), input$ana_opt, computed_fields()$id_field)
     })
+    outdata$summary_type <- input$ana_opt
+    shinyjs::runjs("Shiny.setInputValue('tax_tree_rows', null);")
     if (!tab_status$summary) {
       bslib::nav_insert(
         "tabs",
@@ -1736,7 +1739,7 @@ server <- function(input, output, session) {
           "Summary",
           div(
             id = "sum_table_area",
-            DT::dataTableOutput("summary_table") |> withSpinner(color = "#aaaaaa", type = 5, size = 0.6)
+            uiOutput("summary_view")
           )
         )
       )
@@ -2855,6 +2858,8 @@ server <- function(input, output, session) {
     if (identical(list(data$processid, clustered), map_pids)) {
       return(invisible())
     }
+    # prevent redraw when switching between clusters and points
+    refit <- !identical(data$processid, map_pids[[1]])
     map_pids <<- list(data$processid, clustered)
     if (nrow(data) == 0) {
       leaflet::leafletProxy("record_map") |>
@@ -2869,15 +2874,13 @@ server <- function(input, output, session) {
       palette = map_colours,
       domain = data$identification
     )
-    leaflet::leafletProxy("record_map") |>
+    map <- leaflet::leafletProxy("record_map") |>
       leaflet::clearMarkers() |>
-      leaflet::clearMarkerClusters() |>
-      leaflet::fitBounds(
-        lng1 = min(data$lon),
-        lat1 = min(data$lat),
-        lng2 = max(data$lon),
-        lat2 = max(data$lat)
-      ) |>
+      leaflet::clearMarkerClusters()
+    if (refit) {
+      map <- leaflet::fitBounds(map, lng1 = min(data$lon), lat1 = min(data$lat), lng2 = max(data$lon), lat2 = max(data$lat))
+    }
+    map |>
       leaflet::addCircleMarkers(
         lat = data$lat,
         lng = data$lon,
@@ -2978,6 +2981,16 @@ server <- function(input, output, session) {
     ),
     server = TRUE
   )
+
+  # render taxonomic summary as a tree, others as tables
+  output$summary_view <- renderUI({
+    req(outdata$summary)
+    if (identical(outdata$summary_type, "tax_summary")) {
+      tax_tree(outdata$summary)
+    } else {
+      DT::dataTableOutput("summary_table") |> withSpinner(color = "#aaaaaa", type = 5, size = 0.6)
+    }
+  })
 
   # summary analysis table
   output$summary_table <- DT::renderDataTable(
@@ -3510,7 +3523,15 @@ server <- function(input, output, session) {
     summary =
       list(
         basename = reactive("summary_"), output = reactive(outdata$summary),
-        current_rows = reactive(input$summary_table_rows_all),
+        current_rows = reactive({
+          if (!identical(outdata$summary_type, "tax_summary")) {
+            input$summary_table_rows_all
+          } else if (is.null(input$tax_tree_rows)) {
+            seq_len(nrow(outdata$summary))
+          } else {
+            unlist(input$tax_tree_rows)
+          }
+        }),
         buttons = c("copy_table", table_saves)
       ),
     div_profile =
