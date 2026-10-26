@@ -104,14 +104,12 @@
   </div>
   <div id="status"></div>
   <script>
-    let electron = require('electron');
-    let failed = false;
-    electron.ipcRenderer.on('start-webserver-event', (event, message) => {
-      if (!failed && message.attempt >= 1) {
-        let el = document.getElementById('status')
-        el.innerHTML = `<p>Loading, please wait...</p>`;
+    // progress comes through preload.js (the page has no Node access)
+    window.electronAPI.onStartupEvent((event) => {
+      if (event && event.attempt >= 1) {
+        document.getElementById('status').textContent = 'Loading, please wait...';
       }
-    })    
+    });
   </script>
 </body>
 </html>

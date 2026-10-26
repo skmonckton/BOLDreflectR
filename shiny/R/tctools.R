@@ -196,6 +196,7 @@ bold.full.search.step1 <- function(taxonomy = NULL,
     )
     # Creating a temp file (Since the API takes a file as an input)
     temp_file_step1 <- tempfile()
+    on.exit(unlink(temp_file_step1), add = TRUE)
     # writing the JSON data to the temp file
     writeLines(
       json_output,
@@ -283,6 +284,7 @@ bold.full.search.step1 <- function(taxonomy = NULL,
   json_content_step1_clean_json <- jsonlite::toJSON(json_content_step1_text, pretty = TRUE)
   # Creating a temp file (Since the API takes a file as an input)
   temp_file_step2 <- tempfile()
+  on.exit(unlink(temp_file_step2), add = TRUE)
   # writing the JSON data to the temp file
   writeLines(
     json_content_step1_clean_json,
@@ -307,7 +309,7 @@ bold.full.search.step1 <- function(taxonomy = NULL,
       result
     },
     error = function(e) {
-      warning("No results found using provided search terms.")
+      warning(paste0("The search could not be completed: ", conditionMessage(e)))
       return(NULL)
     }
   )
@@ -386,42 +388,59 @@ empty <- function(x) {
   (is.na(x) | (x == ""))
 }
 
-tstcode <- function() {
-  tryCatch(
-    {
-      Sys.setenv(GITHUB_PAT = key_get(service = "tctools-GH-PAT"))
-      tryCatch(
-        {
-          tmpfile <- tempfile()
-          httr::content(httr::GET(
-            "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R",
-            httr::add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT")))
-          ), "raw") |> writeBin(tmpfile)
-          return(tmpfile)
-        },
-        error = function(e) {
-          showNotification(paste0("Error accessing test functions: ", e$message), type = "error")
-        }
-      )
-    },
-    error = function(e) {
-      showModal(
-        modalDialog(
-          title = "Test user access",
-          textInput("testkey", "Please input your access token:"),
-          footer = tagList(
-            div(),
-            div(
-              id = "modal_confirm",
-              actionButton("testkey_confirm", "Confirm"),
-              modalButton("Cancel")
-            )
-          ),
-          easyClose = TRUE
+# test functions available to authorized team members
+# for development BR_TEST_FUNCS_PATH can point to a local copy instead
+# WARNING: this is used to insert additional UI and server functions, so modify with care (only source code that you trust)
+test_funcs_url <- "https://raw.githubusercontent.com/Centre-for-Biodiversity-Genomics/CBG-taxonomy/refs/heads/main/Code/bfr_test_func.R"
+
+test_token_modal <- function() {
+  showModal(
+    modalDialog(
+      title = "Test user access",
+      passwordInput("testkey", "Please input your access token:"),
+      footer = tagList(
+        div(),
+        div(
+          id = "modal_confirm",
+          actionButton("testkey_confirm", "Confirm"),
+          modalButton("Cancel")
         )
-      )
-    }
+      ),
+      easyClose = TRUE
+    )
   )
+}
+
+tstcode <- function(token = NULL) {
+  dev_path <- Sys.getenv("BR_TEST_FUNCS_PATH")
+  if (nzchar(dev_path)) {
+    if (file.exists(dev_path)) return(dev_path)
+    showNotification(paste0("Test functions not found at ", dev_path, " (BR_TEST_FUNCS_PATH)."), type = "error")
+    return(NULL)
+  }
+  if (is.null(token)) token <- tryCatch(keyring::key_get(service = "tctools-GH-PAT"), error = function(e) "")
+  if (!nzchar(token)) {
+    test_token_modal()
+    return(NULL)
+  }
+  res <- tryCatch(
+    httr::GET(test_funcs_url, httr::add_headers(Authorization = paste("token", token)), httr::timeout(30)),
+    error = function(e) e
+  )
+  if (inherits(res, "error")) {
+    showNotification(paste0("Could not load the test functions: ", conditionMessage(res)), type = "error")
+    return(NULL)
+  }
+  if (httr::status_code(res) != 200) {
+    # GitHub answers 404 for a private file when the token isn't authorised
+    showNotification(paste0("Could not load the test functions (HTTP ", httr::status_code(res), ")."), type = "error")
+    if (httr::status_code(res) %in% c(401, 403, 404)) test_token_modal()
+    return(NULL)
+  }
+  Sys.setenv(GITHUB_PAT = token)
+  path <- tempfile(fileext = ".R")
+  writeBin(httr::content(res, "raw"), path)
+  path
 }
 
 tstjs <- tags$script(HTML(
@@ -443,9 +462,9 @@ get_portal_bin_stats <- function(bins, shiny = FALSE) {
   wait <- 3
   # function to run taxonomy query (seemingly most accurate count of public records from portal API)
   get_public_count <- function(bin) {
-    req <- httr::RETRY("GET",
-      url = paste0("https://portal.boldsystems.org/api/summary?query=bin:uri:", bin, "&fields=marker_code&reduce_operation=count"),
-      httr::add_headers("accept" = "application/json"), body = FALSE,
+    req <- tryCatch(httr::RETRY("GET",
+      url = paste0("https://portal.boldsystems.org/api/summary?query=bin:uri:", utils::URLencode(bin, reserved = TRUE), "&fields=marker_code&reduce_operation=count"),
+      httr::add_headers("accept" = "application/json"), httr::timeout(60), body = FALSE,
       times = 5,
       pause_min = wait,
       pause_base = wait,
@@ -453,8 +472,8 @@ get_portal_bin_stats <- function(bins, shiny = FALSE) {
       quiet = TRUE,
       terminate_on = 200,
       terminate_on_success = FALSE
-    )
-    if (req$status_code != 200) {
+    ), error = function(e) NULL)
+    if (is.null(req) || req$status_code != 200) {
       return(NA)
     }
     json_preprocess <- suppressMessages(suppressWarnings(httr::content(req, "text")))
@@ -463,9 +482,9 @@ get_portal_bin_stats <- function(bins, shiny = FALSE) {
   }
   # function to get summary by BIN
   bin_query <- function(bin) {
-    url <- paste0("https://portal.boldsystems.org/api/ancillary?collection=barcodeclusters&key=barcodecluster.uri&values=", bin)
-    req <- httr::RETRY("GET",
-      url = url, httr::add_headers("accept" = "application/json"), body = FALSE,
+    url <- paste0("https://portal.boldsystems.org/api/ancillary?collection=barcodeclusters&key=barcodecluster.uri&values=", utils::URLencode(bin, reserved = TRUE))
+    req <- tryCatch(httr::RETRY("GET",
+      url = url, httr::add_headers("accept" = "application/json"), httr::timeout(60), body = FALSE,
       times = 5,
       pause_min = wait,
       pause_base = wait,
@@ -473,8 +492,8 @@ get_portal_bin_stats <- function(bins, shiny = FALSE) {
       quiet = TRUE,
       terminate_on = 200,
       terminate_on_success = FALSE
-    )
-    if (req$status_code != 200) {
+    ), error = function(e) NULL)
+    if (is.null(req) || req$status_code != 200) {
       return(list())
     }
     json_preprocess <- suppressMessages(suppressWarnings(httr::content(req, "text")))
@@ -500,7 +519,7 @@ get_portal_bin_stats <- function(bins, shiny = FALSE) {
     if (failed > 0) warning(paste0("Portal stats retrieval timed out for ", failed, " BINs."))
     bin_resp[, .(
       bin_uri = bin_resp[["barcodecluster.uri"]],
-      member_count = bin_resp[["record_count"]],
+      bold_member_count = bin_resp[["record_count"]],
       private_members = bin_resp[["record_count"]] - bin_resp[["marker_code.count"]],
       public_members = bin_resp[["marker_code.count"]],
       avg_dist = bin_resp[["barcodecluster.avgdist"]],

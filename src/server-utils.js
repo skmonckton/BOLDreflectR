@@ -1,27 +1,19 @@
-const ErrorHandler = require("./error-handler");
-
 class ServerUtils {
+  // false until the server answers (not logged as an error: it's expected while R starts)
   static async checkServerStatus(url, timeout = 3000) {
-    return ErrorHandler.handleAsyncError(
-      "ServerUtils.checkServerStatus",
-      async () => {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-        try {
-          const res = await fetch(url, {
-            method: "HEAD",
-            signal: controller.signal,
-          });
-          clearTimeout(timeoutId);
-          return res.status === 200;
-        } catch (error) {
-          clearTimeout(timeoutId);
-          throw error;
-        }
-      },
-      false
-    );
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    try {
+      const res = await fetch(url, {
+        method: "HEAD",
+        signal: controller.signal,
+      });
+      return res.status === 200;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   static async waitFor(milliseconds) {
@@ -36,13 +28,18 @@ class ServerUtils {
     initialDelay = 2000,
     maxDelay = 10000,
     backoffFactor = 1.5,
-    statusCallback = null
+    statusCallback = null,
+    shouldStop = null
   ) {
     let currentDelay = initialDelay;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       if (attempt > 1) {
         await this.waitFor(currentDelay);
+      }
+      // no point waiting for a server whose process has ended
+      if (shouldStop && shouldStop()) {
+        return false;
       }
 
       const isUp = await this.checkServerStatus(url);
@@ -91,7 +88,8 @@ class ServerUtils {
   static async waitForServerSmart(
     url,
     strategy = "exponential",
-    statusCallback = null
+    statusCallback = null,
+    shouldStop = null
   ) {
     switch (strategy) {
       default:
@@ -102,7 +100,8 @@ class ServerUtils {
           2000,
           10000,
           1.5,
-          statusCallback
+          statusCallback,
+          shouldStop
         );
       case "jitter":
         return await this.waitForServerWithJitter(url);

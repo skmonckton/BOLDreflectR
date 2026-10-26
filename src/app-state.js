@@ -10,6 +10,8 @@ class AppState {
     this.mainWindow = null;
     this.loadingSplashScreen = null;
     this.errorSplashScreen = null;
+    // per-launch secret sent with the window's requests to the R server; R rejects sessions without it (server.R)
+    this.launchToken = require("crypto").randomBytes(32).toString("hex");
 
     // Configuration
     let rPath = "r-nhyris";
@@ -18,9 +20,9 @@ class AppState {
       rPath: rPath,
       backgroundColor: "#cccccc",
       serverPort: 1124,
-      maxRetryAttempts: 100,
+      // attempts after the first to start R; each waits up to ~75 s for the server (server-utils.js)
+      maxRetryAttempts: 2,
       serverCheckTimeout: 3000,
-      serverStartTimeout: 10000,
       mainWindow: {
         width: 1600,
         height: 900,
@@ -38,6 +40,7 @@ class AppState {
       },
       shinyAppPath: path.join(app.getAppPath(), "shiny"),
       userDataPath: path.join(app.getPath('userData')),
+      logPath: path.join(app.getPath('userData'), "logs"),
     };
   }
 

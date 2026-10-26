@@ -51,7 +51,7 @@ fieldsets:
     Collection notes: collection_notes
     Geography ID: geoid
     Country: country.ocean
-    Country ISO code: country_iso
+    Country code: country_iso
     Province/state: province.state
     Region: region
     Sector: sector
@@ -197,45 +197,45 @@ fieldsets:
   - realm
   - sovereign_inst
   nonbcdm:
-  - lat
-  - lon
-  - specimendetails.verbatim_collectioncode
-  - specimendetails.verbatim_depository
-  - tax_rank.numerical_posit
-  - specimendetails.verbatim_kingdom
-  - specimendetails.verbatim_phylum
-  - specimendetails.verbatim_class
-  - specimendetails.verbatim_order
-  - specimendetails.verbatim_family
-  - specimendetails.verbatim_subfamily
-  - specimendetails.verbatim_tribe
-  - specimendetails.verbatim_genus
-  - specimendetails.verbatim_species
-  - specimendetails.verbatim_subspecies
-  - specimendetails.verbatim_species_reference
-  - specimendetails.verbatim_identification_method
-  - specimendetails.verbatim_identifier
-  - specimendetails.verbatim_vouchertype
-  - specimendetails.verbatim_tissuetype
-  - specimendetails.verbatim_associated_specimens
-  - specimendetails.verbatim_associated_taxa
-  - specimendetails.verbatim_collectiondate
-  - specimendetails.verbatim_collectiondate_start
-  - specimendetails.verbatim_collectiondate_end
-  - geopol_denorm.country_iso3
-  - location.verbatim_country
-  - location.verbatim_country_iso_alpha3
-  - location.verbatim_province
-  - location.verbatim_elev
-  - location.verbatim_depth
-  - location.verbatim_coord
-  - location.verbatim_gps_source
-  - location.verbatim_gps_accuracy
-  - location.verbatim_elev_accuracy
-  - location.verbatim_depth_accuracy
-  - specimendetails.verbatim_habitat
-  - specimendetails.verbatim_sampling_protocol
-  - project_code
+    Latitude: lat
+    Longitude: lon
+    Verbatim collection code: specimendetails.verbatim_collectioncode
+    Verbatim institution: specimendetails.verbatim_depository
+    Numeric ID rank: tax_rank.numerical_posit
+    Verbatim kingdom: specimendetails.verbatim_kingdom
+    Verbatim phylum: specimendetails.verbatim_phylum
+    Verbatim class: specimendetails.verbatim_class
+    Verbatim order: specimendetails.verbatim_order
+    Verbatim family: specimendetails.verbatim_family
+    Verbatim subfamily: specimendetails.verbatim_subfamily
+    Verbatim tribe: specimendetails.verbatim_tribe
+    Verbatim genus: specimendetails.verbatim_genus
+    Verbatim species: specimendetails.verbatim_species
+    Verbatim subspecies: specimendetails.verbatim_subspecies
+    Verbatim taxon authorship: specimendetails.verbatim_species_reference
+    Verbatim identification method: specimendetails.verbatim_identification_method
+    Verbatim identifier: specimendetails.verbatim_identifier
+    Verbatim voucher type: specimendetails.verbatim_vouchertype
+    Verbatim tissue type: specimendetails.verbatim_tissuetype
+    Verbatim associated specimens: specimendetails.verbatim_associated_specimens
+    Verbatim associated taxa: specimendetails.verbatim_associated_taxa
+    Verbatim collection date: specimendetails.verbatim_collectiondate
+    Verbatim collection date (start): specimendetails.verbatim_collectiondate_start
+    Verbatim collection date (end): specimendetails.verbatim_collectiondate_end
+    Country code (ISO): geopol_denorm.country_iso3
+    Verbatim country/ocean: location.verbatim_country
+    Verbatim country code (ISO): location.verbatim_country_iso_alpha3
+    Verbatim province/state: location.verbatim_province
+    Verbatim elevation: location.verbatim_elev
+    Verbatim depth: location.verbatim_depth
+    Verbatim coordinates: location.verbatim_coord
+    Verbatim GPS source: location.verbatim_gps_source
+    Verbatim GPS accuracy: location.verbatim_gps_accuracy
+    Verbatim elevation accuracy: location.verbatim_elev_accuracy
+    Verbatim depth accuracy: location.verbatim_depth_accuracy
+    Verbatim habitat: specimendetails.verbatim_habitat
+    Verbatim sampling protocol: specimendetails.verbatim_sampling_protocol
+    Project code: project_code
   recset: 
   - project_code
   - bold_recordset_code_arr
@@ -350,12 +350,12 @@ fieldsets:
   - location.verbatim_country_iso_alpha3
   - location.verbatim_province
   - location.verbatim_elev
+  - location.verbatim_elev_accuracy
   - location.verbatim_depth
+  - location.verbatim_depth_accuracy
   - location.verbatim_coord
   - location.verbatim_gps_source
   - location.verbatim_gps_accuracy
-  - location.verbatim_elev_accuracy
-  - location.verbatim_depth_accuracy
   - specimendetails.verbatim_habitat
   - specimendetails.verbatim_sampling_protocol
   factorfields:
@@ -873,10 +873,13 @@ settings:
   collapse_mrkrs: no
   include_nts: no
   max_seqs: 2000
+  max_records: 500000
+  div_max_sites: 300
   tree_labels:
   - identification
   - tip_number
   - processid
   - bin_uri
   pdf_tips: 90
+  rare_nboot: 20
   tree_incomparable: drop

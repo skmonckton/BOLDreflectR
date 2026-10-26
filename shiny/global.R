@@ -37,6 +37,20 @@ ver <- ifelse(Sys.getenv("APP_VER") != "", Sys.getenv("APP_VER"), jsonlite::read
 user_data_path <- ifelse(Sys.getenv("USER_DATA_PATH") != "", Sys.getenv("USER_DATA_PATH"), "user_data")
 in_electron <- Sys.getenv("WITHIN_ELECTRON") == "1"
 
+# the desktop app passes a per-launch secret that its window sends with every request (src/index.js)
+# this local server can be reached from an ordinary browser
+# sessions without the secret (or with a different Host or Origin header) are refused
+# when launched without a secret (e.g. from RStudio, for testing & development) all sessions are allowed
+launch_token <- Sys.getenv("BR_LAUNCH_TOKEN")
+session_authorized <- function(request) {
+  if (!nzchar(launch_token)) return(TRUE)
+  local_url <- "^(http://)?(127\\.0\\.0\\.1|localhost)(:[0-9]+)?$"
+  host <- request$HTTP_HOST %||% ""
+  origin <- request$HTTP_ORIGIN %||% ""
+  token <- request$HTTP_X_BR_TOKEN %||% ""
+  grepl(local_url, host) && (origin == "" || grepl(local_url, origin)) && identical(token, launch_token)
+}
+
 # files written for opening in other applications (e.g. Excel) are kept here, inside the user data folder,
 # so that electron can open them; anything left over from previous sessions is cleared at start-up
 open_files_path <- file.path(user_data_path, "open_temp")
@@ -387,47 +401,143 @@ marker_options <- list(" " = "",
                        Other = stats::setNames(config$markercodes$other, config$markercodes$other))
 
 
-# function to validate/store/retrieve API key
-validate_apikey <- function(key) {
-  stored <- Sys.getenv("api_key")
-  try(stored <- key_get("BOLD.apikey"), silent=TRUE)
-  if ((stored != key) | (all(stored == "", key == ""))) {
-    if(key == "") {
-      Sys.setenv(api_key = "")
-      shinyjs::addClass(id = "api_key", class = "input_visible")
-      shinyjs::show("api_key")
-      shinyjs::reset("api_key")
-    } else {
-      tryCatch({
-        set_apikey(key)
-        shinyjs::removeClass(id = "api_key", class = "input_visible")
-        shinyjs::hide("api_key")
-      }, error = function(e) {
-        showNotification(e$message, type = "error")
-      })
-    }
-    try(key_set_with_value("BOLD.apikey", password = key), silent = TRUE)
+# dependencies and imports for an installed package are loaded first
+package_imports <- function(pkg) {
+  file <- system.file("DESCRIPTION", package = pkg)
+  if (!nzchar(file)) return(character())
+  desc <- read.dcf(file, fields = c("Depends", "Imports"))
+  setdiff(trimws(sub("\\(.*", "", unlist(strsplit(desc[!is.na(desc)], ",")))), c("R", ""))
+}
+
+# function to set the API key for this session and either save to the system's credential store (remember = TRUE)
+# or remove any saved key from there (remember = FALSE)
+validate_apikey <- function(key, remember = TRUE) {
+  stored <- ""
+  try(stored <- key_get("BOLD.apikey"), silent = TRUE)
+  key_set <- FALSE
+  if (key == "") {
+    Sys.setenv(api_key = "")
+    shinyjs::addClass(id = "api_key", class = "input_visible")
+    shinyjs::show("api_key")
+    shinyjs::reset("api_key")
   } else {
-    try(set_apikey(stored), silent=TRUE)
+    tryCatch({
+      set_apikey(key)
+      key_set <- TRUE
+      shinyjs::removeClass(id = "api_key", class = "input_visible")
+      shinyjs::hide("api_key")
+      # cleared once used, so later searches don't apply the sidebar's Remember setting to it again
+      shinyjs::reset("api_key")
+    }, error = function(e) {
+      showNotification(e$message, type = "error")
+    })
+  }
+  if (remember && key_set && key != stored) {
+    try(key_set_with_value("BOLD.apikey", password = key), silent = TRUE)
+  } else if (!remember && nzchar(stored)) {
+    try(key_delete("BOLD.apikey"), silent = TRUE)
   }
 }
 
 # function to update user_config.yaml with current list of available data package files
 # (also returns a list of said files)
 update_datapackages <- function() {
-  datapkgs <- data.table(file.info(list.files(path = file.path(user_data_path, "BOLD_data_packages"), full.names = TRUE))[c("size", "ctime")],
-                         keep.rownames = TRUE)[, .(id = tools::file_path_sans_ext(basename(rn)),
-                                                   path = rn, size_kb = format(size, scientific = FALSE),
-                                                   created = format(ctime, "%Y-%m-%d"))][order(-created)]
-  # with no packages, data.table still evaluates j once, and arrow can't open an empty file list
-  if (nrow(datapkgs) > 0) datapkgs[, rows := arrow::open_dataset(path)$num_rows, by = .I] else datapkgs[, rows := numeric(0)]
+  files <- list.files(path = file.path(user_data_path, "BOLD_data_packages"), pattern = "\\.parquet$",
+                      ignore.case = TRUE, full.names = TRUE)
+  # files that can't be read (damaged, copy in-progress) are excluded and listed in datapkgs_skipped
+  # otherwise they can stop the app from starting
+  rows <- vapply(files, function(f) {
+    try(upgrade_saved_datapackage(f), silent = TRUE)
+    tryCatch(as.numeric(arrow::open_dataset(f)$num_rows), error = function(e) NA_real_)
+  }, numeric(1), USE.NAMES = FALSE)
+  datapkgs_skipped <<- basename(files[is.na(rows)])
+  files <- files[!is.na(rows)]
+  info <- file.info(files)
+  # newest first
+  datapkgs <- data.table(id = tools::file_path_sans_ext(basename(files)), path = files,
+                         size_kb = format(info$size, scientific = FALSE), created = format(info$ctime, "%Y-%m-%d"),
+                         rows = rows[!is.na(rows)])[order(info$ctime, decreasing = TRUE)]
   user_config[["datapackages"]] <- apply(datapkgs, 1, as.list)
   write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
   return(datapkgs)
 }
 
+# BOLDNODE minimally needs these columns in a data package
+datapkg_required_cols <- c("processid", "country/ocean", "province/state", "coord", "bold_recordset_code_arr")
+
+# NULL if a file can be used as a data package, otherwise returns the reason it can't
+check_datapackage <- function(path) {
+  cols <- tryCatch(names(arrow::open_dataset(path)$schema), error = function(e) NULL)
+  if (is.null(cols)) return("The file could not be read as a Parquet file (it may be damaged or incomplete).")
+  # packages with non-BCDM names for country/ocean & province/state are accepted and converted once added
+  cols[cols == "country.ocean"] <- "country/ocean"
+  cols[cols == "province.state"] <- "province/state"
+  missing <- setdiff(datapkg_required_cols, cols)
+  if (length(missing) > 0) {
+    return(paste0("The file is not a BOLD data package (columns missing: ", paste(missing, collapse = ", "), ")."))
+  }
+  NULL
+}
+
+# renaming columns to BCDM standard
+as_datapackage <- function(data) {
+  data <- data[, setdiff(names(data), c("id_date_parsed", "project_code", "lat", "lon")), with = FALSE]
+  setnames(data, c("country.ocean", "province.state"), c("country/ocean", "province/state"), skip_absent = TRUE)
+  data
+}
+
+# catch data packages saved with non-BCDM column names, then correct and rewrite them
+upgrade_saved_datapackage <- function(path) {
+  cols <- names(arrow::open_dataset(path)$schema)
+  if (!"country.ocean" %in% cols || "country/ocean" %in% cols) return(FALSE)
+  temp <- tempfile(fileext = ".parquet")
+  on.exit(unlink(temp))
+  arrow::write_parquet(as_datapackage(data.table::as.data.table(arrow::read_parquet(path, mmap = FALSE))), temp,
+                       compression = "zstd", compression_level = 3)
+  # release arrow's handles on the file so Windows can replace it
+  gc()
+  file.copy(temp, path, overwrite = TRUE)
+}
+
 # keep list of BOLDNODE data packages in memory
+datapkgs_skipped <- character(0)
 datapkgs <- update_datapackages()
+
+# prepare a table for saving
+# TSV has no quoting, so tabs and line breaks in values become spaces
+# in CSV and TSV, values a spreadsheet would run as formulas get a leading ' (negative numbers are left alone)
+# in XLSX, values over Excel's 32,767-character cell limit are cut short and end in "[truncated]"
+prep_export <- function(df, format, formulas = format %in% c("csv", "tsv")) {
+  # (a copy: set() below changes the table in place)
+  df <- data.table::copy(data.table::as.data.table(df))
+  # an Excel sheet holds 1,048,576 rows, including the header
+  if (format == "xlsx" && nrow(df) > 1048575) {
+    showNotification(sprintf("Excel sheets hold at most 1,048,575 rows, so only the first 1,048,575 of %s were saved. Save as CSV or TSV to keep them all.",
+                             format(nrow(df), big.mark = ",")), type = "warning", duration = NULL)
+    df <- df[seq_len(1048575)]
+  }
+  if (formulas) {
+    nm <- names(df)
+    formula <- grepl("^[=@\t\r]", nm) | (grepl("^[+-]", nm) & !grepl("^[+-][0-9.]+([eE][+-]?[0-9]+)?$", nm))
+    data.table::setnames(df, ifelse(formula, paste0("'", nm), nm))
+  }
+  # handle text columns, including those kept as factors for the table's filters
+  for (col in names(df)[vapply(df, function(x) is.character(x) || is.factor(x), logical(1))]) {
+    v <- as.character(df[[col]])
+    if (format == "tsv") v <- gsub("[\t\r\n]+", " ", v)
+    if (formulas) {
+      formula <- grepl("^[=@\t\r]", v) | (grepl("^[+-]", v) & !grepl("^[+-][0-9.]+([eE][+-]?[0-9]+)?$", v))
+      v[formula] <- paste0("'", v[formula])
+    }
+    if (format == "xlsx") {
+      long <- !is.na(v) & nchar(v, allowNA = TRUE) > 32767
+      long[is.na(long)] <- FALSE
+      v[long] <- paste0(substr(v[long], 1, 32767 - nchar("[truncated]")), "[truncated]")
+    }
+    data.table::set(df, j = col, value = v)
+  }
+  df
+}
 
 # copy table to clipboard
 # (in the desktop app, the text is passed to electron's clipboard, which works on all platforms without external
@@ -436,6 +546,8 @@ datapkgs <- update_datapackages()
 # clipboard is used instead)
 cb <- function(df, header=TRUE, sep="\t", na="", max.size=(200*1000), session = shiny::getDefaultReactiveDomain()){
   os <- Sys.info()[["sysname"]]
+  # tabs and line breaks in values would split the pasted cells
+  if (is.data.frame(df)) df <- prep_export(df, "tsv", formulas = FALSE)
   text <- capture.output(
     write.table(df, stdout(), sep=sep, na=na, col.names=header, row.names=FALSE, quote=FALSE)
   )
@@ -445,6 +557,9 @@ cb <- function(df, header=TRUE, sep="\t", na="", max.size=(200*1000), session = 
   }
   showNotification("Copied to clipboard.", type="message", id="copy_msg")
 }
+
+# FASTA headers are one line: line breaks (and tabs) in field values become spaces
+fasta_header <- function(x) gsub("[\r\n\t]+", " ", x)
 
 # assemble FASTA (with optional copy to clipboard)
 clip_fasta <- function(bold_df,
@@ -461,30 +576,31 @@ clip_fasta <- function(bold_df,
   # assemble FASTA (conditional logic depending on whether input data is marker-collapsed)
   clip_fas <- if((!"nuc" %in% names(bold_df)) || (nrow(bold_df[!empty(nuc)]) == 0)) {
     if(!is.null(collapse_mrkrs)) {
-      showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
+      showNotification(if (to_cb) "Copying FASTA..." else "Preparing FASTA...", id="copy_msg", type = "message")
       cols_for_fas_names <- intersect(cols_for_fas_names, names(bold_df))
       mrkrs <- sapply(collapse_mrkrs, function(x) unlist(strsplit(x, "_"))[1])
       fas <- NULL
       for(i in seq_along(mrkrs)) {
         fas <- c(fas, paste0(">",
-                             bold_df[!is.na(get(names(mrkrs)[i])), do.call(paste, c(.SD, unname(mrkrs[i]), sep = "|")), .SDcols = c(cols_for_fas_names)],
+                             fasta_header(bold_df[!is.na(get(names(mrkrs)[i])), do.call(paste, c(.SD, unname(mrkrs[i]), sep = "|")), .SDcols = c(cols_for_fas_names)]),
                              "\n",
-                             bold_df[!is.na(get(names(mrkrs)[i])), get(names(mrkrs)[i])]))
+                             gsub("\\s+", "", bold_df[!is.na(get(names(mrkrs)[i])), get(names(mrkrs)[i])])))
       }
       fas
     } else {
       NULL
     }
   } else {
-    showNotification(paste0("Copying FASTA..."), id="copy_msg", type = "message")
+    showNotification(if (to_cb) "Copying FASTA..." else "Preparing FASTA...", id="copy_msg", type = "message")
     paste0(">",
-           bold_df[!empty(nuc), do.call(paste, c(.SD, sep = "|")), .SDcols = c(cols_for_fas_names)],
+           fasta_header(bold_df[!empty(nuc), do.call(paste, c(.SD, sep = "|")), .SDcols = c(cols_for_fas_names)]),
            "\n",
-           bold_df[!empty(nuc), nuc])
+           gsub("\\s+", "", bold_df[!empty(nuc), nuc]))
   }
   # handle FASTA output
   if(is.null(clip_fas)) {
-    showNotification(paste0("No sequences to copy."), id="copy_msg", type = "error")  
+    showNotification(if (to_cb) "No sequences to copy." else "No sequences to save.", id="copy_msg", type = "error")
+    if (!to_cb) return(character(0))
   } else if (to_cb) {
     tryCatch(
       cb(unlist(strsplit(clip_fas,"\n")), header = FALSE, sep = ""),
@@ -551,14 +667,22 @@ split_query <- function(query_input, list = FALSE, sep = c("\n", ",")) {
   }
 }
 
+# double quotes to prevent breaking on ' in file or folder name
+node_path <- function(path) gsub("'", "''", path, fixed = TRUE)
+
+# match whole dataset codes rather than treating them as patterns
+whole_code_patterns <- function(codes) {
+  paste0("(^|,)", gsub("([][{}()+*^$|\\?.-])", "\\\\\\1", trimws(unlist(codes))), "(,|$)")
+}
+
 # convert a user-supplied name into a data package ID that is safe to use as a file name on all platforms
-# (removes characters that are invalid in Windows/macOS/Linux file names; other characters are kept)
+# removes characters that are invalid in Windows/macOS/Linux file names; other characters are kept
 clean_dtpkg_id <- function(name) {
   id <- gsub("\\.parquet$", "", trimws(name), ignore.case = TRUE)
   id <- gsub(" ", "_", id)
   id <- gsub("[<>:\"/\\\\|?*[:cntrl:]]", "", id)
-  # Windows does not allow file names ending in a dot
-  sub("\\.+$", "", id)
+  # Windows does not allow file names ending in a dot, and files starting with one aren't listed as packages
+  gsub("^\\.+|\\.+$", "", id)
 }
 
 # save or delete local data packages
@@ -570,6 +694,8 @@ modify_datapackage <- function(dtpkg, filename = NULL, operation = "save", overw
     }
     save_id <- clean_dtpkg_id(if(is.null(filename)) basename(dtpkg) else filename)
     if(!nzchar(save_id)) stop("Please provide a valid ID/alias for the data package.")
+    problem <- check_datapackage(dtpkg)
+    if(!is.null(problem)) stop(problem)
     save_path <- file.path(outdir, paste0(save_id, ".parquet"))
     if(save_id %in% datapkgs$id && !overwrite) {
       showNotification("There is already a data package with this ID. If you wish to overwrite the existing file, please delete it first.", id = "fileio", type = "error")
@@ -580,6 +706,7 @@ modify_datapackage <- function(dtpkg, filename = NULL, operation = "save", overw
         if(!file.remove(save_path)) stop("The existing data package could not be overwritten (it may be in use).")
       }
       if(!file.copy(dtpkg, save_path)) stop("The data package file could not be copied to the user data folder.")
+      upgrade_saved_datapackage(save_path)
       datapkg <- data.table(file.info(dtpkg)[c("size", "ctime")],
                             keep.rownames = TRUE)[, .(id = save_id, path = save_path,
                                                       size_kb = format(size, scientific = FALSE),
@@ -681,7 +808,9 @@ convert_factor_char <- function(data, to_factor = TRUE, copy = FALSE) {
 
 # decompose recordset column into a list of datasets or project codes
 list_recordsets <- function(data, set_type, list_by) {
-  recordsets <- data[, .(set = unique(trimws(trimws(unlist(strsplit(bold_recordset_code_arr, ",")))))), by = list_by] 
+  parts <- strsplit(data$bold_recordset_code_arr, ",", fixed = TRUE)
+  recordsets <- unique(data.table(id = rep(data[[list_by]], lengths(parts)), set = trimws(unlist(parts))))
+  setnames(recordsets, "id", list_by)
   if(set_type == "parse_project") {
     # one value per row of data, in the same row order (merge() would sort the result by list_by)
     projects <- recordsets[!is.na(set) & set != "" & !grepl("^DS-|^DATASET", set),
@@ -965,7 +1094,7 @@ get_binmates <- function(df, dtpkg_parquet = NULL, batch_size=200, sleep=2) {
   } else {
     withInfProgress(paste0("Searching data package for additional BIN members from ", length(bins), " BINs..."), {
       current_pids <- unique(df[["processid"]])
-      pkg_data <- BOLDNODE:::import_parquet_data(dtpkg_parquet)
+      pkg_data <- BOLDNODE:::import_parquet_data(node_path(dtpkg_parquet))
       bins_tbl <- dbplyr::copy_inline(pkg_data$src$con, dplyr::tibble(bin_uri = bins))
       pids_tbl <- dbplyr::copy_inline(pkg_data$src$con, dplyr::tibble(processid = current_pids))
       add_pids <- pkg_data |>
@@ -1013,7 +1142,7 @@ header_js <- DT::JS("
       if ($(this).find('.col-copy-btn').length > 0) return;
       var colName = $(this).text();
       $(this).empty()
-      .append('<span class=\"header-label\">' + colName + '</span>')
+      .append($('<span class=\"header-label\"></span>').text(colName))
       .append('<button class=\"col-copy-btn\" onclick=\"event.stopPropagation(); window.copyCol(' + i + ');\"><i class=\"far fa-copy\"></i></button>');
     });
   }
@@ -1022,21 +1151,26 @@ column_js <- DT::JS("
                     function(data, type, row, meta) {
                       if (type === 'display' && data !== null) {
                         var colName = meta.settings.aoColumns[meta.col].sTitle;
+                        // cell values arrive HTML-escaped (except quotes) so values used in URLs are decoded and URL-encoded
+                        var plain = function(s) { var t = document.createElement('textarea'); t.innerHTML = s; return t.value; };
+                        var link = function(url, value, text) {
+                          return '<div><a href=\"' + url + encodeURIComponent(value) + '\" target=\"_blank\">' + text + '</a></div>';
+                        };
                         if (colName == 'sampleid') {
-                          var pid = mapBySID[data];
+                          var pid = mapBySID[plain(data)];
                           return pid
-                            ? '<div><a href=\"https://bench.boldsystems.org/index.php/MAS_DataRetrieval_OpenSpecimen?selectedrecordid=' + pid + '\" target=\"_blank\">' + data + '</a></div>'
+                            ? link('https://bench.boldsystems.org/index.php/MAS_DataRetrieval_OpenSpecimen?selectedrecordid=', pid, data)
                             : '<div>' + data + '</div>';
                         }
                         if (colName == 'processid') {
                           return data
-                            ? '<div><a href=\"https://bench.boldsystems.org/index.php/MAS_DataRetrieval_OpenSequence?processid=' + data + '\" target=\"_blank\">' + data + '</a></div>'
+                            ? link('https://bench.boldsystems.org/index.php/MAS_DataRetrieval_OpenSequence?processid=', plain(data), data)
                             : '<div>' + data + '</div>';
                         }
                         if (colName == 'bin_uri' || colName == 'nn_bin_uri') {
                           return data
-                          ? '<div><a href=\"https://bench.boldsystems.org/index.php/Public_BarcodeCluster?clusteruri=' + data + '\" target=\"_blank\">' + data + '</a></div>'
-                          : '<div>' + data + '</div>';
+                            ? link('https://bench.boldsystems.org/index.php/Public_BarcodeCluster?clusteruri=', plain(data), data)
+                            : '<div>' + data + '</div>';
                         }
                         if (colName == 'avg_dist' || colName == 'max_dist' || colName == 'nn_dist') {
                           var n = parseFloat(data);
@@ -1076,7 +1210,7 @@ withInfProgress <- function(message, expr, env = parent.frame()) {
       "<div class='inf-progress-wrap'>",
       "  <div class='inf-progress-bar'></div>",
       "</div>",
-      "<div>", message, "</div>"
+      "<div>", htmltools::htmlEscape(message), "</div>"
     )),
     duration = NULL,
     type = "message"

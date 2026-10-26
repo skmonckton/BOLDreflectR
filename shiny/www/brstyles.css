@@ -79,7 +79,19 @@ h3 {
 }
 
 .form-group.shiny-input-container:has(#api_key_def) {
-  margin-bottom: 2rem;
+ margin-bottom: 1.25rem;
+}
+
+.form-group:has(>.checkbox #remember_key_def) {
+  margin: 0.5rem 0 0 0;
+}
+
+.checkbox:has(#remember_key_def) {
+   margin: 0;
+}
+
+#remove_key_def {
+  font-size: 0.9rem;
 }
 
 .modal-footer {
@@ -378,7 +390,7 @@ input[type=number] {
 }
 
 #optpanels:has(#api_key.input_visible) #query_type:not(:has(.nav-link.active[data-value="source-local"])) {
-  margin-bottom: 5.9rem;
+  margin-bottom: 7.4rem;
   position: relative;
 }
 
@@ -390,6 +402,16 @@ input[type=number] {
   position: absolute;
   width: calc(100% - 2.5rem);
   top: 5.5rem;
+}
+
+/* dots stand in for the key in use, styled like a typed password */
+#api_key_def.key-set::placeholder {
+  color: var(--bs-body-color);
+  opacity: 1;
+}
+
+#api_key_def.key-set:focus::placeholder {
+  color: transparent;
 }
 
 #query_type {

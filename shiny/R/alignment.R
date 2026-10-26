@@ -7,7 +7,7 @@ alignment_input <- function(data, marker, header_fields = c("processid", "marker
   if (nrow(d) == 0) return(NULL)
   header_fields <- intersect(header_fields, names(d))
   if (length(header_fields) == 0) header_fields <- "processid"
-  labels <- d[, do.call(paste, c(lapply(.SD, as.character), sep = "|")), .SDcols = header_fields]
+  labels <- fasta_header(d[, do.call(paste, c(lapply(.SD, as.character), sep = "|")), .SDcols = header_fields])
   # gaps and non-IUPAC nucleotides are removed before aligning; raw keeps the gaps (for method = "none")
   raw <- gsub("[^ACGTRYSWKMBDHVN-]", "", gsub(".", "-", toupper(as.character(d$nuc)), fixed = TRUE))
   seqs <- gsub("-", "", raw, fixed = TRUE)

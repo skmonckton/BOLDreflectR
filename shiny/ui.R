@@ -144,6 +144,12 @@ ui <- bslib::page_fillable(
           if (path) Shiny.setInputValue(opts.inputId, path, {priority: 'event'});
         });
       });
+      Shiny.addCustomMessageHandler('click_link', function(id) {
+        document.getElementById(id).click();
+      });
+      Shiny.addCustomMessageHandler('clear_input', function(inputId) {
+        Shiny.setInputValue(inputId, null);
+      });
       Shiny.addCustomMessageHandler('reset-dt', function(outputId) {
         var tbl = $('#' + outputId).find('table.dataTable').first();
         if (tbl.length === 0) return;
@@ -177,14 +183,19 @@ ui <- bslib::page_fillable(
           "Get data",
           icon = bsicons::bs_icon("cloud-arrow-down"),
                       hidden(
-                        passwordInput( 
-                          "api_key", 
-                          div("BOLD API key:",
-                              bslib::tooltip(
-                                icon("circle-question"),
-                                paste0("The API key is saved to your system's credential store (",keystore,") when the 'Get data' button is pressed. Once set, it can be updated from the settings panel."),
-                                id = "api_key_tip"))
-                          )
+                        tagAppendChild(
+                          passwordInput(
+                            "api_key",
+                            "BOLD API key:"),
+                          checkboxInput("remember_key",
+                            div("Remember key", 
+                                bslib::tooltip(
+                                  # (clicks on the icon don't tick the checkbox)
+                                  tags$span(icon("circle-question"), onclick = "event.preventDefault()"),
+                                  paste0("When 'Remember' is ticked, the API key is saved to your system's credential store (",keystore,") when the 'Get data' button is pressed. Otherwise, it is used until the app is closed. Once set, it can be updated from the settings panel."),
+                                  id = "api_key_tip")),
+                            value = TRUE)
+                        )
                       ),
                       bslib::navset_pill(
                         id="query_type",
@@ -694,7 +705,10 @@ ui <- bslib::page_fillable(
                  class="testclass",
                  div(id = "copy_buttons",
                      actionButton("copy_fasta", "Copy FASTA", icon = icon("copy")),
-                     downloadButton("save_fasta", "Save FASTA"),
+                     # (a button rather than a download link: the server checks for sequences, then starts the
+                     # hidden link below, so nothing is saved when there are none)
+                     actionButton("save_fasta", "Save FASTA", icon = icon("download")),
+                     hidden(downloadLink("save_fasta_dl", "")),
                      actionButton("copy_table", "Copy table", icon = icon("copy")),
                      # alignment viewer buttons (these call the viewer in www/alignment-viewer.js)
                      hidden(actionButton("aln_copy_sel", "Copy selected", icon = icon("copy"),

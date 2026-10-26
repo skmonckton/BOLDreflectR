@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'">
+  <title>Error</title>
+  <style>
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      font-family: Arial, Helvetica Neue, Helvetica, sans-serif;
+      color: #333333;
+    }
+    .message {
+      max-width: 480px;
+      padding: 24px 32px;
+      background-color: white;
+      border-radius: 6px;
+      text-align: center;
+    }
+    h1 {
+      font-size: 18px;
+    }
+    p {
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    button {
+      margin: 4px;
+      padding: 6px 14px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="message">
+    <h1 id="title"></h1>
+    <p id="detail"></p>
+    <p>Details are in the log files.</p>
+    <button id="logs">Open log folder</button>
+    <button id="quit">Close</button>
+  </div>
+  <script>
+    // shown when R fails to start (?when=startup) or stops while the app is open (?when=later);
+    // ?logs= is the log folder (opened through preload.js)
+    const params = new URLSearchParams(window.location.search);
+    const later = params.get('when') === 'later';
+    document.getElementById('title').textContent = later ? 'The app stopped unexpectedly' : 'The app could not start';
+    document.getElementById('detail').textContent = later
+      ? 'Its R process has stopped. Close the app and start it again to continue.'
+      : 'Its R process did not start or did not respond. Try starting the app again.';
+    document.getElementById('logs').addEventListener('click', () => window.electronAPI.openPath(params.get('logs')));
+    document.getElementById('quit').addEventListener('click', () => window.close());
+  </script>
+</body>
+</html>

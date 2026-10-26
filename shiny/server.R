@@ -1,7 +1,15 @@
 server <- function(input, output, session) {
   ### Initialization ----
 
+  # sessions from anything other than the app's own window are closed (see session_authorized() in global.R)
+  if (!session_authorized(session$request)) {
+    session$close()
+    return(invisible(NULL))
+  }
+
   session$onSessionEnded(function() {
+    # clear temporary files on quit (otherwise they stick around)
+    unlink(c(list.files(tempdir(), full.names = TRUE), list.files(open_files_path, full.names = TRUE)), recursive = TRUE)
     stopApp()
   })
 
@@ -17,10 +25,25 @@ server <- function(input, output, session) {
 
   bslib::accordion_panel_close("more_opts", "Additional fields")
 
-  # BOLDconnectR takes several seconds to load (it imports many packages), so it's loaded in the background shortly
-  # after the app has opened, rather than when the first request to BOLD is made
+  # BOLDconnectR takes several seconds to load, so its dependencies and imports are loaded step-wise in the background
   session$onFlushed(function() {
-    later::later(function() try(suppressMessages(loadNamespace("BOLDconnectR")), silent = TRUE), 2)
+    queue <- "BOLDconnectR"
+    tried <- character()
+    step <- function() {
+      while (length(queue) > 0 && isNamespaceLoaded(queue[1])) queue <<- queue[-1]
+      if (length(queue) == 0) return()
+      # packages that failed to load aren't queued again
+      needs <- setdiff(Filter(Negate(isNamespaceLoaded), package_imports(queue[1])), tried)
+      if (length(needs) > 0) {
+        queue <<- c(needs, queue)
+      } else {
+        tried <<- c(tried, queue[1])
+        try(suppressMessages(loadNamespace(queue[1])), silent = TRUE)
+        queue <<- queue[-1]
+      }
+      later::later(step)
+    }
+    later::later(step, 2)
   }, once = TRUE)
 
   # some manual JavaScript for placeholder values and multiple marker search
@@ -126,17 +149,23 @@ server <- function(input, output, session) {
   session$onFlushed(function() {
     test_mode(isTRUE(user_config$settings$test_mode))
   }, once = TRUE)
-  observeEvent(input$tston, source(tstcode(), local = TRUE))
-  observeEvent(test_mode(), if (isTRUE(test_mode())) source(tstcode(), local = TRUE), once = TRUE)
+  # if active, approved test functions are sourced into the session (failure reported, not fatal)
+  session_env <- environment()
+  load_test_funcs <- function(token = NULL) {
+    path <- tstcode(token)
+    if (!is.null(path)) {
+      tryCatch(source(path, local = session_env),
+               error = function(e) showNotification(paste0("Error in the test functions: ", conditionMessage(e)), type = "error"))
+    }
+  }
+  observeEvent(input$tston, load_test_funcs())
+  observeEvent(test_mode(), if (isTRUE(test_mode())) load_test_funcs(), once = TRUE)
   observeEvent(input$testkey_confirm, {
-    Sys.setenv(GITHUB_PAT = trimws(gsub('"', "", input$testkey)))
-    try(
-      {
-        key_set_with_value("tctools-GH-PAT", password = Sys.getenv("GITHUB_PAT"))
-      },
-      silent = TRUE
-    )
-    source(tstcode(), local = TRUE)
+    removeModal()
+    token <- trimws(gsub('"', "", input$testkey))
+    req(nzchar(token))
+    try(key_set_with_value("tctools-GH-PAT", password = token), silent = TRUE)
+    load_test_funcs(token)
   })
 
   # conditional input logic to constrain marker search options (min/max requires a marker to be selected)
@@ -267,9 +296,9 @@ server <- function(input, output, session) {
   })
   observe({
     req(filtered_data())
-    data <- filtered_data()[input$data_table_rows_all, ]
+    data <- shown_data()
     req(nrow(data) > 0)
-    fallback_count <- uniqueN(data[!all(empty(bin_uri), empty(species)), .(bin_uri, species)])
+    fallback_count <- uniqueN(data[!(empty(bin_uri) & empty(species)), .(bin_uri, species)])
     toggleElement(id = "div-analysis-opts", condition = (fallback_count >= 2) & (nrow(data) >= 10))
     toggleElement(id = "div-analysis-msg", condition = (fallback_count < 2) | (nrow(data) < 10))
     req((fallback_count >= 2) & (nrow(data) >= 10))
@@ -439,16 +468,22 @@ server <- function(input, output, session) {
   # set API key and generate fetch_ids
   observeEvent(input$fetch_btn | input$fetch_ctrl_enter,
     {
-      shinyjs::hide("main_panel")
-      key <- if (isTruthy(input$api_key)) input$api_key else Sys.getenv("api_key")
-      validate_apikey(key)
-      req(((isTruthy(input$fetch_id_list) || isTruthy(input$search_tax) || isTruthy(input$search_geo) ||
+      # if sidebar key input is filled, set key and save it if 'Remember' is ticked; otherwise use the session's key
+      if (isTruthy(input$api_key)) {
+        validate_apikey(trimws(gsub('"', "", input$api_key)), remember = isTRUE(input$remember_key))
+      } else if (!nzchar(Sys.getenv("api_key"))) {
+        validate_apikey("")
+      }
+      if (!(((isTruthy(input$fetch_id_list) || isTruthy(input$search_tax) || isTruthy(input$search_geo) ||
         isTruthy(input$seq_marker)) && isTruthy(Sys.getenv("api_key"))) ||
-        (isTruthy(length(node_query()) > 0) && isTruthy(input$datapackage_id)))
+        (isTruthy(length(node_query()) > 0) && isTruthy(input$datapackage_id)))) {
+        showNotification("Nothing to search for: enter identifiers or search terms first.", id = "fetch_msg", type = "warning")
+        return()
+      }
+      shinyjs::hide("main_panel")
       # immediate feedback in case of any delay
       showNotification(if (input$query_type == "source-local") "Searching data package for matching records..." else "Contacting BOLD...",
                        id = "fetch_msg", duration = NULL, type = "message")
-      shinyjs::show("table_area")
       shinyjs::hide("table_buttons")
       reset_ui()
       reset_filter(input$query_type != "source-local")
@@ -459,7 +494,8 @@ server <- function(input, output, session) {
           if (input$query_type == "source-local") {
             node_params <- node_query()
             fetch_params$query <- node_params
-            node_params[["input.parquet"]] <- input$datapackage_id
+            node_params[["input.parquet"]] <- node_path(input$datapackage_id)
+            if (!is.null(node_params$dataset.projects)) node_params$dataset.projects <- whole_code_patterns(node_params$dataset.projects)
             showNotification("Searching data package for matching records...", id = "fetch_msg", duration = NULL, type = "message")
             num_records <- 0
             withCallingHandlers(
@@ -485,6 +521,8 @@ server <- function(input, output, session) {
             )
             if (num_records == 0) {
               showNotification("No records found matching search terms.", id = "fetch_msg", type = "warning")
+            } else if (num_records > user_config$settings$max_records) {
+              too_many_records(num_records)
             } else if (num_records >= 100000) {
               search_confirm_modal()
             } else {
@@ -506,6 +544,8 @@ server <- function(input, output, session) {
             search_token <- do.call(bold.full.search.step1, search_query[sapply(search_query, length) > 0])
             if (is.null(search_token)) {
               showNotification("No records found matching search terms.", id = "fetch_msg", type = "warning")
+            } else if (search_token$num_of_accessible > user_config$settings$max_records) {
+              too_many_records(search_token$num_of_accessible)
             } else if (search_token$num_of_accessible >= 100000) {
               removeNotification(id = "fetch_msg")
               fetch_params$search_token <- search_token
@@ -527,25 +567,43 @@ server <- function(input, output, session) {
             fetch_params$fetch_ids <- unlist(fetch_ids)
           }
         },
+        # a warning stops the search: show it (it was reported as "no results", which hid real problems)
         warning = function(w) {
-          showNotification("No results found using provided search terms.", id = "fetch_msg", type = "warning")
+          showNotification(conditionMessage(w), id = "fetch_msg", type = "warning")
         },
         error = function(e) {
           showNotification(paste0("Error processing record identifiers: ", e$message), id = "fetch_msg", type = "error")
         }
       )
-      # record query parameters (calls describe_query() from global.R)
-      outdata$query_info <- describe_query(input$query_type, fetch_params$query,
-                                           datapackage = tools::file_path_sans_ext(basename(input$datapackage_id)))
+      # record query parameters (calls describe_query() from global.R) once data arrives
+      # empty or declined searches do not relabel earlier data
+      pending_query_info <<- describe_query(input$query_type, fetch_params$query,
+                                            datapackage = tools::file_path_sans_ext(basename(input$datapackage_id)))
+      if (!is.null(outdata$data)) outdata$query_info <- pending_query_info
     },
     ignoreInit = TRUE
   )
+
+  # searches over the maximum in Settings are not fetched (very large results can exhaust memory)
+  too_many_records <- function(n) {
+    showNotification(sprintf("The search matched %s records, more than the maximum of %s per search (Settings > Default options). Narrow the search, or raise the maximum.",
+                             format(n, big.mark = ",", scientific = FALSE), format(user_config$settings$max_records, big.mark = ",", scientific = FALSE)),
+                     id = "fetch_msg", type = "error", duration = 15)
+  }
+
+  # the data table is shown only while there's data, so an empty, failed or declined search can't leave earlier
+  # results on screen after they've been cleared
+  observe(shinyjs::toggleElement("table_area", condition = !is.null(outdata$data)))
+  pending_query_info <- NULL
 
   # modal to call up upon finding over 100k records from search
   search_confirm_modal <- function() {
     req(fetch_params$search_token)
     search_token <- fetch_params$search_token
-    modal_msg <- p(HTML(paste0("Search returned <strong>", format(search_token$num_of_accessible, big.mark = ",", scientific = FALSE), "</strong> accessible records.")))
+    modal_msg <- div(
+      p(HTML(paste0("Search returned <strong>", format(search_token$num_of_accessible, big.mark = ",", scientific = FALSE), "</strong> accessible records."))),
+      p("Large fetches can take several minutes and use a lot of memory (about 2 GB for 150,000 records).")
+    )
     if (search_token$num_of_records >= search_token$limit) {
       modal_msg <- div(modal_msg, p(class = "warn-text", HTML("<strong>Note:</strong> Maximum search limit of ", format(search_token$limit, big.mark = ",", scientific = FALSE), " was reached. Additional matches may exist beyond what can be fetched.")))
     }
@@ -558,13 +616,19 @@ server <- function(input, output, session) {
           div(
             id = "modal_confirm",
             actionButton("search_confirm_btn", "Yes"),
-            modalButton("No")
+            actionButton("search_cancel_btn", "No")
           )
         ),
-        easyClose = TRUE
+        easyClose = FALSE
       )
     )
   }
+
+  # declining a large fetch clears its progress message (table already hidden as there's no data)
+  observeEvent(input$search_cancel_btn, {
+    removeModal()
+    removeNotification(id = "fetch_msg")
+  })
 
   # upon confirming search, proceed to get fetch_ids (process IDs)
   observeEvent(input$search_confirm_btn, {
@@ -636,6 +700,7 @@ server <- function(input, output, session) {
     }
     outdata$markers <- gsub("ZZZ", "None", sort(unique(c(levels(data$marker_code), if (anyNA(data$marker_code)) "ZZZ"))))
     outdata$data <- data
+    outdata$query_info <- pending_query_info
 
     shinyjs::show("table_buttons")
     bslib::accordion_panel_close(id = "optpanels", values = "fetchdata")
@@ -671,7 +736,12 @@ server <- function(input, output, session) {
     req(outdata$data)
     binmate_pids <- outdata$binmates
     if (is.null(outdata$binmates)) {
-      binmate_pids <- get_binmates(outdata$data[!empty(bin_uri)], fetch_params$node_dtpkg)
+      if (!binmate_source_ok()) return(invisible())
+      binmate_pids <- tryCatch(get_binmates(outdata$data[!empty(bin_uri)], fetch_params$node_dtpkg), error = function(e) {
+        showNotification(paste0("Could not look for additional BIN members: ", conditionMessage(e)), type = "error")
+        NULL
+      })
+      req(!is.null(binmate_pids))
       outdata$binmates <- binmate_pids
     }
     if (length(binmate_pids) == 0) {
@@ -717,7 +787,17 @@ server <- function(input, output, session) {
     fetch_params$binmates_checked <- TRUE
   }
 
+  # source data package of records must still exist to look up additional BIN members
+  binmate_source_ok <- function() {
+    dtpkg <- fetch_params$node_dtpkg
+    if (is.null(dtpkg) || file.exists(dtpkg)) return(TRUE)
+    showNotification("Couldn't add BIN members: the data package these records came from is no longer available.",
+                     type = "warning")
+    FALSE
+  }
+
   fetch_binmates <- function(dtpkg_parquet = fetch_params$node_dtpkg) {
+    if (!binmate_source_ok()) return(invisible())
     binmate_data <- if (is.null(dtpkg_parquet)) {
       as.data.table(bold.fetch.shiny(
         get_by = "processid",
@@ -726,10 +806,13 @@ server <- function(input, output, session) {
       ))
     } else {
       withInfProgress("Collecting additional BIN members from data package...", {
-        as.data.table(
-          BOLDNODE::bold_search_collect(
-            BOLDNODE::bold_parquet_search(dtpkg_parquet, ids = outdata$binmates)
-          )
+        tryCatch(
+          as.data.table(
+            BOLDNODE::bold_search_collect(
+              BOLDNODE::bold_parquet_search(node_path(dtpkg_parquet), ids = outdata$binmates)
+            )
+          ),
+          error = function(e) NULL
         )
       })
     }
@@ -814,9 +897,18 @@ server <- function(input, output, session) {
   })
 
   user_datapkgs <- reactiveVal(datapkgs)
+  # announce files from packages folder that couldn't be read (shown when the data package manager opens)
+  notify_skipped_datapackages <- function() {
+    if (length(datapkgs_skipped) > 0) {
+      showNotification(paste0("The following files in the data packages folder could not be read (may be damaged or incomplete): ",
+                              paste(datapkgs_skipped, collapse = ", ")), type = "warning", duration = 8, id = "skipped_pkgs")
+    }
+  }
 
   # modal logic for data package options
   observeEvent(input$datapackage_btn, {
+    delete_check <<- TRUE
+    notify_skipped_datapackages()
     showModal(
       modalDialog(
         title = tagList(div("Saved data packages")),
@@ -1068,7 +1160,7 @@ server <- function(input, output, session) {
           } else {
             outdata$data
           }
-          arrow::write_parquet(data, temp, compression = "zstd", compression_level = 3)
+          arrow::write_parquet(as_datapackage(data), temp, compression = "zstd", compression_level = 3)
           # an existing package with the same ID is only reached here once the user has confirmed overwriting it
           datapkgs <- modify_datapackage(temp, filename = pkgid, operation = "save", overwrite = TRUE)
           unlink(temp)
@@ -1214,23 +1306,24 @@ server <- function(input, output, session) {
       modalDialog(
         title = "Settings",
         tagList(
-          passwordInput(
-            "api_key_def",
-            div(
-              h3("BOLD API key"),
-              bslib::tooltip(
-                icon("circle-question"),
-                paste0("The API key is saved to your system's credential store (", keystore, ").")
-              )
-            ),
-            value = tryCatch(
-              {
-                key_get("BOLD.apikey")
-              },
-              error = function(e) {
-                ""
-              }
-            )
+          tagAppendChildren(
+            # the key itself is never sent to the page so dots stand in to indicate that a password is saved
+            if (nzchar(Sys.getenv("api_key"))) {
+              htmltools::tagQuery(passwordInput("api_key_def", h3("BOLD API key"), placeholder = strrep("\u25cf", 36)))$
+                find("input")$addClass("key-set")$allTags()
+            } else {
+              passwordInput("api_key_def", h3("BOLD API key"))
+            },
+            checkboxInput("remember_key_def",
+                          div("Remember key",
+                              bslib::tooltip(
+                                # (clicks on the icon don't tick the checkbox)
+                                tags$span(icon("circle-question"), onclick = "event.preventDefault()"),
+                                paste0("When 'Remember' is ticked, the API key is saved to your system's credential store (", keystore,
+                                       "). Otherwise, it is used until the app is closed, and any saved key is removed.")
+                              )),
+                          value = !nzchar(Sys.getenv("api_key")) || tryCatch(nzchar(key_get("BOLD.apikey")), error = function(e) FALSE)),
+            if (nzchar(Sys.getenv("api_key"))) actionLink("remove_key_def", "Remove stored key")
           ),
           inputGroup(
             title = "FASTA output",
@@ -1290,6 +1383,16 @@ server <- function(input, output, session) {
                 )
               ),
               value = isTRUE(user_config$settings$include_nts)
+            ),
+            numericInput("max_records_def",
+              div(
+                "Maximum records per search",
+                bslib::tooltip(
+                  icon("circle-question"),
+                  "Searches exceeding this number of matching records – whether from BOLD or a local data package – are not fetched. Very large results can take a long time and several GB of memory (about 2 GB for 150,000 records). Note that BOLD imposes a maximum of 100k results on searches."
+                )
+              ),
+              value = user_config$settings$max_records, min = 1000, step = 50000
             )
           )
           ,
@@ -1308,13 +1411,13 @@ server <- function(input, output, session) {
             ),
             radioButtons("tree_incomparable_def",
               div(
-                "For sequences that can't be compared:",
+                "In case of missing distances:",
                 bslib::tooltip(
                   icon("circle-question"),
-                  "Pairs of sequences with no overlap or that are too divergent for the distance model. Dropping removes the fewest sequences needed. NJ* (ape::njs) keeps them but is much slower (about 90 s for 1,000 sequences). If too many distances are missing, NJ* drops the sequences instead."
+                  "Concerns pairs of sequences with no overlap or that are too divergent to compute distances. Dropping removes the fewest sequences needed. NJ* (ape::njs) keeps them but is much slower (about 90 s for 1,000 sequences); if too many distances are missing, NJ* drops the sequences anyway."
                 )
               ),
-              choices = c("Drop them from the tree (fast)" = "drop", "Keep them and use NJ* (slower)" = "njs"),
+              choices = c("Drop tips from the tree (fast)" = "drop", "Keep them and use NJ* (slower)" = "njs"),
               selected = user_config$settings$tree_incomparable
             ),
             tree_label_input("tree_labels_def", "Tree tip labels:"),
@@ -1327,6 +1430,20 @@ server <- function(input, output, session) {
                 )
               ),
               value = user_config$settings$pdf_tips, min = 20, max = 100, step = 5
+            )
+          ),
+          inputGroup(
+            title = "Diversity profiles",
+            groupId = "div_defaults",
+            numericInput("rare_nboot_def",
+              div(
+                "Rarefaction bootstrap replicates",
+                bslib::tooltip(
+                  icon("circle-question"),
+                  "Number of bootstrap replicates for confidence intervals on rarefaction curves (0 to 500). More replicates give steadier bands but take longer; 0 skips bootstrapping."
+                )
+              ),
+              value = user_config$settings$rare_nboot, min = 0, max = 500, step = 10
             )
           )
         ),
@@ -1342,21 +1459,40 @@ server <- function(input, output, session) {
     )
   }
 
+  # remove the key from this session and from the credential store
+  observeEvent(input$remove_key_def, {
+    removeModal()
+    validate_apikey("", remember = FALSE)
+    showNotification("The API key was removed.", type = "message")
+  })
+
   # settings save logic
   observeEvent(input$save_settings_btn, {
     removeModal()
     key <- trimws(gsub('"', "", isolate(input$api_key_def)))
-    validate_apikey(key)
+    # an empty box keeps the current key and 'Remember' still applies to it
+    if (!nzchar(key)) key <- Sys.getenv("api_key")
+    if (nzchar(key)) validate_apikey(key, remember = isTRUE(input$remember_key_def))
+    # whole-number settings outside these ranges are left unchanged (with a notice)
+    valid_count <- function(x, min) isTruthy(x) && is.numeric(x) && x >= min && x <= .Machine$integer.max
+    ignored <- c(if (!valid_count(input$max_seqs_def, 3)) "maximum sequences (at least 3)",
+                 if (!valid_count(input$max_records_def, 1000)) "maximum records (at least 1,000)",
+                 if (!valid_count(input$rare_nboot_def, 0) || input$rare_nboot_def > 500) "rarefaction bootstrap replicates (0 to 500)")
+    if (length(ignored) > 0) {
+      showNotification(paste0("Not changed, invalid value: ", paste(ignored, collapse = "; "), "."), type = "warning")
+    }
     save_settings <- list(
       fasta_head = isolate(input$fasta_head_def),
       col_set = isolate(input$filt_opt_def),
       filt_seq = isolate(input$filt_seq_def),
       collapse_mrkrs = isolate(input$collapse_mrkrs_def),
       include_nts = isolate(input$include_nts_def),
-      max_seqs = if (isTruthy(input$max_seqs_def) && input$max_seqs_def >= 3) as.integer(input$max_seqs_def) else user_config$settings$max_seqs,
+      max_seqs = if (valid_count(input$max_seqs_def, 3)) as.integer(input$max_seqs_def) else user_config$settings$max_seqs,
+      max_records = if (valid_count(input$max_records_def, 1000)) as.integer(input$max_records_def) else user_config$settings$max_records,
       tree_labels = isolate(input$tree_labels_def),
       tree_incomparable = isolate(input$tree_incomparable_def),
-      pdf_tips = if (isTruthy(input$pdf_tips_def)) as.integer(min(100, max(20, input$pdf_tips_def))) else user_config$settings$pdf_tips
+      pdf_tips = if (isTruthy(input$pdf_tips_def)) as.integer(min(100, max(20, input$pdf_tips_def))) else user_config$settings$pdf_tips,
+      rare_nboot = if (valid_count(input$rare_nboot_def, 0) && input$rare_nboot_def <= 500) as.integer(input$rare_nboot_def) else user_config$settings$rare_nboot
     )
     save_user_config(save_settings)
     updateSelectizeInput(inputId = "fasta_head_def", selected = save_settings$fasta_head)
@@ -1572,6 +1708,19 @@ server <- function(input, output, session) {
     data[seq_filter(data, input$filt_seq)]
   })
 
+  # clear old table's search and rows as soon as new data arrives
+  observeEvent(outdata$data, {
+    session$sendCustomMessage("clear_input", "data_table_search")
+    session$sendCustomMessage("clear_input", "data_table_rows_all")
+  })
+
+  # track the rows shown in the data table, with filters and search (or all filtered rows while table is still loading)
+  shown_data <- reactive({
+    if (is.null(input$data_table_search)) return(filtered_data())
+    rows <- input$data_table_rows_all
+    if (length(rows) == 0) filtered_data()[0] else filtered_data()[rows, ]
+  })
+
   # process IDs currently shown in data table (after table filters, marker filter, NTS/BIN member toggles; none if the filters leave no rows)
   # (waits until the table has been drawn: its search input is NULL until then, as are its rows when none match)
   visible_pids <- reactive({
@@ -1584,8 +1733,16 @@ server <- function(input, output, session) {
   observeEvent(input$ana_btn, {
     req(nrow(outdata$data) > 0)
     outdata$summary <- NULL
+    if (nrow(shown_data()) == 0) {
+      showNotification("There are no records in the table.", type = "warning")
+      return()
+    }
+    if (!input$ana_opt %in% c("tax_summary", "projects", "datasets", names(shown_data()))) {
+      showNotification("This field isn't in the current table.", type = "warning")
+      return()
+    }
     withInfProgress(message = "Generating summary...", {
-      outdata$summary <- summarize_table(filtered_data()[input$data_table_rows_all, ], input$ana_opt, computed_fields()$id_field)
+      outdata$summary <- summarize_table(shown_data(), input$ana_opt, computed_fields()$id_field)
     })
     if (!tab_status$summary) {
       bslib::nav_insert(
@@ -1646,9 +1803,19 @@ server <- function(input, output, session) {
 
   # compute diversity profile
   observeEvent(input$div_compute_btn, {
+    tryCatch(compute_div_profile(), error = function(e) {
+      if (inherits(e, "shiny.silent.error")) stop(e)
+      showNotification(paste0("The diversity profile could not be computed: ", conditionMessage(e)), type = "error", duration = NULL)
+    })
+  })
+  compute_div_profile <- function() {
     req(outdata$data)
     outdata$div_profile <- NULL
-    data <- unique(filtered_data()[input$data_table_rows_all, ], by = computed_fields()$id_field)
+    data <- unique(shown_data(), by = computed_fields()$id_field)
+    if (nrow(data) == 0) {
+      showNotification("There are no records in the table.", type = "warning")
+      return()
+    }
     site_col <- input$div_location_type
     # notify with error if beta diversity cannot be computed
     if ("beta" %in% input$div_profile) {
@@ -1774,6 +1941,10 @@ server <- function(input, output, session) {
     div_profile$counts$taxa <- uniqueN(data[[div_opts$taxon_rank]], na.rm = TRUE)
     # rarefaction & extrapolation using iNEXT
     if ("rarefy" %in% input$div_profile) {
+      # bootstrap replicates from Settings (0 means no bands, otherwise iNEXT needs > 1)
+      nboot <- user_config$settings$rare_nboot
+      inext_se <- nboot > 0
+      nboot <- max(2L, nboot)
       withInfProgress(message = "Computing rarefaction...", {
         if (input_opts$presence_absence) {
           # for presence-absence data, perform incidence-based rarefaction for entire dataset
@@ -1781,7 +1952,9 @@ server <- function(input, output, session) {
           inext_res <- iNEXT::iNEXT(
             x = list(Overall = comm_inc),
             datatype = "incidence_freq",
-            endpoint = sum(comm_inc) * 2
+            endpoint = sum(comm_inc) * 2,
+            se = inext_se,
+            nboot = nboot
           )
         } else {
           # otherwise, perform individual-based rarefaction for entire dataset
@@ -1790,7 +1963,9 @@ server <- function(input, output, session) {
           inext_res <- iNEXT::iNEXT(
             x = list(Overall = total_counts),
             datatype = "abundance",
-            endpoint = sum(total_counts) * 2
+            endpoint = sum(total_counts) * 2,
+            se = inext_se,
+            nboot = nboot
           )
         }
         div_profile$asy_est <- if ("Diversity" %in% names(inext_res$AsyEst)) {
@@ -1802,7 +1977,7 @@ server <- function(input, output, session) {
         }
       })
       # note that this input should be FALSE when input$div_presence is TRUE
-      if (input$div_rare_by_site) {
+      if (input$div_rare_by_site && input$div_site_type != "none" && !input_opts$presence_absence) {
         # individual-based rarefaction for individual sites
         # discard sites with fewer than 10 observations OR fewer than 2 species
         keep <- div_profile$site_counts$N >= 10 & div_profile$site_counts$S >= 2
@@ -1828,7 +2003,9 @@ server <- function(input, output, session) {
             res <- iNEXT::iNEXT(
               x = list(counts),
               datatype = "abundance",
-              endpoint = sum(counts) * 2
+              endpoint = sum(counts) * 2,
+              se = inext_se,
+              nboot = nboot
             )
             res$iNextEst$size_based$Assemblage <- nm
             res$AsyEst$Assemblage <- nm
@@ -1851,8 +2028,14 @@ server <- function(input, output, session) {
     }
 
     # beta diversity is computed with BAT::beta() via BOLDconnectR
-    if ("beta" %in% input$div_profile) {
-      withInfProgress(message = "Computing beta diversity...", {
+    # time and memory grow with the square of the number of sites, so it is skipped above a limit (div_max_sites in config.yaml)
+    n_sites <- if (is.null(div_profile$comm.matrix)) 0 else nrow(div_profile$comm.matrix)
+    if ("beta" %in% input$div_profile && n_sites > user_config$settings$div_max_sites) {
+      showNotification(sprintf("Beta diversity skipped: %s sites, more than the maximum of %s. Use broader site categories (e.g. countries or grid squares) or filter the table.",
+                               format(n_sites, big.mark = ","), format(user_config$settings$div_max_sites, big.mark = ",")),
+                       type = "warning", duration = 20)
+    } else if ("beta" %in% input$div_profile) {
+      withInfProgress(message = sprintf("Computing beta diversity for %s sites...", format(n_sites, big.mark = ",")), {
         beta_div_results <- BOLDconnectR:::beta_div_profile(
           div_profile$comm.matrix,
           input_opts$beta_index,
@@ -1935,7 +2118,7 @@ server <- function(input, output, session) {
     } else {
       bslib::nav_select(id = "tabs", selected = "div_profile")
     }
-  })
+  }
 
   # show a modal for saving diversity analysis results
   observeEvent(input$div_dl_btn, {
@@ -2001,32 +2184,47 @@ server <- function(input, output, session) {
   observeEvent(input$bin_consensus_btn, {
     req(nrow(outdata$data) > 0)
     # outdata$bin_consensus <- NULL
-    data <- filtered_data()[input$data_table_rows_all, ][!empty(bin_uri)]
+    data <- shown_data()[!empty(bin_uri)]
+    # BOLDNODE's BIN consensus fails on an empty table
+    if (nrow(data) == 0) {
+      showNotification("There are no records with a BIN in the table.", type = "warning")
+      return()
+    }
+    bin_consensus <- NULL
     withInfProgress(message = "Computing consensus BIN taxonomy...", {
-      bin_consensus <- BOLDNODE::get_bin_consensus(data,
-        threshold = as.double(unlist(unname(input$bc_threshold))),
-        min.ids = unlist(unname(input$bc_minids)),
-        enforce.scientific = input$bc_enforcesci,
-        discord.format = "text"
+      tryCatch(
+        {
+          bin_consensus <- BOLDNODE::get_bin_consensus(data,
+            threshold = as.double(unlist(unname(input$bc_threshold))),
+            min.ids = unlist(unname(input$bc_minids)),
+            enforce.scientific = input$bc_enforcesci,
+            discord.format = "text"
+          )
+          col_order <- append(names(bin_consensus), c("min_rank", "max_rank"), after = 2)
+          # highest and lowest identification rank within each BIN (positions in 'ranks' run from phylum to subspecies)
+          rank_pos <- data[, .(
+            bin_uri,
+            pos = match(as.character(identification_rank), ranks),
+            keep = if (input$bc_enforcesci) !grepl(re_int, identification, perl = TRUE) else TRUE
+          )][keep == TRUE & !is.na(pos)]
+          bin_ranks <- rank_pos[, .(
+            min_rank = factor(ranks[min(pos)], levels = ranks),
+            max_rank = factor(ranks[max(pos)], levels = ranks)
+          ), by = "bin_uri"]
+          bin_consensus <- merge(bin_consensus,
+            bin_ranks,
+            by = "bin_uri",
+            all.x = TRUE
+          )
+          setcolorder(bin_consensus, col_order)
+        },
+        error = function(e) {
+          bin_consensus <<- NULL
+          showNotification(paste0("Error computing the BIN consensus: ", conditionMessage(e)), type = "error")
+        }
       )
-      col_order <- append(names(bin_consensus), c("min_rank", "max_rank"), after = 2)
-      # highest and lowest identification rank within each BIN (positions in 'ranks' run from phylum to subspecies)
-      rank_pos <- data[, .(
-        bin_uri,
-        pos = match(as.character(identification_rank), ranks),
-        keep = if (input$bc_enforcesci) !grepl(re_int, identification, perl = TRUE) else TRUE
-      )][keep == TRUE & !is.na(pos)]
-      bin_ranks <- rank_pos[, .(
-        min_rank = factor(ranks[min(pos)], levels = ranks),
-        max_rank = factor(ranks[max(pos)], levels = ranks)
-      ), by = "bin_uri"]
-      bin_consensus <- merge(bin_consensus,
-        bin_ranks,
-        by = "bin_uri",
-        all.x = TRUE
-      )
-      setcolorder(bin_consensus, col_order)
     })
+    req(bin_consensus)
 
     outdata$bin_consensus <- bin_consensus
 
@@ -2055,7 +2253,7 @@ server <- function(input, output, session) {
     delay(1000, {
       cons <- isolate(outdata$bin_consensus)
       # portal stats are only merged once per consensus table (this observer fires again after the merge below);
-      # avg_dist is used to detect this because it only comes from the portal (member_count is also a consensus column)
+      # avg_dist is used to detect this because it only comes from the portal
       if (isTRUE(input$bc_portal_stats) && !"avg_dist" %in% names(cons)) {
         # reuse stats already retrieved for these BINs, and only query the portal for the rest
         portal_stats <- isolate(outdata$bin_portal_stats)
@@ -2084,7 +2282,7 @@ server <- function(input, output, session) {
   # the portal API can be somewhat inconsistent; this will insert a warning message about any BINs for which the query timed out
   insert_portal_warning <- function(portal_stats) {
     removeUI("#bc_portal_warning", immediate = TRUE)
-    failed <- nrow(portal_stats[empty(member_count)])
+    failed <- nrow(portal_stats[empty(bold_member_count)])
     if (failed > 0) {
       insertUI(
         selector = "div.form-group:has(#bc_portal_stats):not(:has(div.form-group:has(#bc_portal_stats)))",
@@ -2104,7 +2302,7 @@ server <- function(input, output, session) {
   observeEvent(outdata$bin_portal_stats, {
     portal_stats <- outdata$bin_portal_stats
     req(portal_stats)
-    if ("member_count" %in% names(portal_stats)) {
+    if ("bold_member_count" %in% names(portal_stats)) {
       insert_portal_warning(portal_stats)
     }
   })
@@ -2113,7 +2311,11 @@ server <- function(input, output, session) {
   observeEvent(input$bc_portal_retry, {
     init_stats <- outdata$bin_portal_stats
     req(init_stats)
-    retry_stats <- get_portal_bin_stats(as.character(init_stats[empty(member_count), bin_uri]), shiny = TRUE)
+    retry_stats <- get_portal_bin_stats(as.character(init_stats[empty(bold_member_count), bin_uri]), shiny = TRUE)
+    if (!is.data.frame(retry_stats) || nrow(retry_stats) == 0) {
+      showNotification("BOLD Portal stats could not be retrieved.", type = "warning")
+      return()
+    }
     init_stats[retry_stats, (names(init_stats)) := mget(paste0("i.", names(init_stats))), on = "bin_uri"]
     cons <- isolate(outdata$bin_consensus)
     outdata$bin_consensus <- merge(cons[, .SD, .SDcols = c("bin_uri", names(cons)[!names(cons) %in% names(init_stats)])],
@@ -2421,7 +2623,7 @@ server <- function(input, output, session) {
                })
     })
     req(tree)
-    # sequences dropped because they couldn't be compared with all others
+    # sequences dropped due to missing distances
     dropped <- attr(tree, "dropped")
     if (dropped > 0) {
       showNotification(if (attr(tree, "njs_failed")) {
@@ -2616,8 +2818,7 @@ server <- function(input, output, session) {
 
   # function used to update the rendered markers on the occurrence point map
   update_map <- function() {
-    req(input$data_table_rows_all)
-    data <- filtered_data()[input$data_table_rows_all, ]
+    data <- shown_data()
     data <- unique(data[!is.na(lat) & !is.na(lon)], by = "processid")
     # points are clustered unless switched off with the map's cluster/points button
     clustered <- !isFALSE(input$map_clustered)
@@ -2713,6 +2914,7 @@ server <- function(input, output, session) {
       # fixedHeader = TRUE,
       fixedColumns = list(leftColumns = 1),
       stateSave = TRUE,
+      stateDuration = -1,
       searchDelay = 500,
       initComplete = DT::JS("function(settings, json) {
                                             var dt = this.api();
@@ -2941,11 +3143,10 @@ server <- function(input, output, session) {
       )
     )
     df_inext$tooltip <- paste0(
-      if (indiv) paste0("<b>", df_inext$site, "</b><br>"),
+      if (indiv) paste0("<b>", htmltools::htmlEscape(df_inext$site), "</b><br>"),
       ifelse(indiv, "Individuals: ", "Incidences: "), round(df_inext$m, 1),
       "<br>Est. richness: ", round(df_inext$qD, 1),
-      "<br>95% CI: ", round(df_inext$qD.LCL, 1),
-      "\u2013", round(df_inext$qD.UCL, 1)
+      ifelse(is.na(df_inext$qD.LCL), "", paste0("<br>95% CI: ", round(df_inext$qD.LCL, 1), "\u2013", round(df_inext$qD.UCL, 1)))
     )
     y_label <- paste0(get_div_label(outdata$div_profile$input_opts$taxon_rank, capitalize = TRUE), " richness")
     rare_plot <- plotly::ggplotly(
@@ -3061,7 +3262,7 @@ server <- function(input, output, session) {
     diag(beta_full) <- NA
     df_nmds$mean_beta <- rowMeans(beta_full, na.rm = TRUE)
     df_nmds$tooltip <- paste0(
-      "<b>", df_nmds$site, "</b><br>",
+      "<b>", htmltools::htmlEscape(df_nmds$site), "</b><br>",
       "NMDS1: ", round(df_nmds$NMDS1, 3), "<br>",
       "NMDS2: ", round(df_nmds$NMDS2, 3), "<br>",
       "Mean \u03b2: ", round(df_nmds$mean_beta, 3)
@@ -3356,12 +3557,16 @@ server <- function(input, output, session) {
   # obtain FASTA-formatted sequences for current data
   get_fasta <- function(copy = TRUE) {
     collapse_mrkrs <- if (input$collapse_mrkrs == TRUE) {
-      coll_fields <- coll_mrkr_fields()[grepl(paste0("^", paste(input$filt_seq, collapse = "|")), coll_mrkr_fields())]
+      # the selected markers' columns, or all markers if none are selected
+      coll_fields <- coll_mrkr_fields()
+      if (length(input$filt_seq) > 0) {
+        coll_fields <- coll_fields[vapply(coll_fields, function(f) any(startsWith(f, paste0(input$filt_seq, "_"))), logical(1))]
+      }
       coll_fields[grepl("_nuc$", coll_fields)]
     } else {
       NULL
     }
-    data <- if (input$tabs == "data") {
+    data <- if (input$tabs %in% c("data", "bin_reps")) {
       id_col <- intersect(c("processid", "sampleid"), names(tab_data[[input$tabs]]$output()))[1]
       ids <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), get(id_col)]
       if (input$collapse_mrkrs == TRUE) {
@@ -3409,11 +3614,12 @@ server <- function(input, output, session) {
       },
       content = function(file) {
         data <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ]
+        if (format != "fasta") data <- prep_export(data, format)
         switch(format,
           tsv = fwrite(data, file, sep = "\t", na = "", quote = FALSE, row.names = FALSE),
           csv = fwrite(data, file, na = "", row.names = FALSE),
           xlsx = writexl::write_xlsx(data, file, format_headers = FALSE),
-          fasta = writeLines(get_fasta(copy = FALSE), file)
+          fasta = writeLines(fasta_to_save(), file)
         )
       }
     )
@@ -3422,9 +3628,9 @@ server <- function(input, output, session) {
   # open logic
   observeEvent(input$open_xlsx, {
     data <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ]
-    filename <- paste0(tab_data[[input$tabs]]$basename(), as.character(format(Sys.Date(), "%Y%m%d")), "_")
+    filename <- paste0(clean_dtpkg_id(tab_data[[input$tabs]]$basename()), as.character(format(Sys.Date(), "%Y%m%d")), "_")
     temp <- tempfile(pattern = filename, tmpdir = open_files_path, fileext = ".xlsx")
-    writexl::write_xlsx(data, temp, format_headers = FALSE)
+    writexl::write_xlsx(prep_export(data, "xlsx"), temp, format_headers = FALSE)
     open_path(temp)
   })
 
@@ -3432,10 +3638,18 @@ server <- function(input, output, session) {
   output$save_tsv <- download_output("tsv")
   output$save_csv <- download_output("csv")
   output$save_xlsx <- download_output("xlsx")
-  output$save_fasta <- download_output("fasta")
+  # FASTA: saved only when there are sequences (get_fasta() says so otherwise)
+  fasta_to_save <- reactiveVal(NULL)
+  observeEvent(input$save_fasta, {
+    fasta <- get_fasta(copy = FALSE)
+    req(length(fasta) > 0)
+    fasta_to_save(fasta)
+    session$sendCustomMessage("click_link", "save_fasta_dl")
+  })
+  output$save_fasta_dl <- download_output("fasta")
   # button row download links are shown/hidden by the browser (tab_data$buttons), which Shiny doesn't always notice
   # straight away, so they're kept active while hidden; otherwise, a click could come before a link's address is set
-  for (id in c("save_tsv", "save_csv", "save_xlsx", "save_fasta", "tree_newick")) {
+  for (id in c("save_tsv", "save_csv", "save_xlsx", "save_fasta_dl", "tree_newick")) {
     outputOptions(output, id, suspendWhenHidden = FALSE)
   }
 
@@ -3511,7 +3725,9 @@ server <- function(input, output, session) {
       if (tools::file_ext(filenames[[result]]) == "rds") {
         saveRDS(prep_content(result), file)
       } else {
-        write.csv(prep_content(result), file, , na = "", row.names = FALSE)
+        content <- prep_content(result)
+        if (is.data.frame(content)) content <- prep_export(content, "csv")
+        write.csv(content, file, na = "", row.names = FALSE)
       }
     }
     # function for zipping all outputs into a single archive
