@@ -1,10 +1,10 @@
 <img src="shiny/www/reflectR-name.png" alt="BOLDreflectR" height="60px" style="display:block; margin:auto;">
 
-A graphical user interface for [BOLDconnectR](https://doi.org/10.32614/CRAN.package.BOLDconnectR) and BOLD's data APIs, allowing retrieval, exploration, and analysis of DNA barcode data.
+A graphical user interface for [BOLDconnectR](https://doi.org/10.32614/CRAN.package.BOLDconnectR), [BOLDNODE](https://doi.org/10.32614/CRAN.package.BOLDNODE), and BOLD's data APIs, allowing retrieval, exploration, and analysis of DNA barcode data.
 
 **BOLDreflectR** is a Shiny app built in R, and packaged as a desktop application using a [fork](https://github.com/skmonckton/nhyris) of [nhyris](https://github.com/jahnen/nhyris). This repository includes all the necessary files to build the standalone application using the modified nhyris code (i.e., while excluding the bundled R installation and Node.js packages used by the Electron framework that powers the desktop app).
 
-Bundled executables are available from the [releases](https://github.com/skmonckton/BOLDreflectR/releases/latest) page. Executables are automatically built using GitHub Actions with each new version. The app is developed and tested on Windows 11; other platforms are more-or-less untested and may therefore have issues (please report any you encounter).
+Bundled executables are available from the [releases](https://github.com/skmonckton/BOLDreflectR/releases/) page. Executables are automatically built using GitHub Actions with each new version. The app is developed and tested on Windows 11; other platforms are more-or-less untested and may therefore have issues (please report any you encounter).
 
 The R code can also be downloaded from the [Shiny sub-directory](https://github.com/skmonckton/BOLDreflectR/tree/main/shiny), should you wish to run the app using RStudio.
 
@@ -14,10 +14,11 @@ The R code can also be downloaded from the [Shiny sub-directory](https://github.
 * Search BOLD by taxonomy, geography, marker, etc.
 * Get a hit/miss report for query terms
 * Find additional members of BINs in retrieved data
-
-**Explore and anlayze results:**
 * Customize column sets and filter results
 * Generate simple summaries & value counts
+
+**Explore and anlayze results:**
+* Align sequences and build trees
 * Compute alpha & beta diversity metrics
 * Compute consensus BIN taxonomy
 * Obtain a sample of BIN representatives
@@ -40,7 +41,7 @@ This software was developed at the Centre for Biodiversity Genomics, which is su
 If you use this software, please cite it as below:
 
 ```
-Monckton, S.K., & Padhye, S. (2026). BOLDreflectR (Version 0.9.5) [Software]. https://https://github.com/skmonckton/BOLDreflectR
+Monckton, S.K., & Padhye, S. (2026). BOLDreflectR (Version 1.0.0-rc1) [Software]. https://https://github.com/skmonckton/BOLDreflectR
 ```
 
 ---
