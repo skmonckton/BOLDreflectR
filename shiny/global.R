@@ -8,13 +8,33 @@ library(sortable)
 library(yaml)
 
 #' Packages loaded or lazy-loaded elsewhere:
+#'  ape
+#'  arrow
+#'  Biostrings
 #'  BOLDconnectR
 #'  BOLDNODE
+#'  bsicons
+#'  bslib
+#'  dbplyr
+#'  DECIPHER
+#'  dplyr
+#'  DT
+#'  ggplot2
+#'  htmltools
+#'  htmlwidgets
+#'  httr
 #'  iNEXT
+#'  jsonlite
+#'  later
 #'  leaflet
 #'  lubridate
 #'  pbapply
+#'  phangorn
 #'  plotly
+#'  sf
+#'  tidyr
+#'  zip
+#'  rstudioapi
 #'  vegan
 #'  writexl
 
@@ -54,7 +74,9 @@ session_authorized <- function(request) {
 # files written for opening in other applications (e.g. Excel) are kept here, inside the user data folder,
 # so that electron can open them; anything left over from previous sessions is cleared at start-up
 open_files_path <- file.path(user_data_path, "open_temp")
-unlink(list.files(open_files_path, full.names = TRUE))
+open_files <- list.files(open_files_path, full.names = TRUE)
+Sys.chmod(open_files, "0666")
+unlink(open_files)
 dir.create(open_files_path, showWarnings = FALSE, recursive = TRUE)
 
 # --- BCDM field definitions ---
@@ -269,17 +291,40 @@ summarize_by_choices <- function(fields = unlist(config$fieldsets$bcdm)) {
   )
 }
 
-# initialize user_config file in user data directory
-user_config <- if(file.exists(file.path(user_data_path,"user_config.yaml"))) {
-  read_yaml(file.path(user_data_path,"user_config.yaml"))
-} else {
-  list(fieldsets = list(custom = c()))
+# initialize user_config file in user data directory; unreadable files kept as user_config.damaged.yaml
+user_config_path <- file.path(user_data_path, "user_config.yaml")
+user_config <- if (file.exists(user_config_path)) {
+  tryCatch(read_yaml(user_config_path), error = function(e) {
+    file.rename(user_config_path, file.path(user_data_path, "user_config.damaged.yaml"))
+    NULL
+  })
 }
-# user settings over the defaults in config.yaml; if settings not saved or saved empty, go with defaults
-with_defaults <- function(settings) utils::modifyList(config$settings, Filter(length, as.list(settings)))
+if (!is.list(user_config)) user_config <- list()
+# only well-formed field sets are kept
+user_config$fieldsets <- list(custom = Filter(function(s) {
+  is.list(s) && isTRUE(grepl("^userset[0-9]+$", s$id)) && length(s$id) == 1 && is.atomic(s$name) && length(s$name) == 1 &&
+    is.character(s$fields)
+}, if (is.list(user_config$fieldsets)) user_config$fieldsets$custom))
+# a setting fits if it's a single number or TRUE/FALSE where the default is one, otherwise text
+valid_setting <- function(value, default) {
+  if (!is.atomic(value)) return(FALSE)
+  if (is.numeric(default)) return(is.numeric(value) && length(value) == 1 && !is.na(value))
+  if (is.logical(default)) return(is.logical(value) && length(value) == 1 && !is.na(value))
+  is.character(value)
+}
+# take user settings over the defaults in config.yaml; if not saved, empty, or wrong type, go with the defaults
+with_defaults <- function(settings) {
+  settings <- Filter(length, as.list(settings))
+  ok <- vapply(names(settings), function(n) {
+    nzchar(n) && (!n %in% names(config$settings) || valid_setting(settings[[n]], config$settings[[n]]))
+  }, logical(1))
+  utils::modifyList(config$settings, settings[ok])
+}
 user_config$settings <- with_defaults(user_config$settings)
 
 ranks <- names(config$ranknumeric) 
+# TRUE if any record has a value at any rank
+has_taxonomy <- function(data) any(vapply(intersect(ranks, names(data)), function(r) any(!empty(data[[r]])), logical(1)))
 
 map_colours <- colorRampPalette(c("#9e0142","#d53e4f","#f46d43","#fdae61",
                                   "#fee08b","#ffffbf","#e6f598","#abdda4",
@@ -291,13 +336,23 @@ citations <- c(HTML(sprintf('Monckton SK & Padhye S (2026). <span style="font-we
                HTML(sprintf('Padhye S & Monckton SK (2026). <span style="font-weight:600;">BOLDNODE</span>: Search and Explore BOLD Data Packages Efficiently. R package version %s. <a href="https://doi.org/10.32614/CRAN.package.BOLDNODE">https://doi.org/10.32614/CRAN.package.BOLDNODE</a>', packageVersion("BOLDNODE"))),
                HTML('Ratnasingham S, Wei C, Chan D, Agda J, Agda J, Ballesteros-Mejia L, Ait Boutou H, El Bastami Z M, Ma E, Manjunath R, Rea D, Ho C, Telfer A, McKeowan J, Rahulan M, Steinke C, Dorsheimer J, Milton M, Hebert PDN (2024). <span style="font-weight:600;">BOLD v4: A Centralized Bioinformatics Platform for DNA-Based Biodiversity Data</span>. In DNA Barcoding: Methods and Protocols, pp. 403–441. Chapter 26. New York, NY: Springer US, 2024.'))
 
+# raise notification if user_config.yaml can't be written
+write_user_config <- function(cfg) {
+  ok <- tryCatch({ write_yaml(cfg, user_config_path); TRUE }, error = function(e) FALSE)
+  if (!ok) {
+    msg <- "Settings couldn't be saved: user_config.yaml may be read-only or open in another program. Selected settings will last until the app closes."
+    if (is.null(getDefaultReactiveDomain())) message(msg) else showNotification(msg, id = "config_write", duration = 10, type = "error")
+  }
+  invisible(ok)
+}
+
 # function to save user options (called without arguments, it just writes the current config, e.g. after field set changes)
 save_user_config <- function(save_settings = list()) {
   user_settings <- isolate(user_config$settings)
   new_settings <- c(user_settings[!names(user_settings) %in% names(save_settings)],
                     save_settings)
   user_config$settings <<- with_defaults(new_settings)
-  write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+  write_user_config(user_config)
 }
 
 # alignment methods (DECIPHER functions, or none; see align_sequences() in R/alignment.R)
@@ -343,6 +398,9 @@ alignment_options <- function(prefix) tagList(alignment_marker_input(prefix), al
 # fields for tree tip labels
 tree_label_common <- c("processid", "sampleid", "tip_number", "bin_uri", "nuc_basecount", "country.ocean", "province.state")
 tree_label_names <- c(tip_number = "Tip number", stats::setNames(names(field_labels), field_labels))
+# tip labels always include at least one unique identifier, fallback to process ID if none
+tree_label_ids <- c("processid", "sampleid", "museumid", "record_id")
+with_tip_id <- function(fields) if (any(fields %in% tree_label_ids)) fields else c(fields, "processid")
 tree_label_other <- unlist(field_choices(setdiff(field_labels, c(
   tree_label_common, "marker_code", "nuc", "coord", "coord_accuracy", "primers_forward", "primers_reverse",
   "bold_recordset_code_arr", "location.verbatim_gps_accuracy", "location.verbatim_elev_accuracy",
@@ -444,7 +502,7 @@ validate_apikey <- function(key, remember = TRUE) {
     Sys.setenv(api_key = "")
     shinyjs::addClass(id = "api_key", class = "input_visible")
     shinyjs::show("api_key")
-    shinyjs::reset("api_key")
+    updateTextInput(inputId = "api_key", value = "")
   } else {
     tryCatch({
       set_apikey(key)
@@ -452,7 +510,7 @@ validate_apikey <- function(key, remember = TRUE) {
       shinyjs::removeClass(id = "api_key", class = "input_visible")
       shinyjs::hide("api_key")
       # cleared once used, so later searches don't apply the sidebar's Remember setting to it again
-      shinyjs::reset("api_key")
+      updateTextInput(inputId = "api_key", value = "")
     }, error = function(e) {
       showNotification(e$message, type = "error")
     })
@@ -483,7 +541,7 @@ update_datapackages <- function() {
                          size_kb = format(info$size, scientific = FALSE), created = format(info$ctime, "%Y-%m-%d"),
                          rows = rows[!is.na(rows)])[order(info$ctime, decreasing = TRUE)]
   user_config[["datapackages"]] <- apply(datapkgs, 1, as.list)
-  write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+  write_user_config(user_config)
   return(datapkgs)
 }
 
@@ -502,6 +560,13 @@ check_datapackage <- function(path) {
     return(paste0("The file is not a BOLD data package (columns missing: ", paste(missing, collapse = ", "), ")."))
   }
   NULL
+}
+
+# the app expects every BCDM field - added empty if missing
+add_missing_fields <- function(data) {
+  missing_fields <- setdiff(unlist(config$fieldsets$bcdm), names(data))
+  if (length(missing_fields) > 0) data[, (missing_fields) := NA_character_]
+  data
 }
 
 # renaming columns to BCDM standard
@@ -593,6 +658,8 @@ clip_fasta <- function(bold_df,
                        to_cb = TRUE) {
   # header definition
   if (is.null(cols_for_fas_names)) cols_for_fas_names <- user_config$settings$fasta_head
+  cols_for_fas_names <- intersect(cols_for_fas_names, names(bold_df))
+  if (length(cols_for_fas_names) == 0) cols_for_fas_names <- intersect(c("processid", "sampleid"), names(bold_df))[1]
   # add marker code to distinguish between sequences for any process IDs with multiple markers
   if (any(duplicated(bold_df$processid)) && !any(c("marker_code", "record_id") %in% cols_for_fas_names)) {
     showNotification("Some records have multiple markers. Output FASTA will include marker in headers.", duration = 6, type = "warning")
@@ -725,12 +792,18 @@ modify_datapackage <- function(dtpkg, filename = NULL, operation = "save", overw
     if(save_id %in% datapkgs$id && !overwrite) {
       showNotification("There is already a data package with this ID. If you wish to overwrite the existing file, please delete it first.", id = "fileio", type = "error")
     } else {
-      if(file.exists(save_path)) {
-        # release any open handles on the file (e.g. from a previous search) before overwriting it
-        gc()
-        if(!file.remove(save_path)) stop("The existing data package could not be overwritten (it may be in use).")
+      # copied alongside first, so a failed copy leaves any existing package as it was
+      temp_path <- paste0(save_path, ".tmp")
+      if(!file.copy(dtpkg, temp_path, overwrite = TRUE)) {
+        unlink(temp_path)
+        stop("The data package file could not be copied to the user data folder.")
       }
-      if(!file.copy(dtpkg, save_path)) stop("The data package file could not be copied to the user data folder.")
+      # release any open handles on the file (e.g. from a previous search) before replacing it
+      if(file.exists(save_path)) gc()
+      if(!file.rename(temp_path, save_path)) {
+        unlink(temp_path)
+        stop("The existing data package could not be overwritten (it may be in use).")
+      }
       upgrade_saved_datapackage(save_path)
       datapkg <- data.table(file.info(dtpkg)[c("size", "ctime")],
                             keep.rownames = TRUE)[, .(id = save_id, path = save_path,
@@ -739,7 +812,7 @@ modify_datapackage <- function(dtpkg, filename = NULL, operation = "save", overw
                                                       rows = arrow::open_dataset(dtpkg)$num_rows)]
       datapkgs <<- rbindlist(list(datapkgs[id != save_id], datapkg))[order(-created)]
       user_config[["datapackages"]] <- apply(datapkgs, 1, as.list)
-      write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+      write_user_config(user_config)
       showNotification("Data package saved!", id = "fileio", type = "message")
     }
   } else if(operation == "delete") {
@@ -751,7 +824,7 @@ modify_datapackage <- function(dtpkg, filename = NULL, operation = "save", overw
     }
     datapkgs <<- datapkgs[id != dtpkg][order(-created)]
     user_config[["datapackages"]] <- apply(datapkgs, 1, as.list)
-    write_yaml(user_config, file.path(user_data_path,"user_config.yaml"))
+    write_user_config(user_config)
   }
   invisible(datapkgs)
 }
@@ -988,6 +1061,10 @@ bold.fetch.shiny <- function (get_by,
       msg <- text
       msg_type <- "warning"
       msg_dwell = 5
+    } else if (grepl("HTTP 40[13]", text)) {
+      msg <- "BOLD didn't accept the API key; please verify your key and update it in Settings if necessary."
+      msg_type <- "error"
+      msg_dwell = NULL
     } else {
       msg <- paste("Error fetching data:", text)
       msg_type <- "error"
@@ -1055,10 +1132,11 @@ overview_counts <- function(data) {
   )
 }
 
-# counts of records for each term in query
+# counts of records for each term in query, by process ID to avoid double-counting multiple markers
 query_term_hits <- function(data, query) {
   qfields <- setdiff(intersect(names(query), names(config$queryterms)), "marker")
-  rbindlist(lapply(qfields, function(qfield) {
+  pid <- as.character(data$processid)
+  hits <- rbindlist(lapply(qfields, function(qfield) {
     terms <- unique(trimws(as.character(unlist(query[[qfield]]))))
     terms <- terms[nzchar(terms)]
     if (length(terms) == 0) return(NULL)
@@ -1072,13 +1150,15 @@ query_term_hits <- function(data, query) {
         data.table(row = seq_along(v), value = v)
       }
     }))
-    hits <- if (nrow(values) > 0) unique(values[, .(row, value = tolower(trimws(value)))])[, .(records = .N), by = value] else
+    hits <- if (nrow(values) > 0) unique(values[, .(pid = pid[row], value = tolower(trimws(value)))])[, .(records = .N), by = value] else
       data.table(value = character(), records = integer())
     out <- data.table(search = config$queryterms[[qfield]]$name, term = terms,
                       records = hits$records[match(tolower(terms), hits$value, nomatch = NA)])[is.na(records), records := 0L]
     out[, found := fifelse(records > 0, "FOUND", "NOT FOUND")]
     setcolorder(out, c("search", "term", "found", "records"))
   }))
+  if (nrow(hits) == 0) hits <- data.table(search = character(), term = character(), found = character(), records = integer())
+  hits
 }
 
 # retrieve BIN mates
@@ -1251,4 +1331,28 @@ withInfProgress <- function(message, expr, env = parent.frame()) {
     eval(substitute(expr), envir = env),
     finally = removeNotification(notif_id)
   )
+}
+
+# safety net to catch and report any unhandled errors occurring inside observers
+# req() and validate() still stop the observer quietly
+keep_going <- function(expr) {
+  tryCatch(expr, error = function(e) {
+    if (inherits(e, "shiny.silent.error")) stop(e)
+    msg <- sub("[.[:space:]]+$", "", conditionMessage(e))
+    message("Error in observer: ", msg)
+    showNotification(
+      paste0("Something went wrong: ", substr(msg, 1, 300), ". Your data is still loaded, but the last step may not have finished."),
+      duration = NULL, type = "error", id = "observer_error"
+    )
+    invisible()
+  })
+}
+# observeEvent() and observe() with their handlers run through keep_going()
+observeEvent <- function(eventExpr, handlerExpr, ...) {
+  shiny::observeEvent(substitute(eventExpr), call("keep_going", substitute(handlerExpr)),
+                      event.env = parent.frame(), event.quoted = TRUE,
+                      handler.env = parent.frame(), handler.quoted = TRUE, ...)
+}
+observe <- function(x, ...) {
+  shiny::observe(call("keep_going", substitute(x)), env = parent.frame(), quoted = TRUE, ...)
 }

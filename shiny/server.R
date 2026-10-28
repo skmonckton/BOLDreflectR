@@ -8,8 +8,10 @@ server <- function(input, output, session) {
   }
 
   session$onSessionEnded(function() {
-    # clear temporary files on quit (otherwise they stick around)
-    unlink(c(list.files(tempdir(), full.names = TRUE), list.files(open_files_path, full.names = TRUE)), recursive = TRUE)
+    # clear temporary files on quit (otherwise they stick around); opened files are read-only
+    open_files <- list.files(open_files_path, full.names = TRUE)
+    Sys.chmod(open_files, "0666")
+    unlink(c(list.files(tempdir(), full.names = TRUE), open_files), recursive = TRUE)
     stopApp()
   })
 
@@ -480,6 +482,8 @@ server <- function(input, output, session) {
         showNotification("Nothing to search for: enter identifiers or search terms first.", id = "fetch_msg", type = "warning")
         return()
       }
+      # only listed data packages are searched
+      if (input$query_type == "source-local" && !isTRUE(input$datapackage_id %in% user_datapkgs()$path)) return()
       shinyjs::hide("main_panel")
       # immediate feedback in case of any delay
       showNotification(if (input$query_type == "source-local") "Searching data package for matching records..." else "Contacting BOLD...",
@@ -571,8 +575,26 @@ server <- function(input, output, session) {
         warning = function(w) {
           showNotification(conditionMessage(w), id = "fetch_msg", type = "warning")
         },
+        # data package read errors are reported with excess DuckDB info removed
         error = function(e) {
-          showNotification(paste0("Error processing record identifiers: ", e$message), id = "fetch_msg", type = "error")
+          message("Search failed: ", conditionMessage(e))
+          local_search <- input$query_type == "source-local"
+          # catch missing columns from either DuckDB or dplyr
+          missing_col <- regmatches(conditionMessage(e), regexpr("(?<=Column `|Object `)[^`]+(?=` doesn't exist|` not found)", conditionMessage(e), perl = TRUE))
+          showNotification(
+            if (local_search && !file.exists(input$datapackage_id)) {
+              "The data package file is missing: it may have been moved or deleted."
+            } else if (local_search && grepl("Can't query fields", conditionMessage(e), fixed = TRUE)) {
+              "The data package couldn't be read: it may be damaged or in use."
+            } else if (local_search && length(missing_col) == 1) {
+              paste0("The data package has no ", missing_col, " column, which is needed for this search.")
+            } else if (!local_search && grepl("HTTP 40[13]", conditionMessage(e))) {
+              "BOLD didn't accept the API key; please verify your key and update it in Settings if necessary."
+            } else {
+              paste0("Error processing record identifiers: ", e$message)
+            },
+            id = "fetch_msg", type = "error"
+          )
         }
       )
       # record query parameters (calls describe_query() from global.R) once data arrives
@@ -689,6 +711,7 @@ server <- function(input, output, session) {
     data <- unique(data, by = intersect(c("processid", "marker_code"), names(data)))
     # show records in the order of the query terms
     data <- order_by_query(data, fetch_params$query)
+    add_missing_fields(data)
     data[, c("id_date_parsed", "project_code", "lat", "lon") := c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", "processid")), parse_lat_lon(coord))]
     convert_factor_char(data)
     if (fetch_params$fetch_by == "bin_uris") {
@@ -835,7 +858,7 @@ server <- function(input, output, session) {
     withInfProgress("Processing additional BIN member data...", {
       # never add records that are already present (comparing whole rows is not enough, since values can
       # differ between API calls, e.g. depending on the API key's access to private data)
-      binmate_data <- unique(binmate_data[!processid %in% outdata$data$processid], by = c("processid", "marker_code"))
+      binmate_data <- unique(add_missing_fields(binmate_data)[!processid %in% outdata$data$processid], by = c("processid", "marker_code"))
       req(nrow(binmate_data) > 0)
       binmate_data <- binmate_data[, c("id_date_parsed", "project_code", "lat", "lon") :=
         c(list(parse_id_date(.SD), list_recordsets(.SD, "parse_project", "processid")), parse_lat_lon(coord))]
@@ -1018,6 +1041,7 @@ server <- function(input, output, session) {
   # delete selected data package
   observeEvent(input$datapackage_delete, {
     req(input$datapkg_table_rows_selected)
+    req(all(input$datapkg_table_rows_selected %in% seq_len(nrow(user_datapkgs()))))
     delete_ids <- user_datapkgs()[input$datapkg_table_rows_selected, id]
     if (delete_check) {
       shinyjs::show("delete_confirm")
@@ -1157,7 +1181,7 @@ server <- function(input, output, session) {
           removeModal()
         },
         error = function(e) {
-          showNotification(paste0("Error saving data package:", e$message), type = "error")
+          showNotification(paste0("Error saving data package: ", e$message), type = "error")
         }
       )
     }
@@ -1472,7 +1496,7 @@ server <- function(input, output, session) {
       include_nts = isolate(input$include_nts_def),
       max_seqs = if (valid_count(input$max_seqs_def, 3)) as.integer(input$max_seqs_def) else user_config$settings$max_seqs,
       max_records = if (valid_count(input$max_records_def, 1000)) as.integer(input$max_records_def) else user_config$settings$max_records,
-      tree_labels = isolate(input$tree_labels_def),
+      tree_labels = if (length(input$tree_labels_def) > 0) with_tip_id(isolate(input$tree_labels_def)),
       tree_incomparable = isolate(input$tree_incomparable_def),
       pdf_tips = if (isTruthy(input$pdf_tips_def)) as.integer(min(100, max(20, input$pdf_tips_def))) else user_config$settings$pdf_tips,
       rare_nboot = if (valid_count(input$rare_nboot_def, 0) && input$rare_nboot_def <= 500) as.integer(input$rare_nboot_def) else user_config$settings$rare_nboot
@@ -1697,31 +1721,41 @@ server <- function(input, output, session) {
     session$sendCustomMessage("clear_input", "data_table_rows_all")
   })
 
+  # rows shown in the data table with its filters and search
+  # (the table is only redrawn when shown, which clears filters/search, so sidebar changes count every row until the table is shown again)
+  table_stale <- reactiveVal(FALSE)
+  observeEvent(out_table(), table_stale(TRUE))
+  observeEvent(input$data_table_rows_all, table_stale(FALSE))
+  table_rows <- reactive(if (table_stale()) seq_len(nrow(out_table())) else input$data_table_rows_all)
+
   # track the rows shown in the data table, with filters and search (or all filtered rows while table is still loading)
   shown_data <- reactive({
     if (is.null(input$data_table_search)) return(filtered_data())
-    rows <- input$data_table_rows_all
+    rows <- table_rows()
     if (length(rows) == 0) filtered_data()[0] else filtered_data()[rows, ]
   })
 
   # process IDs currently shown in data table (after table filters, marker filter, NTS/BIN member toggles; none if the filters leave no rows)
-  # (waits until the table has been drawn: its search input is NULL until then, as are its rows when none match)
+  # waits until the table has been drawn: its search input is NULL until then, as are its rows when none match
   visible_pids <- reactive({
     req(outdata$data, !is.null(input$data_table_search))
-    rows <- input$data_table_rows_all
+    rows <- table_rows()
     if (length(rows) == 0) character(0) else unique(filtered_data()[rows, processid])
   })
 
   # compute summary counts and inject as a new tab
   observeEvent(input$ana_btn, {
     req(nrow(outdata$data) > 0)
-    outdata$summary <- NULL
     if (nrow(shown_data()) == 0) {
       showNotification("There are no records in the table.", type = "warning")
       return()
     }
     if (!input$ana_opt %in% c("tax_summary", "projects", "datasets", names(shown_data()))) {
       showNotification("This field isn't in the current table.", type = "warning")
+      return()
+    }
+    if (input$ana_opt == "tax_summary" && !has_taxonomy(shown_data())) {
+      showNotification("None of the records in the table have taxonomy.", type = "warning")
       return()
     }
     withInfProgress(message = "Generating summary...", {
@@ -2081,7 +2115,11 @@ server <- function(input, output, session) {
         if (attr(div_profile$total.beta, "Size") < 3) {
           showNotification("Skipping beta diversity plot; need at least 3 sites to run ordination.", type = "warning", duration = 10)
         } else {
-          div_profile$nmds.beta <- vegan::monoMDS(beta_mat, k = 2, maxit = 500)
+          # fails when there's nothing to ordinate - e.g. same taxa across all sites - but keeps the rest of the profile
+          div_profile$nmds.beta <- tryCatch(vegan::monoMDS(beta_mat, k = 2, maxit = 500), error = function(e) {
+            showNotification("Skipping beta diversity plot: sites can't be ordinated (e.g. they all have the same taxa).", type = "warning", duration = 10)
+            NULL
+          })
         }
       })
     }
@@ -2213,6 +2251,10 @@ server <- function(input, output, session) {
     # BOLDNODE's BIN consensus fails on an empty table
     if (nrow(data) == 0) {
       showNotification("There are no records with a BIN in the table.", type = "warning")
+      return()
+    }
+    if (!has_taxonomy(data)) {
+      showNotification("None of the records with a BIN have taxonomy.", type = "warning")
       return()
     }
     bin_consensus <- NULL
@@ -2357,6 +2399,11 @@ server <- function(input, output, session) {
   observeEvent(input$bin_rep_btn, {
     req(nrow(outdata$data) > 0)
     outdata$bin_reps <- NULL
+    # representatives are chosen from COI-5P sequences with BINs only
+    if (!any(outdata$data[processid %in% visible_pids(), marker_code == "COI-5P" & !empty(bin_uri)], na.rm = TRUE)) {
+      showNotification("No BIN representatives with COI-5P sequences were found.", type = "warning")
+      return()
+    }
     withInfProgress(message = "Selecting BIN representatives...", {
       criteria <- if (!input$bin_rep_default) {
         list(
@@ -2706,9 +2753,10 @@ server <- function(input, output, session) {
   tree_view <- reactive({
     tr <- outdata$tree
     req(tr)
-    fields <- if (length(input$tree_labels) == 0) config$settings$tree_labels else input$tree_labels
+    fields <- if (length(input$tree_labels) == 0) user_config$settings$tree_labels else input$tree_labels
+    fields <- with_tip_id(intersect(fields, names(tree_label_names)))
     colour <- input$tree_colour
-    colours <- if (isTruthy(colour) && colour != "none") {
+    colours <- if (isTRUE(colour %in% setdiff(fields, "tip_number"))) {
       tree_colours(tr$tree, tip_field_values(tr$meta, colour, tr$tip_number), tr$tip_number)
     }
     list(tree = tr, labels = tree_tip_labels(tr$meta, fields, tr$tip_number), info = tree_tip_info(tr$meta, fields, tr$tip_number),
@@ -2743,15 +2791,32 @@ server <- function(input, output, session) {
   })
 
   # tip label options: fields with at least one value in the data
+  # the labels last chosen are offered again for later data, including any missing from the current data
+  labels_wanted <- user_config$settings$tree_labels
+  labels_sent <- NULL
+  observeEvent(input$tree_labels, {
+    if (!identical(as.character(input$tree_labels), labels_sent)) labels_wanted <<- input$tree_labels
+  }, ignoreNULL = FALSE, ignoreInit = TRUE)
   observeEvent(outdata$data, {
     filled <- names(outdata$data)[vapply(outdata$data, function(x) any(!empty(x)), logical(1))]
-    updateSelectizeInput(session, "tree_labels", choices = tree_label_fields(filled),
-                         selected = intersect(isolate(input$tree_labels), c("tip_number", filled)))
+    labels_sent <<- with_tip_id(intersect(labels_wanted, c("tip_number", filled)))
+    updateSelectizeInput(session, "tree_labels", choices = tree_label_fields(filled), selected = labels_sent)
+  })
+
+  # tip labels without a unique record identifier get process ID
+  for (id in c("tree_labels", "tree_labels_def")) local({
+    id <- id
+    observeEvent(input[[id]], {
+      if (!any(input[[id]] %in% tree_label_ids)) {
+        showNotification("Tip labels need a process ID, sample ID, museum ID or record ID, so process ID was added.", type = "message")
+        updateSelectizeInput(session, id, selected = with_tip_id(input[[id]]))
+      }
+    })
   })
 
   # options to colourize tree follow the chosen label fields (except tip number)
   observeEvent(input$tree_labels, {
-    fields <- setdiff(input$tree_labels, "tip_number")
+    fields <- setdiff(as.character(input$tree_labels), "tip_number")
     current <- isolate(input$tree_colour)
     updateSelectInput(session, "tree_colour",
                       choices = c("None" = "none", stats::setNames(fields, tree_label_names[fields])),
@@ -2854,13 +2919,14 @@ server <- function(input, output, session) {
     data <- unique(data[!is.na(lat) & !is.na(lon)], by = "processid")
     # points are clustered unless switched off with the map's cluster/points button
     clustered <- !isFALSE(input$map_clustered)
-    # switching back to the map tab does not require redrawing the same records
-    if (identical(list(data$processid, clustered), map_pids)) {
+    # switching back to the map tab or sorting the table does not require redrawing the same records
+    pids <- sort(as.character(data$processid))
+    if (identical(list(pids, clustered), map_pids)) {
       return(invisible())
     }
     # prevent redraw when switching between clusters and points
-    refit <- !identical(data$processid, map_pids[[1]])
-    map_pids <<- list(data$processid, clustered)
+    refit <- !identical(pids, map_pids[[1]])
+    map_pids <<- list(pids, clustered)
     if (nrow(data) == 0) {
       leaflet::leafletProxy("record_map") |>
         leaflet::clearMarkers() |>
@@ -3010,6 +3076,7 @@ server <- function(input, output, session) {
   # diversity analysis summary stats
   output$div_stats <- renderUI({
     res <- outdata$div_profile
+    req(res)
     asy_est <- if (!is.null(res$inext)) round(res$asy_est$Estimator, 1) else "-"
     shannon_h <- if (!is.null(res$shannon_div)) round(mean(as.numeric(unlist(res$shannon_div)), na.rm = TRUE), 2) else "—"
     total_b <- if (!is.null(res$total.beta)) round(mean(res$total.beta, na.rm = TRUE), 3) else "—"
@@ -3040,6 +3107,7 @@ server <- function(input, output, session) {
   output$div_plots <- renderUI({
     req(outdata$div_profile)
     res <- outdata$div_profile
+    req(res)
     bslib::navset_card_pill(
       id = "div_nav",
       if (!is.null(res$inext)) {
@@ -3134,6 +3202,7 @@ server <- function(input, output, session) {
   output$grid_map <- leaflet::renderLeaflet({
     req(outdata$div_profile$grids.data)
     res <- outdata$div_profile
+    req(res)
     grids_wgs84 <- sf::st_transform(res$grids.data, crs = 4326)
     grids_wgs84 <- merge(grids_wgs84, res$site_stats[, .(cell.id = `Grid cell`, N, S)])
     grids_wgs84$label <- lapply(paste0(
@@ -3160,10 +3229,11 @@ server <- function(input, output, session) {
   # rarefaction curves
   output$plot_rare <- plotly::renderPlotly({
     res <- outdata$div_profile
+    req(res)
     indiv <- !res$input_opts$presence_absence
     inext_res <- res$inext
     req(inext_res)
-    df_inext <- if (!isolate(input$div_rare_by_site)) {
+    df_inext <- if (!is.null(inext_res$iNextEst)) {
       inext_res$iNextEst$size_based
     } else {
       rbindlist(lapply(inext_res, function(x) x$iNextEst$size_based))
@@ -3279,6 +3349,7 @@ server <- function(input, output, session) {
     beta_mat <- res$total.beta
     validate(need(attr(beta_mat, "Size") >= 3, "Need at least 3 sites to run ordination."))
     nmds_res <- res$nmds.beta
+    validate(need(nmds_res, "The sites can't be ordinated (e.g. they all have the same taxa)."))
     # create annotation for stress value
     stress_val <- round(nmds_res$stress, 3)
     stress_col <- fcase(stress_val > 0.2, "red",
@@ -3600,6 +3671,16 @@ server <- function(input, output, session) {
 
   ### Data export logic ----
 
+  # current tab's table, limited to visible rows (rows out of range are ignored)
+  current_table <- function() {
+    req(input$tabs %in% names(tab_data), is.function(tab_data[[input$tabs]]$output))
+    tab <- tab_data[[input$tabs]]
+    data <- tab$output()
+    req(data)
+    rows <- suppressWarnings(as.integer(tab$current_rows()))
+    data[rows[!is.na(rows) & rows >= 1 & rows <= nrow(data)], ]
+  }
+
   # obtain FASTA-formatted sequences for current data
   get_fasta <- function(copy = TRUE) {
     collapse_mrkrs <- if (input$collapse_mrkrs == TRUE) {
@@ -3614,7 +3695,7 @@ server <- function(input, output, session) {
     }
     data <- if (input$tabs %in% c("data", "bin_reps")) {
       id_col <- intersect(c("processid", "sampleid"), names(tab_data[[input$tabs]]$output()))[1]
-      ids <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), get(id_col)]
+      ids <- current_table()[[id_col]]
       if (input$collapse_mrkrs == TRUE) {
         collapsed_data()[get(id_col) %in% ids, ]
       } else if (!is.null(input$filt_seq)) {
@@ -3623,14 +3704,19 @@ server <- function(input, output, session) {
         outdata$data[get(id_col) %in% ids, ]
       }
     } else {
-      tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ]
+      current_table()
     }
     clip_fasta(data, collapse_mrkrs = collapse_mrkrs, to_cb = copy)
   }
 
   # copy button logic
   observeEvent(input$copy_table, {
-    cb(as.data.frame(tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ]))
+    data <- current_table()
+    if (nrow(data) == 0) {
+      showNotification("There are no rows to copy.", type = "warning")
+      return()
+    }
+    cb(as.data.frame(data))
   })
   observeEvent(input$copy_fasta, {
     get_fasta(copy = TRUE)
@@ -3642,7 +3728,9 @@ server <- function(input, output, session) {
   # column copy logic
   observeEvent(input$col_copy_clicked, {
     col_index <- input$col_copy_clicked$col # JS uses 0-based index
-    vals <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ][[col_index + 1]]
+    data <- current_table()
+    req(is.numeric(col_index), length(col_index) == 1, col_index >= 0, col_index < ncol(data))
+    vals <- data[[col_index + 1]]
     vals[vals == "NA"] <- ""
     cb(vals, header = FALSE)
   })
@@ -3659,7 +3747,7 @@ server <- function(input, output, session) {
         paste0(tab_data[[input$tabs]]$basename(), as.character(format(Sys.Date(), "%Y%m%d")), ".", format)
       },
       content = function(file) {
-        data <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ]
+        data <- current_table()
         if (format != "fasta") data <- prep_export(data, format)
         switch(format,
           tsv = fwrite(data, file, sep = "\t", na = "", quote = FALSE, row.names = FALSE),
@@ -3673,10 +3761,23 @@ server <- function(input, output, session) {
 
   # open logic
   observeEvent(input$open_xlsx, {
-    data <- tab_data[[input$tabs]]$output()[tab_data[[input$tabs]]$current_rows(), ]
-    filename <- paste0(clean_dtpkg_id(tab_data[[input$tabs]]$basename()), as.character(format(Sys.Date(), "%Y%m%d")), "_")
+    data <- current_table()
+    if (nrow(data) == 0) {
+      showNotification("There are no rows to open.", type = "warning")
+      return()
+    }
+    filename <- paste0(substr(clean_dtpkg_id(tab_data[[input$tabs]]$basename()), 1, 60), as.character(format(Sys.Date(), "%Y%m%d")), "_")
     temp <- tempfile(pattern = filename, tmpdir = open_files_path, fileext = ".xlsx")
-    writexl::write_xlsx(prep_export(data, "xlsx"), temp, format_headers = FALSE)
+    written <- tryCatch({
+      writexl::write_xlsx(prep_export(data, "xlsx"), temp, format_headers = FALSE)
+      TRUE
+    }, error = function(e) {
+      showNotification(paste0("The file could not be written: ", conditionMessage(e)), type = "error")
+      FALSE
+    })
+    req(written)
+    # read-only: deleted when the app closes so Excel asks for a new name when saving
+    Sys.chmod(temp, "0444")
     open_path(temp)
   })
 
@@ -3788,6 +3889,7 @@ server <- function(input, output, session) {
       filenames <- filenames[!sapply(div()[requires[names(filenames)]], is.null)]
       tmpdir <- tempfile("div_profile_")
       dir.create(tmpdir)
+      on.exit(unlink(tmpdir, recursive = TRUE))
       files <- sapply(seq_along(filenames), function(i) {
         tmpfile <- file.path(tmpdir, filenames[[i]])
         save_content(names(filenames[i]), tmpfile)
@@ -3798,7 +3900,6 @@ server <- function(input, output, session) {
       } else {
         utils::zip(file, files, flags = "-j")
       }
-      unlink(tmpdir, recursive = TRUE)
     }
     # download handler as return value
     downloadHandler(

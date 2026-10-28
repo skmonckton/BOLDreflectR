@@ -144,7 +144,7 @@ tree_tip_info <- function(meta, fields, tip_number) {
     x <- tip_field_values(meta, f, tip_number)
     if (f == "nuc_basecount") x[x != ""] <- paste(x[x != ""], "bp")
     name <- if (is.na(tree_label_names[f])) f else tree_label_names[[f]]
-    ifelse(x == "", "", paste0(name, ": ", htmltools::htmlEscape(x)))
+    ifelse(x == "", "", paste0(htmltools::htmlEscape(name), ": ", htmltools::htmlEscape(x)))
   })
   apply(do.call(cbind, lines), 1, function(d) paste(d[d != ""], collapse = "<br>"))
 }

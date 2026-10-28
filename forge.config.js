@@ -1,6 +1,9 @@
 const path = require("path");
 const fs = require("fs");
-const { name } = require("./package.json");
+const { name, repository } = require("./package.json");
+// GitHub owner and repository from package.json, for the installer's icon URL
+const repoUrl = typeof repository === "string" ? repository : (repository && repository.url) || "";
+const [gitOwner, gitRepo] = (repoUrl.match(/(?:github\.com[/:]|^github:)([^/]+)\/([^/#?]+?)(?:\.git)?\/?$/) || []).slice(1);
 
 module.exports = {
   packagerConfig: {
@@ -13,6 +16,7 @@ module.exports = {
       /\.github/,
       /\.gitignore$/,
       /\.gitattributes$/,
+      /_feedback\.json$/,
       /^\/shiny\/dev/,
       /^\/shiny\/bin\/.*$/,
       /^\/shiny\/data\/user_config\.yaml$/,
@@ -33,8 +37,11 @@ module.exports = {
       name: "@electron-forge/maker-squirrel",
       platforms: ["win32"],
       config: {
+        // this description is copied by Squirrel into the Start menu shortcut
+        // previously, the shortcut could be corrupted by a too-long description from package.json
+        description: "A graphical user interface for BOLDconnectR and BOLD's data APIs.",
         setupIcon: "assets/icon.ico",
-        iconUrl: "https://raw.githubusercontent.com/skmonckton/BOLDreflectR/refs/heads/main/assets/icon.ico",
+        ...(gitRepo && { iconUrl: `https://raw.githubusercontent.com/${gitOwner}/${gitRepo}/HEAD/assets/icon.ico` }),
         loadingGif: "assets/install-spinner.gif"
       }
     },
@@ -52,10 +59,25 @@ module.exports = {
         config: {
           options: {
             bin: name,
-            icon: "assets/icon.png",
-            executableArgs: ["--no-sandbox"]
+            icon: "assets/icon.png"
           }
         }
+    }
+  ],
+  // turn off Electron features the app doesn't use so the app can't be used to run other code
+  // given by name instead of FusesPlugin instance to persist through nhyris `init` or `update`
+  // keys are @electron/fuses' FuseV1Options numbers
+  plugins: [
+    {
+      name: "@electron-forge/plugin-fuses",
+      config: {
+        version: "1",
+        0: false, // RunAsNode
+        1: true,  // EnableCookieEncryption
+        2: false, // EnableNodeOptionsEnvironmentVariable
+        3: false, // EnableNodeCliInspectArguments
+        7: false  // GrantFileProtocolExtraPrivileges
+      }
     }
   ],
   hooks: {

@@ -135,10 +135,19 @@
       var r = self.rowAt(e.offsetY);
       self.namesCanvas.title = (r >= 0 && r < self.names.length) ? self.names[r] : '';
     });
-    this.el.addEventListener('keydown', function(e) { self.keyDown(e); });
+    this.onKey = function(e) { self.keyDown(e); };
+    this.el.addEventListener('keydown', this.onKey);
     if (window.ResizeObserver) {
-      new ResizeObserver(function() { self.draw(); }).observe(this.seqWrap);
+      this.resizer = new ResizeObserver(function() { self.draw(); });
+      this.resizer.observe(this.seqWrap);
     }
+  };
+
+  // stops a viewer that a new alignment replaces
+  AlignmentViewer.prototype.destroy = function() {
+    clearTimeout(this.syncTimer);
+    this.el.removeEventListener('keydown', this.onKey);
+    if (this.resizer) this.resizer.disconnect();
   };
 
   // sizes depend on the zoom level
@@ -290,10 +299,9 @@
   // --- selection ---
   AlignmentViewer.prototype.setSel = function(r0, r1, c0, c1) {
     var n = this.seqs.length, L = this.len;
-    this.sel = {
-      r0: Math.max(0, Math.min(r0, r1)), r1: Math.min(n - 1, Math.max(r0, r1)),
-      c0: Math.max(0, Math.min(c0, c1)), c1: Math.min(L - 1, Math.max(c0, c1))
-    };
+    var clamp = function(x, hi) { return Math.max(0, Math.min(hi, x)); };
+    r0 = clamp(r0, n - 1); r1 = clamp(r1, n - 1); c0 = clamp(c0, L - 1); c1 = clamp(c1, L - 1);
+    this.sel = {r0: Math.min(r0, r1), r1: Math.max(r0, r1), c0: Math.min(c0, c1), c1: Math.max(c0, c1)};
   };
 
   AlignmentViewer.prototype.mouseDown = function(e, onNames) {
@@ -570,18 +578,31 @@
     Shiny.setInputValue('aln_notify', msg, {priority: 'event'});
   };
 
-  // send the edited alignment to Shiny (max once per second)
+  // send the edited alignment to Shiny (max once per second, or at once when a tree is requested)
   AlignmentViewer.prototype.changed = function() {
     var self = this;
     this.edits++;
     clearTimeout(this.syncTimer);
-    this.syncTimer = setTimeout(function() {
-      Shiny.setInputValue('aln_edited', {names: self.names, seqs: self.seqs, edits: self.edits, version: self.version});
-    }, 1000);
+    this.syncTimer = setTimeout(function() { self.sync(); }, 1000);
   };
 
+  AlignmentViewer.prototype.sync = function() {
+    clearTimeout(this.syncTimer);
+    this.syncTimer = null;
+    Shiny.setInputValue('aln_edited', {names: this.names, seqs: this.seqs, edits: this.edits, version: this.version});
+  };
+
+  // edits not yet sent go ahead of a tree request (both reach R together)
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest || !e.target.closest('#tree_btn')) return;
+    Object.keys(viewers).forEach(function(id) { if (viewers[id].syncTimer) viewers[id].sync(); });
+  }, true);
+
   // load a new alignment into the element with the given id (once the element exists; see BRViewer.loader)
-  var loader = BRViewer.loader(function(el, msg) { viewers[msg.id] = new AlignmentViewer(el, msg); });
+  var loader = BRViewer.loader(function(el, msg) {
+    if (viewers[msg.id]) viewers[msg.id].destroy();
+    viewers[msg.id] = new AlignmentViewer(el, msg);
+  });
   Shiny.addCustomMessageHandler('aln_load', loader.load);
   window.BRAlignmentViewer = {
     viewers: viewers,

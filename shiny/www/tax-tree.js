@@ -42,7 +42,8 @@
     });
     tree.querySelector('.tax-status').textContent = q ?
       kept.length.toLocaleString() + ' of ' + rs.length.toLocaleString() + ' taxa' : rs.length.toLocaleString() + ' taxa';
-    if (window.Shiny && Shiny.setInputValue) Shiny.setInputValue('tax_tree_rows', q ? kept : null);
+    // Shiny reads an empty array as NULL, i.e. no search, so no matches is sent as row 0
+    if (window.Shiny && Shiny.setInputValue) Shiny.setInputValue('tax_tree_rows', q ? (kept.length ? kept : [0]) : null);
   }
 
   document.addEventListener('click', function(e) {

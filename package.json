@@ -1,12 +1,15 @@
 {
   "name": "BOLDreflectR",
   "productName": "BOLDreflectR",
-  "version": "1.0.0-beta",
+  "version": "1.0.0-rc1",
   "description": "A graphical user interface for BOLDconnectR (https://doi.org/10.32614/CRAN.package.BOLDconnectR) and BOLD's data APIs, allowing retrieval, exploration, and analysis of DNA barcode data. This installable executable is bundled using a modified version of nhyris (original: https://github.com/jahnen/nhyris; fork: https://github.com/skmonckton/nhyris).",
   "main": "src/index.js",
+  "nhyris": {
+    "trustedLinkHosts": ["boldsystems.org", "openstreetmap.org", "stadiamaps.com", "stamen.com", "esri.com", "leafletjs.com", "plotly.com"]
+  },
   "author": {
-      "name": "Spencer K. Monckton",
-      "email": "smonckto@uoguelph.ca"
+    "name": "Spencer K. Monckton",
+    "email": "smonckto@uoguelph.ca"
   },
   "contributors": [
     {
@@ -25,12 +28,13 @@
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.8.0",
-    "@electron-forge/maker-dmg": "^7.11.1",
-    "@electron-forge/maker-squirrel": "^7.8.0",
-    "@electron-forge/maker-zip": "^7.8.0",
+    "@electron-forge/cli": "^8.0.1",
+    "@electron-forge/maker-dmg": "^8.0.1",
+    "@electron-forge/maker-squirrel": "^8.0.1",
+    "@electron-forge/maker-zip": "^8.0.1",
+    "@electron-forge/plugin-fuses": "^8.0.1",
     "@reforged/maker-appimage": "^5.2.0",
-    "electron": "^36.4.0"
+    "electron": "^45.0.0"
   },
   "scripts": {
     "install-R": "node src/install-R.js"

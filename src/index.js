@@ -2,7 +2,7 @@
 // Additions: Copyright (c) 2025 Jinhwan Kim
 // Further modifications by Spencer K. Monckton
 
-const { app, session, autoUpdater, dialog, shell, ipcMain, BrowserWindow, clipboard } = require("electron");
+const { app, session, autoUpdater, dialog, shell, ipcMain, BrowserWindow, clipboard, Menu } = require("electron");
 const { spawn } = require('child_process');
 const fs = require("fs");
 const path = require('path');
@@ -378,7 +378,17 @@ app.on("ready", async () => {
       title: "Save file",
       defaultPath: path.join(app.getPath("downloads"), item.getFilename()),
     });
+    item.once("done", (_e, state) => {
+      if (state === "interrupted") {
+        dialog.showMessageBox({ type: "error", title: "Download failed", message: `${path.basename(item.getSavePath()) || item.getFilename()} could not be saved.` });
+      }
+    });
   });
+
+  // Reloading the page ends the R session, so the app menu (and Reload shortcut) is excluded; macOS needs its app and Edit menus
+  Menu.setApplicationMenu(process.platform === "darwin"
+    ? Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }])
+    : null);
 
   // Initialize the context menu (for additional options, see: https://github.com/sindresorhus/electron-context-menu)
   contextMenu.default({
@@ -455,7 +465,10 @@ app.on("ready", async () => {
   };
 
   // Check for updates while the splash screen is showing
-  if (squirrelInstalled && app.isPackaged && gitRepo) {
+  // skip on first launch after install, as Squirrel may still be running
+  if (process.argv.includes("--squirrel-firstrun")) {
+    console.log("First launch after installing: update check skipped");
+  } else if (squirrelInstalled && app.isPackaged && gitRepo) {
     autoUpdater.checkForUpdates();
   } else if (app.isPackaged && gitRepo) {
     notifyIfUpdates();
@@ -475,9 +488,14 @@ app.on("ready", async () => {
         appState.setLoadingSplashScreen(null);
         appState.mainWindow.show();
         // from now on, R stopping is an error (when the app quits, appState.shutdown is set before R is stopped)
-        appState.rShinyProcess.once("exit", () => {
-          if (!appState.shutdown) onErrorLater();
-        });
+        const r = appState.rShinyProcess;
+        if (r.exitCode !== null || r.signalCode !== null) {
+          onErrorLater();
+        } else {
+          r.once("exit", () => {
+            if (!appState.shutdown) onErrorLater();
+          });
+        }
       }
     );
   } catch (e) {

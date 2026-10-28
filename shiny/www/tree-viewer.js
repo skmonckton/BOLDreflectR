@@ -117,7 +117,7 @@
 
     this.tip = document.createElement('div');
     this.tip.className = 'tree-tooltip';
-    document.body.appendChild(this.tip);
+    this.el.appendChild(this.tip);
 
     this.scroll.addEventListener('mouseover', function(e) { self.hover(e); });
     this.scroll.addEventListener('mousemove', function(e) { self.moveTip(e); });
@@ -375,11 +375,8 @@
   };
 
   // load a tree into the element with the given id (once the element exists; see BRViewer.loader), replacing any
-  // earlier one (its tooltip element is outside the viewer, so it is removed separately)
-  var loader = BRViewer.loader(function(el, msg) {
-    if (el._treeViewer) el._treeViewer.tip.remove();
-    el._treeViewer = new TreeViewer(el, msg.tree);
-  });
+  // earlier one
+  var loader = BRViewer.loader(function(el, msg) { el._treeViewer = new TreeViewer(el, msg.tree); });
   Shiny.addCustomMessageHandler('tree_load', loader.load);
   // new tip labels, tooltips or colours for the tree shown (if still loading, the pending tree is updated instead)
   Shiny.addCustomMessageHandler('tree_update', function(msg) {

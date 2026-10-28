@@ -78,6 +78,8 @@ class ProcessManager {
             APP_VER: app.getVersion()
           },
           stdio: ["ignore", logFd, logFd],
+          // without this, R opens a console window when the app isn't started from a terminal (closing it stops R)
+          windowsHide: true,
         }
       );
       // R has its own copy of the log file handle
@@ -142,7 +144,7 @@ class ProcessManager {
     if (!child || child.exitCode !== null) return;
     try {
       if (os.platform() === "win32") {
-        execSync(`taskkill /PID ${child.pid} /T /F`, { stdio: "ignore" });
+        execSync(`taskkill /PID ${child.pid} /T /F`, { stdio: "ignore", windowsHide: true });
       } else {
         child.kill();
       }
